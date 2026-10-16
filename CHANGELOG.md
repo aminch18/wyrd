@@ -18,6 +18,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Storage port (`IWyrdStore`) with a deterministic in-memory implementation.
 - `Projection<TView>`: read models kept up to date from events with pure functions, stored in the same transaction;
   `View<TView>(key)` and `Views<TView>()` to query them. Redelivered messages are never applied twice.
+- `.OnCompensated(command)`: how a process ends when it is compensated (e.g. `CancelOrder`), so read models and
+  slices learn the outcome; runs even when there was nothing to undo.
 - `Wyrd.Testing` package: `Scenario.For(slice).Given(...).When(...).Then(...)/ThenRejected(...)/ThenState(...)` and
   `Scenario.For(projection).Given(...).Then(key, view)`; every expectation checks the JSON round trip.
 - `samples/Shop.Tests`: the shop's business specifications.

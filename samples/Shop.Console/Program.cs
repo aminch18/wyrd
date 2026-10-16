@@ -33,7 +33,7 @@ await shop.SendAsync(new PlaceOrder("A-1003", "KEYBOARD", 2, 2_500m));
 Flush("3. Card declined: the reserved stock is released");
 
 await shop.SendAsync(new PlaceOrder("A-1004", "KEYBOARD", 50, 89m));
-Flush("4. Out of stock: nothing completed, nothing to compensate");
+Flush("4. Out of stock: nothing to undo, the order is cancelled");
 
 await shop.SendAsync(new PlaceOrder("A-1005", "KEYBOARD", 1, 89m));
 await shop.AdvanceAsync(15.Minutes);

@@ -12,6 +12,7 @@ public static class ShopModule
 {
     public static InMemoryRuntime CreateRuntime() => new InMemoryRuntime()
         .AddSlice(new PlaceOrderSlice())
+        .AddSlice(new CancelOrderSlice())
         .AddSlice(new RestockSlice())
         .AddSlice(new ReserveStockSlice())
         .AddSlice(new ReleaseStockSlice())

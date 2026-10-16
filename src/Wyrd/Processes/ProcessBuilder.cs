@@ -12,12 +12,14 @@ public sealed class ProcessBuilder<TTrigger>
     private readonly string _name;
     private readonly Func<object, object> _keyOf;
     private readonly ImmutableArray<ProcessNode> _nodes;
+    private readonly StepRef? _onCompensated;
 
-    internal ProcessBuilder(string name, Func<object, object> keyOf, ImmutableArray<ProcessNode> nodes)
+    internal ProcessBuilder(string name, Func<object, object> keyOf, ImmutableArray<ProcessNode> nodes, StepRef? onCompensated = null)
     {
         _name = name;
         _keyOf = keyOf;
         _nodes = nodes;
+        _onCompensated = onCompensated;
     }
 
     public ProcessBuilder<TTrigger> Then<TCommand>(Func<TTrigger, TCommand> step)
@@ -32,6 +34,14 @@ public sealed class ProcessBuilder<TTrigger>
         return Append(new AwaitNode(typeof(TEvent)) { KeyOf = e => key((TEvent)e) });
     }
 
+    /// <summary>
+    /// The command sent once compensation has finished, so the business learns how the process ended
+    /// (e.g. <c>.OnCompensated(Orders.Cancel)</c>).
+    /// </summary>
+    public ProcessBuilder<TTrigger> OnCompensated<TCommand>(Func<TTrigger, TCommand> outcome)
+        where TCommand : ICommand =>
+        Append(new CompensatedNode(StepRef.Typed(outcome)));
+
     public ProcessBuilder<TTrigger> Undo<TCommand>(Func<TTrigger, TCommand> compensation)
         where TCommand : ICommand =>
         ModifyLast(n => NodeModifiers.Undo(n, StepRef.Typed(compensation)));
@@ -41,7 +51,7 @@ public sealed class ProcessBuilder<TTrigger>
 
     public ProcessBuilder<TTrigger> Within(TimeSpan timeout) => ModifyLast(n => NodeModifiers.Within(n, timeout));
 
-    public Process ToProcess() => new(_name, typeof(TTrigger), _keyOf, _nodes);
+    public Process ToProcess() => new(_name, typeof(TTrigger), _keyOf, _nodes, _onCompensated);
 
     public static implicit operator Process(ProcessBuilder<TTrigger> builder)
     {
@@ -52,7 +62,14 @@ public sealed class ProcessBuilder<TTrigger>
     internal ProcessBuilder<TTrigger> Append(ProcessNode node)
     {
         NodeModifiers.EnsureAccepts(node, typeof(TTrigger));
-        return new(_name, _keyOf, _nodes.Add(node));
+        if (node is CompensatedNode outcome)
+        {
+            return _onCompensated is null
+                ? new(_name, _keyOf, _nodes, outcome.Action)
+                : throw new InvalidOperationException("A process has a single OnCompensated outcome.");
+        }
+
+        return new(_name, _keyOf, _nodes.Add(node), _onCompensated);
     }
 
     private ProcessBuilder<TTrigger> ModifyLast(Func<ProcessNode, ProcessNode> modify)
@@ -64,6 +81,6 @@ public sealed class ProcessBuilder<TTrigger>
 
         var modified = modify(_nodes[^1]);
         NodeModifiers.EnsureAccepts(modified, typeof(TTrigger));
-        return new(_name, _keyOf, _nodes.SetItem(_nodes.Length - 1, modified));
+        return new(_name, _keyOf, _nodes.SetItem(_nodes.Length - 1, modified), _onCompensated);
     }
 }

@@ -266,7 +266,7 @@ internal sealed class Engine(
             switch (process.Nodes[instance.Position])
             {
                 case StepNode step:
-                    return SendStep(instance, trigger, step.Action, compensating: false, changes);
+                    return SendStep(instance, trigger, step.Action, instance.Position, compensating: false, changes);
 
                 case AwaitNode wait:
                     var parked = changes.Park.FirstOrDefault(p => p.Process == instance.Process && p.Key == instance.Key && p.Step == instance.Position)
@@ -298,12 +298,11 @@ internal sealed class Engine(
         return instance with { Status = ProcessStatus.Completed, Pending = null };
     }
 
-    private StoredInstance SendStep(StoredInstance instance, IEvent trigger, StepRef step, bool compensating, Changes changes)
+    private StoredInstance SendStep(StoredInstance instance, IEvent trigger, StepRef step, int index, bool compensating, Changes changes)
     {
         var command = step.Invoke!(trigger);
         var (type, payload) = types.Serialize(command);
         var id = newId();
-        var index = compensating ? instance.Completed[^1] : instance.Position;
         changes.Outbox.Add(new Envelope(id, MessageKind.Command, type, payload, new ProcessRef(instance.Process, instance.Key, index, compensating)));
         log(instance.Process, instance.Key, $"-> {command.GetType().Name}");
         return instance with { Status = ProcessStatus.Running, Pending = id, Attempt = 1 };
@@ -322,10 +321,18 @@ internal sealed class Engine(
         }
 
         var process = registry.ProcessNamed(target.Process);
-        var step = (StepNode)process.Nodes[target.Step];
         var reply = MessageTypes.DeserializeReply(envelope.Payload);
         var trigger = Trigger(instance);
         var changes = new Changes();
+
+        if (target.Step == process.Nodes.Length)
+        {
+            changes.Save(Conclude(instance, process.OnCompensated!, reply));
+            await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var step = (StepNode)process.Nodes[target.Step];
 
         switch (reply.Outcome)
         {
@@ -386,14 +393,37 @@ internal sealed class Engine(
             var step = (StepNode)process.Nodes[completed[^1]];
             if (step.Compensation is { } undo)
             {
-                return SendStep(instance with { Completed = completed }, trigger, undo, compensating: true, changes);
+                return SendStep(instance with { Completed = completed }, trigger, undo, completed[^1], compensating: true, changes);
             }
 
             completed = completed.RemoveAt(completed.Count - 1);
         }
 
+        if (process.OnCompensated is { } outcome)
+        {
+            return SendStep(instance with { Completed = completed }, trigger, outcome, process.Nodes.Length, compensating: true, changes);
+        }
+
         log(instance.Process, instance.Key, "compensated");
         return instance with { Completed = completed, Status = ProcessStatus.Compensated, Pending = null };
+    }
+
+    /// <summary>The reply to the OnCompensated outcome command: the end of the compensation.</summary>
+    private StoredInstance Conclude(StoredInstance instance, StepRef outcome, ReplyMessage reply)
+    {
+        switch (reply.Outcome)
+        {
+            case ReplyOutcome.Accepted:
+                log(instance.Process, instance.Key, $"ok {types.TypeOf(reply.Type!).Name}");
+                log(instance.Process, instance.Key, "compensated");
+                return instance with { Status = ProcessStatus.Compensated, Pending = null };
+            case ReplyOutcome.Rejected:
+                log(instance.Process, instance.Key, $"rejected {types.Deserialize(reply.Type!, reply.Payload!)}");
+                return Fail(instance, outcome);
+            default:
+                log(instance.Process, instance.Key, "transient failure, no retry policy");
+                return Fail(instance, outcome);
+        }
     }
 
     private StoredInstance Fail(StoredInstance instance, StepRef undo)

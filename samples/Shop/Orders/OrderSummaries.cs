@@ -18,6 +18,7 @@ public sealed class OrderSummaries : Projection<OrderSummary>
         On<PaymentCharged>(e => e.OrderId, (view, _) => view is null ? null : view with { Status = "Paid" });
         On<OrderShipped>(e => e.OrderId, (view, _) => view is null ? null : view with { Status = "Shipped" });
         On<PaymentRefunded>(e => e.OrderId, (view, _) => view is null ? null : view with { Status = "Refunded" });
-        On<StockReleased>(e => e.OrderId, (view, _) => view is null ? null : view with { Status = "Cancelled" });
+        On<StockReleased>(e => e.OrderId, (view, _) => view is null ? null : view with { Status = "Released" });
+        On<OrderCancelled>(e => e.OrderId, (view, _) => view is null ? null : view with { Status = "Cancelled" });
     }
 }

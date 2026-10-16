@@ -109,7 +109,8 @@ public static Process OrderFulfillment => Process
     .Then(Stock.Reserve).Undo(Stock.Release)
     .Then(Payments.Charge).Retry(3.Times, Backoff.Exponential).Undo(Payments.Refund)
     .Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)
-    .Then(Shipping.Ship);
+    .Then(Shipping.Ship)
+    .OnCompensated(Orders.Cancel);   // how it ends when it can't complete
 ```
 
 Steps are pure functions from the event that started the process to the next command:

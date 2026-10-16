@@ -48,7 +48,7 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] Projections (read models) with redelivery protection
 - [x] Thread-safe in-memory host; `samples/Shop.Api` HTTP sample
 - [x] `Wyrd.Testing`: Given/When/Then for slices and projections, with JSON round-trip checks; `samples/Shop.Tests`
-- [ ] Process outcomes as commands (`.OnCompensated(Orders.Cancel)`), so read models learn how a process ended
+- [x] Process outcomes as commands (`.OnCompensated(Orders.Cancel)`), so read models learn how a process ended
 - [ ] Source-generated JSON contexts (AOT)
 
 ## v0.3 — Skuld (simulate the future)

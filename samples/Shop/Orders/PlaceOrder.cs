@@ -10,6 +10,8 @@ public enum OrderError
 {
     EmptyOrder,
     AlreadyPlaced,
+    AlreadyCancelled,
+    NotFound,
 }
 
 [Union]
@@ -20,12 +22,15 @@ public abstract record Order : IState<Order>
     public Order Evolve(IDomainEvent domainEvent) => (this, domainEvent) switch
     {
         (None, OrderPlaced placed) => new Placed(placed.Sku, placed.Quantity),
+        (Placed, OrderCancelled) => new Cancelled(),
         _ => this,
     };
 
     public sealed record None : Order;
 
     public sealed record Placed(string Sku, int Quantity) : Order;
+
+    public sealed record Cancelled : Order;
 }
 
 /// <summary>Slice: a customer places an order.</summary>

@@ -77,6 +77,12 @@ public abstract record ProcessNode;
 
 public sealed record StepNode(StepRef Action, StepRef? Compensation = null, RetryPolicy? Retry = null) : ProcessNode;
 
+/// <summary>
+/// How the process ends when it is compensated: a command that tells the business (e.g. <c>CancelOrder</c>),
+/// so read models and other slices learn the outcome. Not a position in the flow.
+/// </summary>
+public sealed record CompensatedNode(StepRef Action) : ProcessNode;
+
 /// <summary>Waits for an external event correlated to the process instance.</summary>
 public sealed record AwaitNode(Type Event, TimeSpan? Timeout = null) : ProcessNode
 {
@@ -111,12 +117,14 @@ internal static class NodeModifiers
     /// <summary>Checks that step functions accept the process trigger.</summary>
     public static void EnsureAccepts(ProcessNode node, Type trigger)
     {
-        if (node is not StepNode step)
+        StepRef?[] references = node switch
         {
-            return;
-        }
+            StepNode step => [step.Action, step.Compensation],
+            CompensatedNode outcome => [outcome.Action],
+            _ => [],
+        };
 
-        foreach (var reference in new[] { step.Action, step.Compensation })
+        foreach (var reference in references)
         {
             if (reference?.Input is { } input && !input.IsAssignableFrom(trigger))
             {
