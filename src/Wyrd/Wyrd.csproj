@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Wyrd</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>Deterministic event-driven processes for .NET.</Description>
+  </PropertyGroup>
+
+</Project>
