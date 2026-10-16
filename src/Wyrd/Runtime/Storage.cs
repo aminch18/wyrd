@@ -25,6 +25,9 @@ internal sealed record StoredInstance(
 
 internal sealed record Scheduled(DateTimeOffset At, Envelope Envelope);
 
+/// <summary>A read-model document. A null payload deletes it.</summary>
+internal sealed record StoredView(string ViewType, string Key, string? Type, string? Payload);
+
 /// <summary>
 /// Everything that handling one message changes. A store commits it atomically: state, events, process
 /// instances, the inbox entry and the outgoing messages (outbox) succeed or fail together.
@@ -49,6 +52,11 @@ internal sealed class Changes
 
     public List<StoredParked> Unpark { get; } = [];
 
+    public Dictionary<(string ViewType, string Key), StoredView> Views { get; } = [];
+
+    /// <summary>Events handled by this transaction: a redelivery of the same message id is skipped.</summary>
+    public List<Guid> Handled { get; } = [];
+
     /// <summary>Saves an instance; its <c>Version</c> is the one read, checked on commit (optimistic concurrency).</summary>
     public void Save(StoredInstance instance) => Instances[(instance.Process, instance.Key)] = instance;
 
@@ -66,6 +74,10 @@ internal interface IWyrdStore
     ValueTask<ReplyMessage?> FindReplyAsync(Guid commandId, CancellationToken cancellationToken);
 
     ValueTask<StoredParked?> FindParkedAsync(string process, string key, int step, CancellationToken cancellationToken);
+
+    ValueTask<StoredView?> LoadViewAsync(string viewType, string key, CancellationToken cancellationToken);
+
+    ValueTask<bool> WasHandledAsync(Guid messageId, CancellationToken cancellationToken);
 
     ValueTask CommitAsync(Changes changes, CancellationToken cancellationToken);
 

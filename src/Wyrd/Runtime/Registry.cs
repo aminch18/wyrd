@@ -9,6 +9,19 @@ internal sealed class Registry
     private readonly List<IPublicationHandler> _publications = [];
     private readonly Dictionary<(string Name, int Version), IUpcasterHandler> _upcasters = [];
     private readonly List<Process> _processes = [];
+    private readonly List<IProjectionHandler> _projections = [];
+
+    public IReadOnlyList<IProjectionHandler> Projections => _projections;
+
+    public void Add(IProjectionHandler projection)
+    {
+        if (_projections.Any(p => p.View == projection.View))
+        {
+            throw new InvalidOperationException($"{projection.View.Name} already has a projection. A view has exactly one owner.");
+        }
+
+        _projections.Add(projection);
+    }
 
     public IReadOnlyList<Process> Processes => _processes;
 

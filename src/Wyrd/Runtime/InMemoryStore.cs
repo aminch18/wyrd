@@ -11,6 +11,8 @@ internal sealed class InMemoryStore : IWyrdStore
     private readonly List<StoredParked> _parked = [];
     private readonly List<Envelope> _outbox = [];
     private readonly List<(DateTimeOffset At, long Sequence, Envelope Envelope)> _scheduled = [];
+    private readonly Dictionary<(string ViewType, string Key), StoredView> _views = [];
+    private readonly HashSet<Guid> _handled = [];
     private long _sequence;
 
     public IReadOnlyList<StoredMessage> Events => _events;
@@ -20,6 +22,16 @@ internal sealed class InMemoryStore : IWyrdStore
     public StoredState? State(string stateType, string key) => _states.GetValueOrDefault((stateType, key));
 
     public StoredInstance? Instance(string process, string key) => _instances.GetValueOrDefault((process, key));
+
+    public StoredView? View(string viewType, string key) => _views.GetValueOrDefault((viewType, key));
+
+    public IEnumerable<StoredView> Views(string viewType) => _views.Values.Where(v => v.ViewType == viewType);
+
+    public ValueTask<StoredView?> LoadViewAsync(string viewType, string key, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(View(viewType, key));
+
+    public ValueTask<bool> WasHandledAsync(Guid messageId, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(_handled.Contains(messageId));
 
     public ValueTask<StoredState?> LoadStateAsync(string stateType, string key, CancellationToken cancellationToken) =>
         ValueTask.FromResult(State(stateType, key));
@@ -69,6 +81,19 @@ internal sealed class InMemoryStore : IWyrdStore
             _replies[id] = reply;
         }
 
+        foreach (var view in changes.Views.Values)
+        {
+            if (view.Payload is null)
+            {
+                _views.Remove((view.ViewType, view.Key));
+            }
+            else
+            {
+                _views[(view.ViewType, view.Key)] = view;
+            }
+        }
+
+        _handled.UnionWith(changes.Handled);
         _events.AddRange(changes.Events);
         _published.AddRange(changes.Published);
         _parked.AddRange(changes.Park);

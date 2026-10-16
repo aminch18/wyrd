@@ -73,6 +73,15 @@ public sealed class InMemoryRuntime
         return this;
     }
 
+    /// <summary>Registers the projection that owns a read model.</summary>
+    public InMemoryRuntime AddProjection<TView>(Projection<TView> projection)
+        where TView : class
+    {
+        ArgumentNullException.ThrowIfNull(projection);
+        _registry.Add(projection);
+        return this;
+    }
+
     public InMemoryRuntime AddProcess(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
@@ -159,6 +168,21 @@ public sealed class InMemoryRuntime
             ? (TState)_types.Deserialize(state.Type, state.Payload)
             : TState.Initial;
     }
+
+    /// <summary>Reads one document of a read model, or null.</summary>
+    public TView? View<TView>(object key)
+        where TView : class
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return _store.View(typeof(TView).FullName!, Keys.Of(key)) is { Payload: { } payload, Type: { } type }
+            ? (TView)_types.Deserialize(type, payload)
+            : null;
+    }
+
+    /// <summary>Reads every document of a read model, in creation order.</summary>
+    public IReadOnlyList<TView> Views<TView>()
+        where TView : class =>
+        [.. _store.Views(typeof(TView).FullName!).Select(v => (TView)_types.Deserialize(v.Type!, v.Payload!))];
 
     private async Task DrainAsync(CancellationToken cancellationToken)
     {

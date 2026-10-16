@@ -16,6 +16,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - Awaited events that arrive before the process reaches the `Await` are parked and used when it gets there.
 - Storage port (`IWyrdStore`) with a deterministic in-memory implementation.
+- `Projection<TView>`: read models kept up to date from events with pure functions, stored in the same transaction;
+  `View<TView>(key)` and `Views<TView>()` to query them. Redelivered messages are never applied twice.
 
 ## [0.1.0-alpha.1] - 2026-10-16
 

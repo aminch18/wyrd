@@ -45,7 +45,7 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] Retries scheduled with backoff on the clock, re-sent with the same message id; inbox replays stored outcomes
 - [x] Early events parked until the process reaches the matching `Await`
 - [x] Deterministic message ids
-- [ ] Projections (read models)
+- [x] Projections (read models) with redelivery protection
 - [ ] Source-generated JSON contexts (AOT)
 
 ## v0.3 — Skuld (simulate the future)

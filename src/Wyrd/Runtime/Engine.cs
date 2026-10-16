@@ -125,8 +125,25 @@ internal sealed class Engine(
 
     private async ValueTask HandleEventAsync(Envelope envelope, CancellationToken cancellationToken)
     {
+        if (await store.WasHandledAsync(envelope.MessageId, cancellationToken).ConfigureAwait(false))
+        {
+            return; // Redelivery of a message we already handled.
+        }
+
         var @event = (IEvent)types.Deserialize(envelope.Type, envelope.Payload);
         var changes = new Changes();
+        changes.Handled.Add(envelope.MessageId);
+
+        foreach (var projection in registry.Projections)
+        {
+            foreach (var handled in projection.Events)
+            {
+                if (Accept(@event, handled) is { } projected)
+                {
+                    await ProjectAsync(projection, projected, changes, cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
 
         foreach (var process in registry.Processes)
         {
@@ -145,6 +162,26 @@ internal sealed class Engine(
         }
 
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask ProjectAsync(IProjectionHandler projection, IEvent @event, Changes changes, CancellationToken cancellationToken)
+    {
+        var viewType = projection.View.FullName!;
+        var key = Keys.Of(projection.KeyOf(@event));
+        var stored = changes.Views.TryGetValue((viewType, key), out var pending)
+            ? pending
+            : await store.LoadViewAsync(viewType, key, cancellationToken).ConfigureAwait(false);
+        var current = stored?.Payload is null ? null : types.Deserialize(stored.Type!, stored.Payload);
+
+        var next = projection.Apply(current, @event);
+        if (next is null)
+        {
+            changes.Views[(viewType, key)] = new StoredView(viewType, key, null, null);
+            return;
+        }
+
+        var (type, payload) = types.Serialize(next);
+        changes.Views[(viewType, key)] = new StoredView(viewType, key, type, payload);
     }
 
     private async ValueTask StartAsync(Process process, IEvent trigger, Changes changes, CancellationToken cancellationToken)

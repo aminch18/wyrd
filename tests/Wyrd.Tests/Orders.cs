@@ -126,6 +126,20 @@ public sealed class PaymentChargedV2Publication : Publication<PaymentCharged, Pa
     public override PaymentChargedV2 Map(PaymentCharged domainEvent) => new(domainEvent.OrderId, domainEvent.Amount, "EUR");
 }
 
+// A read model for screens: one summary per order, kept up to date from events.
+public sealed record OrderSummary(string OrderId, decimal Amount, string Status, int Charges = 0);
+
+public sealed class OrderSummaries : Projection<OrderSummary>
+{
+    public OrderSummaries()
+    {
+        On<OrderPlaced>(e => e.OrderId, (_, e) => new OrderSummary(e.OrderId, e.Amount, "Placed"));
+        On<PaymentCharged>(e => e.OrderId, (view, e) => view is null ? null : view with { Status = "Paid", Charges = view.Charges + 1 });
+        On<OrderShipped>(e => e.OrderId, (view, e) => view! with { Status = "Shipped" });
+        On<StockReleased>(e => e.OrderId, (view, e) => null); // a cancelled order disappears from the list
+    }
+}
+
 public static class TestSystem
 {
     public static InMemoryRuntime Create(params Wyrd.Processes.Process[] processes)
