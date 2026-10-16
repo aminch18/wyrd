@@ -5,6 +5,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** the runtime is asynchronous: `SendAsync`, `PublishAsync`, `AdvanceAsync`.
+- The in-memory runtime now behaves like the distributed one: a message-driven engine where process steps are
+  command messages answered by replies, JSON envelopes, one transaction per message (state, events, instances,
+  inbox, outbox, timers), retries scheduled with backoff and re-sent with the same message id, deterministic ids.
+
+### Added
+
+- Awaited events that arrive before the process reaches the `Await` are parked and used when it gets there.
+- Storage port (`IWyrdStore`) with a deterministic in-memory implementation.
+
 ## [0.1.0-alpha.1] - 2026-10-16
 
 First preview: the core model, a deterministic in-memory runtime and versioned integration contracts.

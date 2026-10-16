@@ -60,11 +60,12 @@ public enum PaymentError
     Declined,
 }
 
-public sealed record EventLog(ImmutableList<IDomainEvent> Events) : IState<EventLog>
+// States are stored as JSON: they hold plain data (here, the names of what happened), never interfaces.
+public sealed record EventLog(ImmutableList<string> Events) : IState<EventLog>
 {
     public static EventLog Initial { get; } = new([]);
 
-    public EventLog Evolve(IDomainEvent domainEvent) => new(Events.Add(domainEvent));
+    public EventLog Evolve(IDomainEvent domainEvent) => new(Events.Add(domainEvent.GetType().Name));
 }
 
 public sealed class PlaceOrderSlice : Slice<PlaceOrder, EventLog, OrderPlaced, OrderError>

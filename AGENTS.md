@@ -5,7 +5,10 @@ Wyrd is a .NET 10 / C# 14 library for deterministic event-driven processes. Read
 
 ## Layout
 
-- `src/Wyrd` — the library. `Processes/` (model + fluent), `Pipe/` (opt-in syntax), `Runtime/` (in-memory runtime).
+- `src/Wyrd` — the library. `Processes/` (model + fluent), `Pipe/` (opt-in syntax), `Runtime/`:
+  `Engine` handles one `Envelope` at a time and returns `Changes` committed atomically through `IWyrdStore`;
+  `InMemoryRuntime` is a host (queue + `InMemoryStore` + virtual clock). Future hosts (PostgreSQL, RabbitMQ)
+  drive the same engine — keep it free of transport and storage details.
 - `src/Wyrd.Analyzers` — Roslyn analyzers (netstandard2.0, Roslyn 4.14), packed into the Wyrd package.
   New rules go in `Diagnostics.cs` **and** `AnalyzerReleases.Unshipped.md`. Messages: what, why, how to fix.
 - `src/Wyrd.Analyzers.CodeFixes` — IDE code fixes (needs Workspaces, so it can't live in the analyzer assembly).

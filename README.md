@@ -150,8 +150,8 @@ var shop = new InMemoryRuntime()
     .AddPublication(new PaymentChargedPublication())
     .AddProcess(Processes.OrderFulfillment);
 
-shop.Send(new PlaceOrder("A-1005", "KEYBOARD", 1, 89m));
-shop.Advance(15.Minutes); // the customer never completes 3-D Secure
+await shop.SendAsync(new PlaceOrder("A-1005", "KEYBOARD", 1, 89m));
+await shop.AdvanceAsync(15.Minutes); // the customer never completes 3-D Secure
 ```
 
 ```
@@ -170,12 +170,17 @@ shop.Advance(15.Minutes); // the customer never completes 3-D Secure
 [00:15:00] OrderFulfillment A-1005   compensated
 ```
 
-The clock is virtual: a 15-minute timeout takes microseconds to test, and the journal is identical on every run.
+The in-memory runtime behaves like the distributed one: steps are **messages** with **replies**, everything
+crosses the queue as **JSON**, each message is handled as **one transaction** (state, events, outbox, inbox),
+and timers and retries are **scheduled** on the clock. The clock is virtual: a 15-minute timeout takes
+microseconds to test, and the journal is identical on every run.
 
 | Behaviour | |
 |---|---|
 | Domain rejection (`Result` error) → compensate completed steps, in reverse order | ✅ |
-| Transient failure → retry with backoff; retries exhausted → compensate | ✅ |
+| Transient failure → retry scheduled with backoff, same message id; retries exhausted → compensate | ✅ |
+| An awaited event that arrives early is parked until the process needs it | ✅ |
+| Duplicate command delivery → the owner's inbox replays the stored outcome | ✅ |
 | `Await` timeout → compensate | ✅ |
 | Duplicate trigger (at-least-once delivery) → ignored | ✅ |
 | External events correlated by key | ✅ |

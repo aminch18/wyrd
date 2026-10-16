@@ -36,9 +36,20 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] Analyzer: naming suggestions, imperative commands and past-tense events (WYRD0003, WYRD0004)
 - [ ] AsyncAPI generation
 
-## v0.2 — Skuld (simulate the future)
+## v0.2 — Distributed-shaped core, in memory
 
-- [ ] Park awaited events that arrive before the instance reaches the `Await`
+- [x] Message-driven engine: steps are command messages, owners answer with replies (Accepted / Rejected / Faulted)
+- [x] Everything crosses the queue as JSON envelopes; states are stored as JSON
+- [x] One transaction per message: state, events, instances, inbox, outbox and timers commit together
+- [x] Storage port (`IWyrdStore`) with a deterministic in-memory implementation
+- [x] Retries scheduled with backoff on the clock, re-sent with the same message id; inbox replays stored outcomes
+- [x] Early events parked until the process reaches the matching `Await`
+- [x] Deterministic message ids
+- [ ] Projections (read models)
+- [ ] Source-generated JSON contexts (AOT)
+
+## v0.3 — Skuld (simulate the future)
+
 - [ ] Steps that read the process state, not only the trigger
 - [ ] Typed invokers via source generator (drop `DynamicInvoke` in the pipe syntax)
 - [ ] Given/When/Then testing package (`Wyrd.Testing`)
@@ -46,12 +57,12 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [ ] First analyzers: exhaustive `[Union]` switch, missing compensation, `Await` without timeout
 - [ ] Analyzer: `wyrd_process_style` enforcement with code fix fluent ⇄ pipe
 
-## v0.3 — Urd (replay the past)
+## v0.4 — Urd (replay the past)
 
 - [ ] Process instance history capture
 - [ ] `dotnet wyrd replay <instance> --as-test`
 
-## v0.4 — Verdandi (run the present)
+## v0.5 — Verdandi (run the present)
 
 - [ ] Integrations (`IIntegration<...>`): the only I/O, with idempotency keys and recorded outcomes
 - [ ] Framework reply envelope (Accepted / Rejected / Faulted) and re-send with stable message ids
