@@ -23,6 +23,8 @@ Releases are named after the Norn they unlock.
 
 ## v0.1 — Skuld (simulate the future)
 
+- [ ] Split contracts from slices: plain message records + `ISlice<TCommand, TState, TEvent, TError>` ([design](design/distributed.md))
+- [ ] Park awaited events that arrive before the instance reaches the `Await`
 - [ ] Steps that read the process state, not only the trigger
 - [ ] Typed invokers via source generator (drop `DynamicInvoke` in the pipe syntax)
 - [ ] Given/When/Then testing package (`Wyrd.Testing`)
@@ -37,6 +39,8 @@ Releases are named after the Norn they unlock.
 
 ## v0.3 — Verdandi (run the present)
 
+- [ ] Integrations (`IIntegration<...>`): the only I/O, with idempotency keys and recorded outcomes
+- [ ] Framework reply envelope (Accepted / Rejected / Faulted) and re-send with stable message ids
 - [ ] Ports: `IMessageTransport`, `IOutboxStore`, `IProcessStateStore`, `IScheduler`
 - [ ] EF Core outbox/inbox/state (PostgreSQL, SQL Server)
 - [ ] Durable scheduler for timeouts
