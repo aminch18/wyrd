@@ -1,0 +1,58 @@
+using Microsoft.CodeAnalysis;
+
+namespace Wyrd.Analyzers;
+
+internal static class Diagnostics
+{
+    private const string Messages = "Wyrd.Messages";
+    private const string Contracts = "Wyrd.Contracts";
+    private const string HelpLink = "https://github.com/aminch18/wyrd/blob/main/docs/design/messages.md";
+
+    public static readonly DiagnosticDescriptor CommandAndEvent = new(
+        "WYRD0001",
+        "A message is either a command or an event",
+        "'{0}' is both a command and an event. A command is an intention that can be rejected; an event is a fact that already happened. Split it into two types.",
+        Messages, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly DiagnosticDescriptor LeaksDomainType = new(
+        "WYRD0101",
+        "Integration events must not expose domain types",
+        "Integration event '{0}' exposes '{1}' through '{2}'. Integration events are public contracts: use primitives or other contract types, and map from the domain in a Publication.",
+        Messages, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly DiagnosticDescriptor IncompleteIntegrationEvent = new(
+        "WYRD0102",
+        "Integration events need a name, a version and IIntegrationEvent",
+        "'{0}' {1}. An integration event implements IIntegrationEvent and is marked with [IntegrationEvent(\"context.event-name\", Version = n)].",
+        Messages, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly DiagnosticDescriptor NotInSnapshot = new(
+        "WYRD0200",
+        "Integration event is missing from the contract snapshot",
+        "Integration event '{0}' v{1} is not in contracts.wyrd.txt. Review the contract, then add the line '{2}' to publish it.",
+        Contracts, DiagnosticSeverity.Warning, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly DiagnosticDescriptor BreakingChange = new(
+        "WYRD0201",
+        "Breaking change in a published integration event",
+        "Breaking change in integration event '{0}' v{1}: {2}. Existing subscribers would fail to read it. Publish it as v{3} and keep v{1} until subscribers migrate, or revert the change.",
+        Contracts, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly DiagnosticDescriptor SnapshotOutdated = new(
+        "WYRD0202",
+        "Contract snapshot is outdated",
+        "Integration event '{0}' v{1} gained optional fields ({2}). This is compatible: update its line in contracts.wyrd.txt to '{3}'.",
+        Contracts, DiagnosticSeverity.Warning, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly DiagnosticDescriptor ContractRemoved = new(
+        "WYRD0203",
+        "A published integration event was removed",
+        "Integration event '{0}' v{1} is in contracts.wyrd.txt but no longer exists. Removing a published contract breaks its subscribers. Restore it, or retire it explicitly by prefixing its line with 'retired '.",
+        Contracts, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink, customTags: WellKnownDiagnosticTags.CompilationEnd);
+
+    public static readonly DiagnosticDescriptor DuplicateContract = new(
+        "WYRD0204",
+        "Integration event name and version must be unique",
+        "Integration event '{0}' v{1} is declared by more than one type ({2}). Each name and version identifies exactly one contract.",
+        Contracts, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink, customTags: WellKnownDiagnosticTags.CompilationEnd);
+}

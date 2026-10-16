@@ -41,27 +41,40 @@ In Norse myth, *wyrd* — fate — is woven by three Norns. Wyrd is built on the
 
 ## Quick start
 
-### 1. A slice is a command with a pure decision ✅
+### 1. Messages say what they are ✅
 
 ```csharp
-public sealed record ChargePayment(string OrderId, decimal Amount)
-    : ICommand<ChargePayment, Payment, PaymentCharged, PaymentError>
-{
-    public object Key => OrderId;
+public sealed record ChargePayment(string OrderId, decimal Amount) : ICommand;            // an intention
+public sealed record PaymentCharged(string OrderId, decimal Amount) : IDomainEvent;       // an internal fact
 
-    public static Result<PaymentCharged, PaymentError> Decide(ChargePayment cmd, Payment payment) => payment switch
+[IntegrationEvent("payments.payment-charged", Version = 1)]
+public sealed record PaymentChargedV1(string OrderId, decimal Amount, string Currency)    // a public contract
+    : IIntegrationEvent;
+```
+
+Commands are *sent* to exactly one owner. Domain events stay inside their context. Only integration events
+cross boundaries — and only through an explicit `Publication`.
+
+### 2. A slice owns a command and decides, purely ✅
+
+```csharp
+public sealed class ChargePaymentSlice : Slice<ChargePayment, Payment, PaymentCharged, PaymentError>
+{
+    public override object KeyOf(ChargePayment command) => command.OrderId;
+
+    public override Result<PaymentCharged, PaymentError> Decide(ChargePayment command, Payment payment) => payment switch
     {
-        Payment.None when cmd.Amount > 1_000m => PaymentError.CardDeclined,
-        Payment.None                          => new PaymentCharged(cmd.OrderId, cmd.Amount),
-        _                                     => PaymentError.AlreadyCharged,
+        Payment.None when command.Amount > 1_000m => PaymentError.CardDeclined,
+        Payment.None                              => new PaymentCharged(command.OrderId, command.Amount),
+        _                                         => PaymentError.AlreadyCharged,
     };
 }
 ```
 
-No handler registration, no reflection, no infrastructure: Wyrd loads the state, calls `Decide`, stores the event.
+No `DbContext`, no publisher, no `await`: Wyrd loads the state, calls `Decide`, stores the event.
 Expected failures are values (`Result`), not exceptions.
 
-### 2. State is a closed set of cases ✅
+### 3. State is a closed set of cases ✅
 
 ```csharp
 [Union]
@@ -69,7 +82,7 @@ public abstract record Payment : IState<Payment>
 {
     public static Payment Initial { get; } = new None();
 
-    public Payment Evolve(object domainEvent) => (this, domainEvent) switch
+    public Payment Evolve(IDomainEvent domainEvent) => (this, domainEvent) switch
     {
         (None, PaymentCharged charged) => new Charged(charged.Amount),
         (Charged, PaymentRefunded)     => new Refunded(),
@@ -84,7 +97,7 @@ public abstract record Payment : IState<Payment>
 
 Impossible states are unrepresentable: a `Refunded` payment has no amount to charge again.
 
-### 3. The process reads like the business describes it ✅
+### 4. The process reads like the business describes it ✅
 
 ```csharp
 public static Process OrderFulfillment => Process
@@ -117,10 +130,25 @@ public static Process OrderFulfillment =>
       >> Step(Shipping.Ship);
 ```
 
-### 4. Run it ✅
+### 5. Publish contracts deliberately ✅
 
 ```csharp
-var shop = new InMemoryRuntime(Processes.OrderFulfillment);
+// The only place where an internal fact becomes a public one.
+public sealed class PaymentChargedPublication : Publication<PaymentCharged, PaymentChargedV1>
+{
+    public override PaymentChargedV1 Map(PaymentCharged e) => new(e.OrderId, e.Amount, "EUR");
+}
+```
+
+Refactor `PaymentCharged` at will: only the mapping has to keep producing a valid contract.
+
+### 6. Run it ✅
+
+```csharp
+var shop = new InMemoryRuntime()
+    .AddSlice(new ChargePaymentSlice())     // ...and the other slices
+    .AddPublication(new PaymentChargedPublication())
+    .AddProcess(Processes.OrderFulfillment);
 
 shop.Send(new PlaceOrder("A-1005", "KEYBOARD", 1, 89m));
 shop.Advance(15.Minutes); // the customer never completes 3-D Secure
@@ -153,11 +181,42 @@ The clock is virtual: a 15-minute timeout takes microseconds to test, and the jo
 | External events correlated by key | ✅ |
 | Failed compensation → instance flagged as needing attention | ✅ |
 
+## Versioned integration contracts ✅
+
+Every integration event is snapshotted in `contracts.wyrd.txt`, next to your project and reviewed in pull requests:
+
+```
+payments.payment-charged v1 | Amount: decimal; Currency: string; OrderId: string
+```
+
+Wyrd's analyzers ship inside the package and compare your code with the snapshot on every build.
+Change `Amount` from `decimal` to `double`, and:
+
+```
+error WYRD0201: Breaking change in integration event 'payments.payment-charged' v1: field 'Amount' changed
+type from decimal to double. Existing subscribers would fail to read it. Publish it as v2 and keep v1 until
+subscribers migrate, or revert the change.
+```
+
+| Change | Result |
+|---|---|
+| New integration event | `WYRD0200` — add the suggested line to the snapshot |
+| Add an optional field | `WYRD0202` — compatible; update the line |
+| Remove, rename or retype a field; add a required one | `WYRD0201` — **build error** |
+| Delete a published contract | `WYRD0203` — **build error**, unless its line is marked `retired` |
+| Same name and version twice | `WYRD0204` — **build error** |
+| Domain type inside an integration event | `WYRD0101` — **build error** |
+| A type that is both a command and an event | `WYRD0001` — **build error** |
+
+Moving to a new version is explicit: declare `PaymentChargedV2`, register its `Publication` next to V1's,
+and both are published until subscribers migrate.
+
 ## Try the sample
 
-[`samples/Shop`](samples/Shop) is an order fulfillment process across four vertical slices — Orders, Inventory,
-Payments and Shipping — running six real-world scenarios: happy path, flaky payment gateway, card declined,
-out of stock, abandoned 3-D Secure and a redelivered message.
+[`samples/Shop`](samples/Shop) is a modular monolith: Orders, Inventory, Payments and Shipping slices, public
+contracts in `Contracts/` with their `contracts.wyrd.txt`, and an order fulfillment process running six
+real-world scenarios: happy path, flaky payment gateway, card declined, out of stock, abandoned 3-D Secure
+and a double-clicked "Buy" button.
 
 ```bash
 dotnet run --project samples/Shop
@@ -209,14 +268,9 @@ public void cannot_charge_twice() =>
 ### Built for agents 🔜
 
 Most event-driven code will be written by AI agents. Wyrd is designed so they can't get it wrong quietly:
-analyzers whose diagnostics are written for a feedback loop, a tiny pure surface, and deterministic tooling
-(`dotnet wyrd` CLI and an MCP server).
-
-```
-WYRD0012: 'Payments.Charge' has no compensation.
-  Why: if a later step fails, the charge is never reverted.
-  Fix: add .Undo(Payments.Refund) or mark it .NoCompensation("reason").
-```
+a tiny pure surface, and diagnostics written for a feedback loop — *what* is wrong, *why* it matters and
+*how* to fix it, like `WYRD0201` above. Next: process rules (missing compensation, `Await` without timeout)
+and deterministic tooling (`dotnet wyrd` CLI and an MCP server).
 
 ## What Wyrd guarantees — and what it doesn't
 
@@ -228,10 +282,12 @@ It does **not** know your business rules. If you compute the tax wrong, Wyrd wil
 ## Repository layout
 
 ```
-src/Wyrd/            the library
-tests/Wyrd.Tests/    unit and runtime tests
-samples/Shop/        a runnable, vertically sliced example
-docs/                roadmap and design notes
+src/Wyrd/                  the library
+src/Wyrd.Analyzers/        Roslyn analyzers, shipped inside the Wyrd package
+tests/Wyrd.Tests/          unit and runtime tests
+tests/Wyrd.Analyzers.Tests analyzer tests
+samples/Shop/              a runnable, vertically sliced example
+docs/                      roadmap and design notes
 ```
 
 ## License

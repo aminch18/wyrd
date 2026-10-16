@@ -1,0 +1,7 @@
+# Integration event contracts published or consumed by the shop.
+# Generated from the analyzer's suggestions and reviewed in pull requests like any other code.
+# Breaking a line here is a build error: publish a new version instead.
+
+payments.payment-charged v1 | Amount: decimal; Currency: string; OrderId: string
+psp.payment-confirmed v1 | OrderId: string
+shipping.order-shipped v1 | OrderId: string; ShippedOn: DateOnly

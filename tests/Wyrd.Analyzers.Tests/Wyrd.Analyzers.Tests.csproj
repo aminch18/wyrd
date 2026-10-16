@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Wyrd.Analyzers\Wyrd.Analyzers.csproj" />
+    <ProjectReference Include="..\..\src\Wyrd\Wyrd.csproj" />
+  </ItemGroup>
+
+</Project>

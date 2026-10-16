@@ -23,16 +23,21 @@ Releases are named after the Norn they unlock.
 
 ## v0.1 — Messages done right ([design](design/messages.md))
 
-- [ ] Message taxonomy: `ICommand`, `IDomainEvent`, `IIntegrationEvent` + `[IntegrationEvent(name, Version)]`
-- [ ] Explicit publication mapping (domain event -> integration event)
-- [ ] Analyzers: one owner per command, send vs publish, no domain types in contracts, naming
-- [ ] Integration event contract snapshots + breaking-change detection at build time
-- [ ] Upcasters and multi-version publishing
+- [x] Message taxonomy: `ICommand`, `IDomainEvent`, `IIntegrationEvent` + `[IntegrationEvent(name, Version)]`
+- [x] Contracts split from slices: `Slice<TCommand, TState, TEvent, TError>`
+- [x] Explicit publication mapping (`Publication<TDomainEvent, TIntegrationEvent>`)
+- [x] Runtime rules: one owner per command, only integration events published from outside
+- [x] Analyzers: command vs event (WYRD0001), no domain types in contracts (WYRD0101), complete contracts (WYRD0102)
+- [x] Contract snapshots (`contracts.wyrd.txt`) + breaking-change detection (WYRD0200–0204), shipped in the package
+- [x] Multi-version publishing (several publications per domain event)
+- [ ] Code fix: write the suggested line into `contracts.wyrd.txt`
+- [ ] Upcasters for subscribers (consume V1 as V2)
+- [ ] Analyzer: one owner per command at compile time (today: runtime check)
+- [ ] Analyzer: naming (imperative commands, past-tense events)
 - [ ] AsyncAPI generation
 
 ## v0.2 — Skuld (simulate the future)
 
-- [ ] Split contracts from slices: plain message records + `ISlice<TCommand, TState, TEvent, TError>` ([design](design/distributed.md))
 - [ ] Park awaited events that arrive before the instance reaches the `Await`
 - [ ] Steps that read the process state, not only the trigger
 - [ ] Typed invokers via source generator (drop `DynamicInvoke` in the pipe syntax)

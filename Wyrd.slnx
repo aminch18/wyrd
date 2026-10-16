@@ -3,9 +3,11 @@
     <Project Path="samples/Shop/Shop.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/Wyrd.Analyzers/Wyrd.Analyzers.csproj" />
     <Project Path="src/Wyrd/Wyrd.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Wyrd.Analyzers.Tests/Wyrd.Analyzers.Tests.csproj" />
     <Project Path="tests/Wyrd.Tests/Wyrd.Tests.csproj" />
   </Folder>
 </Solution>
