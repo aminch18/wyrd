@@ -10,10 +10,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - `Wyrd.Tool`: generate AsyncAPI 3.0 documentation from reviewed contract snapshots and Mermaid diagrams from compiled processes, with Spectre CLI help and validation, typed YAML serialization, and nullable/immutable collection mapping.
 - `Wyrd.Web`: responsive marketing and framework documentation site with light/dark themes, IDE-matched code palettes, and automated GitHub Pages deployment.
 - Shared Markdown guides for the Wyrd philosophy and the transition from classic DDD, with equivalent cancellation examples, a concept map, and adoption guidance.
+- **Skuld** (`Wyrd.Testing`): `Skuld.SimulateAsync(system, scenario, invariants, options)` runs a scenario in many
+  seeded futures — transient faults, redelivery, reordering, timers — checks invariants (`Invariant.ProcessesSettle`,
+  `Invariant.NothingNeedsAttention`, your own) and reports each broken future with its perturbations, journal and seed;
+  `options.Only(seed)` replays it exactly.
+- `.OnCompensated(command).Retry(...)`: the outcome command can retry.
 
 ### Changed
 
 - Scope website styles with CSS Modules, enforce readable formatting, use Shiki for C# and shell highlighting, and document the Wyrd CLI's AsyncAPI and Mermaid commands.
+
+### Fixed
+
+- A redelivered failure reply no longer consumes an extra retry: replies carry their attempt; late successes are accepted.
+- A step given up on without knowing whether it ran is compensated too ("outcome unknown"); a compensation rejected
+  for such a step means there was nothing to undo.
+- The message type registry is thread-safe (scenarios in parallel test classes could corrupt it).
+
+### Changed (samples)
+
+- The shop retries every step that can be undone, releases only what an order reserved, and its orders read model
+  only moves statuses forward. All found by Skuld.
 
 ## [0.2.0-alpha.1] - 2026-10-16
 

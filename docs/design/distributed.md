@@ -148,6 +148,20 @@ tx: inbox += reply
 
 Timeouts are a `deadline` column polled with `FOR UPDATE SKIP LOCKED`, so they survive restarts and scale out.
 
+## Lessons from Skuld
+
+Simulating the sample shop in thousands of hostile futures taught four rules every Wyrd application should follow:
+
+1. **Every step that can be undone retries.** Its undo uses the same policy; an undo that gives up after one
+   transient failure leaves the world inconsistent.
+2. **Compensations are harmless when there is nothing to undo.** When a process gives up on a step it can't know
+   whether the step ran (a delayed copy may still succeed), so Wyrd compensates it anyway. `ReleaseStock` for an order
+   that reserved nothing must be rejected, not add stock.
+3. **Read models tolerate reordering.** Events from different slices arrive in any order; a late `StockReleased` must
+   not move a cancelled order back.
+4. **Stale replies are expected.** Redelivered replies and replies to earlier attempts are ignored; a success is
+   welcome whenever it arrives.
+
 ## Guarantees
 
 - **No lost messages**: state changes and outgoing messages commit together (outbox).

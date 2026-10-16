@@ -83,7 +83,7 @@ In Norse myth, *wyrd* — fate — is woven by three Norns. Wyrd is built on the
 
 | | Norn | Feature | |
 |---|---|---|---|
-| ⏩ | **Skuld** — *what will be* | **Simulation.** Explore every combination of failure, retry, duplicate and timeout before you deploy. | 🔜 |
+| ⏩ | **Skuld** — *what will be* | **Simulation.** Run your scenario in hundreds of hostile futures — faults, duplicates, reordering, timeouts — before you deploy. | ✅ |
 | ⏪ | **Urd** — *what was* | **Replay.** Export a production process instance and replay it locally, deterministically, as a test. | 🔜 |
 | ▶️ | **Verdandi** — *what is* | **Runtime.** Deterministic in-memory runtime today ✅; durable outbox, inbox and timeouts next. | 🚧 |
 
@@ -230,6 +230,8 @@ microseconds to test, and the journal is identical on every run.
 | Transient failure → retry scheduled with backoff, same message id; retries exhausted → compensate | ✅ |
 | An awaited event that arrives early is parked until the process needs it | ✅ |
 | Duplicate command delivery → the owner's inbox replays the stored outcome | ✅ |
+| Redelivered failure replies never consume extra retries; late successes are accepted | ✅ |
+| A step given up on with an unknown outcome is compensated too | ✅ |
 | `Await` timeout → compensate | ✅ |
 | Duplicate trigger (at-least-once delivery) → ignored | ✅ |
 | External events correlated by key | ✅ |
@@ -303,6 +305,56 @@ with a colored journal.
 dotnet run --project samples/Shop.Console
 dotnet run --project samples/Shop.Console -- --diagram   # print the process as Mermaid
 ```
+
+## Skuld finds the futures where it breaks ✅
+
+A process that works on your machine meets, in production, commands that fail transiently, messages delivered
+twice, and events that arrive in any order. Skuld runs your scenario in hundreds of those futures —
+deterministically, one seed per future — and checks your invariants at the end of each:
+
+```csharp
+var report = await Skuld.SimulateAsync(
+    ShopModule.CreateRuntime,
+    async shop =>
+    {
+        await shop.SendAsync(new Restock("KEYBOARD", 5));
+        await shop.SendAsync(new PlaceOrder("A-1", "KEYBOARD", 1, 89m));
+        await shop.SendAsync(new PlaceOrder("A-2", "KEYBOARD", 2, 2_500m));
+        await shop.PublishAsync(new PaymentConfirmed("A-1"));
+    },
+    [.. Invariant.Defaults, StockIsConserved, EveryOrderEnds]);
+
+report.ThrowIfViolated();
+```
+
+The first time we pointed it at our own sample shop, it broke 85 of 200 futures:
+
+```
+Skuld explored 200 futures: 85 broke an invariant.
+
+✗ "stock is conserved" broke in 41 futures. First: seed 3.
+  1 keyboards available, expected 5 received - 1 shipped
+  Perturbations: ...; ReleaseStock (A-2) failed transiently; ...
+  Journal:
+    [00:00:00] OrderFulfillment A-2   rejected CardDeclined
+    [00:00:00] OrderFulfillment A-2   compensating
+    [00:00:00] OrderFulfillment A-2   -> ReleaseStock
+    [00:00:00] skuld                  ReleaseStock (A-2) failed transiently
+    [00:00:00] OrderFulfillment A-2   transient failure, no retry policy
+    [00:00:00] OrderFulfillment A-2   FAILED: Stock.Release could not run, needs attention
+  Replay it: Skuld.SimulateAsync(..., options.Only(3))
+```
+
+What it taught us — and what Wyrd now does about it:
+
+| Skuld found | The fix |
+|---|---|
+| An undo that can't retry loses stock after one network blip | Steps that can be undone retry; `.OnCompensated(...)` can `.Retry(...)` too |
+| A redelivered failure reply consumed an extra retry | Replies carry their attempt: stale faults are ignored, a late success is always accepted |
+| A command we gave up on still ran later, and its stock was never released | Steps with an unknown outcome are compensated too; compensations must be harmless when there is nothing to undo |
+| An event arriving late moved an order from *Cancelled* back to *Released* | Read models must tolerate reordering: statuses only move forward |
+
+After the fixes, the shop holds in every one of 5,000 futures with 20% faults, 20% duplicates and 50% reordering.
 
 ## Tests read like business specifications ✅
 
@@ -388,16 +440,6 @@ Use `dotnet wyrd --help` or `dotnet wyrd asyncapi --help` for command and option
 are reported on stderr with a nonzero exit code, so redirected documents stay clean.
 
 ## Coming next
-
-### Skuld finds the future where it breaks 🔜
-
-```
-$ dotnet wyrd simulate
-
-✗ OrderFulfillment: inconsistent final state
-  OrderPlaced → StockReserved → PaymentCharged (duplicated) → Timeout(PaymentConfirmed)
-  Payment refunded, but stock is still reserved.
-```
 
 ### Built for agents 🔜
 
