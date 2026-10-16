@@ -107,13 +107,59 @@
     letter-spacing: -0.025em;
 }
 .doc-article > p,
-.doc-article > ul {
+.doc-article > ul,
+.doc-article > ol {
     color: var(--copy);
     font-size: 15px;
     line-height: 1.8;
 }
 .doc-article > ul {
     padding-left: 22px;
+}
+.doc-article > ol {
+    padding-left: 24px;
+}
+.doc-article > ol li {
+    padding-left: 5px;
+    margin-block: 12px;
+}
+.doc-article > h3 {
+    margin-top: 32px;
+    color: var(--heading);
+}
+.doc-article li code,
+.doc-table code {
+    color: var(--heading);
+    font-size: 0.87em;
+    overflow-wrap: anywhere;
+}
+.doc-table {
+    overflow-x: auto;
+    margin-block: 30px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+}
+.doc-table table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    line-height: 1.65;
+}
+.doc-table th,
+.doc-table td {
+    min-width: 155px;
+    padding: 16px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--line);
+}
+.doc-table th {
+    color: var(--heading);
+    background: var(--surface);
+    font-weight: 700;
+}
+.doc-table tr:last-child td {
+    border-bottom: 0;
 }
 .doc-article p a {
     color: var(--cyan);

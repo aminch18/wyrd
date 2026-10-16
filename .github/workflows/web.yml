@@ -4,11 +4,13 @@ on:
   pull_request:
     paths:
       - 'src/Wyrd.Web/**'
+      - 'docs/guides/**'
       - '.github/workflows/web.yml'
   push:
     branches: [main]
     paths:
       - 'src/Wyrd.Web/**'
+      - 'docs/guides/**'
       - '.github/workflows/web.yml'
   workflow_dispatch:
 

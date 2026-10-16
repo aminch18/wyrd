@@ -11,6 +11,17 @@ export const DOC_SECTIONS: DocSection[] = [
         subtitle: 'Why Wyrd exists and what it guarantees by construction.',
     },
     {
+        id: 'from-ddd',
+        title: 'From DDD to Wyrd',
+        subtitle:
+            'Follow the same business rule from a mutable aggregate to a pure decision.',
+    },
+    {
+        id: 'quick-start',
+        title: 'Quick start',
+        subtitle: 'Install and run the sample.',
+    },
+    {
         id: 'messages',
         title: 'Messages & Slices',
         subtitle: 'Commands, domain events, closed states, and pure deciders.',

@@ -3,21 +3,12 @@ import { ChevronRight } from 'lucide-react'
 import { navigate } from '../../app/navigation'
 import { DOC_SECTIONS } from '../../data/docs'
 
-const ITEMS = [
-    {
-        id: 'quick-start',
-        title: 'Quick start',
-        subtitle: 'Install and run the sample.',
-    },
-    ...DOC_SECTIONS,
-]
-
 export function DocsNav({ current }: { current: string }) {
     return (
         <aside className={styles['docs-sidebar']}>
             <p>Documentation</p>
             <nav aria-label="Documentation sections">
-                {ITEMS.map((item) => (
+                {DOC_SECTIONS.map((item) => (
                     <button
                         className={current === item.id ? styles.current : ''}
                         type="button"

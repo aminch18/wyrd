@@ -37,7 +37,7 @@ export const GUARANTEES: Feature[] = [
     },
     {
         title: 'Processes are data',
-        copy: 'The same model can be run, drawn, inspected, simulated, and eventually replayed.',
+        copy: 'Run, draw, and inspect one model today, with simulation and replay on the roadmap.',
         icon: Route,
     },
     {

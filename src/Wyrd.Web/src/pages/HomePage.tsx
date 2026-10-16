@@ -5,6 +5,7 @@ import { navigate } from '../app/navigation'
 import { CodeBlock } from '../components/common/CodeBlock'
 import { TerminalInstall } from '../components/common/TerminalInstall'
 import { ThreadMark } from '../components/common/ThreadMark'
+import { PhilosophySection } from '../components/PhilosophySection'
 import { SNIPPETS } from '../data/docs'
 import { GUARANTEES, NORNS } from '../data/marketing'
 
@@ -138,7 +139,7 @@ export function HomePage() {
                 <div className={styles['section-intro']}>
                     <p className={styles['section-number']}>02 / THE MODEL</p>
                     <h2>
-                        Correct by construction.
+                        Business rules first.
                         <br />
                         <span>Readable by the business.</span>
                     </h2>
@@ -163,6 +164,8 @@ export function HomePage() {
                     ))}
                 </div>
             </section>
+
+            <PhilosophySection />
 
             <section className={styles['code-story']}>
                 <div

@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 import { QuickStartDoc } from './QuickStartDoc'
 import { OverviewDoc } from './OverviewDoc'
+import { FromDddDoc } from './FromDddDoc'
 import { MessagesDoc } from './MessagesDoc'
 import { ProcessesDoc } from './ProcessesDoc'
 import { ContractsDoc } from './ContractsDoc'
@@ -11,6 +12,7 @@ import { ToolDoc } from './ToolDoc'
 export const DOC_COMPONENTS: Record<string, ComponentType> = {
     'quick-start': QuickStartDoc,
     overview: OverviewDoc,
+    'from-ddd': FromDddDoc,
     messages: MessagesDoc,
     processes: ProcessesDoc,
     contracts: ContractsDoc,

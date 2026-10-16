@@ -10,7 +10,7 @@ export function routeFromHash(hash: string): Route {
         return { page: 'home', section: '' }
     }
 
-    return { page: 'docs', section: hash.split('/')[2] ?? 'quick-start' }
+    return { page: 'docs', section: hash.split('/')[2] || 'overview' }
 }
 
 export function navigate(page: Page, section?: string) {

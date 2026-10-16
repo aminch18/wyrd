@@ -19,6 +19,7 @@ Run `npm run format` after editing and `npm run format:check` to check formattin
 - `src/hooks` owns browser state such as the active route and theme.
 - `src/components` contains reusable presentation and layout components.
 - `src/pages` composes marketing and documentation pages; each documentation chapter has its own component in `pages/docs`.
+- `docs/guides` at the repository root owns the philosophy and DDD migration chapters. The site imports the Markdown source through Vite and renders fenced examples with the shared code component, so GitHub and the site use the same text. Documentation is loaded separately from the landing page.
 - `src/data` keeps framework snippets and display content out of components.
 - `src/styles/site.module.css` is the CSS Modules entry point, composed from focused token, layout, page, and responsive stylesheets. Components import its scoped class names explicitly.
 - Reusable widgets can own a colocated `*.module.css` file, as `CodeBlock` does. Shared theme tokens are CSS custom properties inherited from the application shell.
