@@ -7,26 +7,26 @@ public class RuntimeTests
 {
     private static readonly Process Fulfillment = FluentProcess.OrderFulfillment;
 
-    private readonly InMemoryRuntime _runtime = new(Fulfillment);
+    private readonly InMemoryRuntime _runtime = TestSystem.Create(Fulfillment);
 
     [Fact]
     public void happy_path_waits_for_confirmation_then_completes()
     {
-        _runtime.Publish(new OrderPlaced("A-1", Quantity: 1, Amount: 50));
+        _runtime.Send(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
         Assert.Equal(ProcessStatus.Awaiting, _runtime.StatusOf(Fulfillment, "A-1"));
 
         _runtime.Publish(new PaymentConfirmed("A-1"));
 
         Assert.Equal(ProcessStatus.Completed, _runtime.StatusOf(Fulfillment, "A-1"));
         Assert.Equal(
-            [new StockReserved("A-1"), new PaymentCharged("A-1"), new OrderShipped("A-1")],
+            [new StockReserved("A-1"), new PaymentCharged("A-1", 50), new OrderShipped("A-1")],
             Events());
     }
 
     [Fact]
     public void a_rejected_step_compensates_only_what_completed()
     {
-        _runtime.Publish(new OrderPlaced("A-1", Quantity: 1, Amount: 5_000));
+        _runtime.Send(new PlaceOrder("A-1", Quantity: 1, Amount: 5_000));
 
         Assert.Equal(ProcessStatus.Compensated, _runtime.StatusOf(Fulfillment, "A-1"));
         Assert.Equal([new StockReserved("A-1"), new StockReleased("A-1")], Events());
@@ -35,7 +35,7 @@ public class RuntimeTests
     [Fact]
     public void a_rejected_first_step_has_nothing_to_compensate()
     {
-        _runtime.Publish(new OrderPlaced("A-1", Quantity: 99, Amount: 50));
+        _runtime.Send(new PlaceOrder("A-1", Quantity: 99, Amount: 50));
 
         Assert.Equal(ProcessStatus.Compensated, _runtime.StatusOf(Fulfillment, "A-1"));
         Assert.Empty(Events());
@@ -46,7 +46,7 @@ public class RuntimeTests
     {
         _runtime.FailNext<ChargePayment>(times: 2);
 
-        _runtime.Publish(new OrderPlaced("A-1", Quantity: 1, Amount: 50));
+        _runtime.Send(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
 
         Assert.Equal(ProcessStatus.Awaiting, _runtime.StatusOf(Fulfillment, "A-1"));
         Assert.Equal(2, _runtime.Journal.Count(e => e.Message.StartsWith("transient failure, retry", StringComparison.Ordinal)));
@@ -57,7 +57,7 @@ public class RuntimeTests
     {
         _runtime.FailNext<ChargePayment>(times: 4);
 
-        _runtime.Publish(new OrderPlaced("A-1", Quantity: 1, Amount: 50));
+        _runtime.Send(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
 
         Assert.Equal(ProcessStatus.Compensated, _runtime.StatusOf(Fulfillment, "A-1"));
         Assert.Equal([new StockReserved("A-1"), new StockReleased("A-1")], Events());
@@ -66,7 +66,7 @@ public class RuntimeTests
     [Fact]
     public void a_timeout_compensates_in_reverse_order()
     {
-        _runtime.Publish(new OrderPlaced("A-1", Quantity: 1, Amount: 50));
+        _runtime.Send(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
 
         _runtime.Advance(14.Minutes);
         Assert.Equal(ProcessStatus.Awaiting, _runtime.StatusOf(Fulfillment, "A-1"));
@@ -74,14 +74,14 @@ public class RuntimeTests
         _runtime.Advance(1.Minutes);
         Assert.Equal(ProcessStatus.Compensated, _runtime.StatusOf(Fulfillment, "A-1"));
         Assert.Equal(
-            [new StockReserved("A-1"), new PaymentCharged("A-1"), new PaymentRefunded("A-1"), new StockReleased("A-1")],
+            [new StockReserved("A-1"), new PaymentCharged("A-1", 50), new PaymentRefunded("A-1"), new StockReleased("A-1")],
             Events());
     }
 
     [Fact]
     public void a_confirmation_after_the_timeout_is_ignored()
     {
-        _runtime.Publish(new OrderPlaced("A-1", Quantity: 1, Amount: 50));
+        _runtime.Send(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
         _runtime.Advance(15.Minutes);
 
         _runtime.Publish(new PaymentConfirmed("A-1"));
@@ -91,20 +91,33 @@ public class RuntimeTests
     }
 
     [Fact]
-    public void a_duplicated_trigger_starts_a_single_instance()
+    public void placing_the_same_order_twice_is_rejected_by_the_decision()
     {
-        _runtime.Publish(new OrderPlaced("A-1", Quantity: 1, Amount: 50));
-        _runtime.Publish(new OrderPlaced("A-1", Quantity: 1, Amount: 50));
+        _runtime.Send(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+        _runtime.Send(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
 
         Assert.Single(Events().OfType<PaymentCharged>());
-        Assert.Contains(_runtime.Journal, e => e.Message == "duplicate OrderPlaced ignored");
+        Assert.Contains(_runtime.Journal, e => e.Message == "rejected AlreadyExists");
+    }
+
+    [Fact]
+    public void a_redelivered_integration_event_starts_a_single_instance()
+    {
+        Process shipWhenPaid = Process.StartOn<PaymentChargedV1>(e => e.OrderId).Then(Shipping.ShipPaid);
+        var runtime = TestSystem.Create(shipWhenPaid);
+
+        runtime.Publish(new PaymentChargedV1("A-1", 50));
+        runtime.Publish(new PaymentChargedV1("A-1", 50));
+
+        Assert.Single(runtime.History.OfType<OrderShipped>());
+        Assert.Contains(runtime.Journal, e => e.Message == "duplicate PaymentChargedV1 ignored");
     }
 
     [Fact]
     public void confirmations_are_correlated_by_key()
     {
-        _runtime.Publish(new OrderPlaced("A-1", Quantity: 1, Amount: 50));
-        _runtime.Publish(new OrderPlaced("A-2", Quantity: 1, Amount: 50));
+        _runtime.Send(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+        _runtime.Send(new PlaceOrder("A-2", Quantity: 1, Amount: 50));
 
         _runtime.Publish(new PaymentConfirmed("A-2"));
 
@@ -117,7 +130,7 @@ public class RuntimeTests
     {
         _runtime.FailNext<ReleaseStock>();
 
-        _runtime.Publish(new OrderPlaced("A-1", Quantity: 1, Amount: 5_000));
+        _runtime.Send(new PlaceOrder("A-1", Quantity: 1, Amount: 5_000));
 
         Assert.Equal(ProcessStatus.Failed, _runtime.StatusOf(Fulfillment, "A-1"));
     }
@@ -127,9 +140,9 @@ public class RuntimeTests
     {
         static IReadOnlyList<JournalEntry> Run()
         {
-            var runtime = new InMemoryRuntime(Fulfillment);
+            var runtime = TestSystem.Create(Fulfillment);
             runtime.FailNext<ChargePayment>();
-            runtime.Publish(new OrderPlaced("A-1", Quantity: 1, Amount: 50));
+            runtime.Send(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
             runtime.Advance(20.Minutes);
             return runtime.Journal;
         }
@@ -157,5 +170,6 @@ public class RuntimeTests
             _runtime.StateOf<EventLog>("B-1").Events);
     }
 
-    private List<object> Events() => [.. _runtime.History];
+    // What the process produced, without the OrderPlaced that started it.
+    private List<object> Events() => [.. _runtime.History.Where(e => e is not OrderPlaced)];
 }

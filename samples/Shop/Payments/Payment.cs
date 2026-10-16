@@ -2,12 +2,9 @@ using Wyrd;
 
 namespace Shop.Payments;
 
-public sealed record PaymentCharged(string OrderId, decimal Amount);
+public sealed record PaymentCharged(string OrderId, decimal Amount) : IDomainEvent;
 
-public sealed record PaymentRefunded(string OrderId, decimal Amount);
-
-/// <summary>External event: the payment provider confirms the charge (e.g. after 3-D Secure).</summary>
-public sealed record PaymentConfirmed(string OrderId);
+public sealed record PaymentRefunded(string OrderId, decimal Amount) : IDomainEvent;
 
 public enum PaymentError
 {
@@ -21,7 +18,7 @@ public abstract record Payment : IState<Payment>
 {
     public static Payment Initial { get; } = new None();
 
-    public Payment Evolve(object domainEvent) => (this, domainEvent) switch
+    public Payment Evolve(IDomainEvent domainEvent) => (this, domainEvent) switch
     {
         (None, PaymentCharged charged) => new Charged(charged.Amount),
         (Charged, PaymentRefunded) => new Refunded(),

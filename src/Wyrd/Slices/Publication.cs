@@ -1,0 +1,24 @@
+namespace Wyrd;
+
+/// <summary>
+/// The explicit boundary between a context's internal facts and its public contracts.
+/// The only place where a domain event becomes an integration event. Register several publications
+/// for the same domain event to publish two contract versions during a migration.
+/// </summary>
+public abstract class Publication<TDomainEvent, TIntegrationEvent> : IPublicationHandler
+    where TDomainEvent : IDomainEvent
+    where TIntegrationEvent : IIntegrationEvent
+{
+    public abstract TIntegrationEvent Map(TDomainEvent domainEvent);
+
+    Type IPublicationHandler.Source => typeof(TDomainEvent);
+
+    IIntegrationEvent IPublicationHandler.Map(IDomainEvent domainEvent) => Map((TDomainEvent)domainEvent);
+}
+
+internal interface IPublicationHandler
+{
+    Type Source { get; }
+
+    IIntegrationEvent Map(IDomainEvent domainEvent);
+}

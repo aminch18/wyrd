@@ -10,22 +10,55 @@ public sealed class InMemoryRuntime
 {
     private const string NoProcess = "-";
 
-    private readonly List<Process> _processes;
+    private readonly List<Process> _processes = [];
+    private readonly Dictionary<Type, ISliceHandler> _slices = [];
+    private readonly List<IPublicationHandler> _publications = [];
     private readonly Dictionary<(Type State, object Key), object> _states = [];
     private readonly Dictionary<(string Process, object Key), ProcessInstance> _instances = [];
     private readonly Dictionary<Type, int> _faults = [];
-    private readonly Queue<object> _pending = new();
-    private readonly List<object> _history = [];
+    private readonly Queue<IEvent> _pending = new();
+    private readonly List<IDomainEvent> _history = [];
+    private readonly List<IIntegrationEvent> _published = [];
     private readonly List<JournalEntry> _journal = [];
 
-    public InMemoryRuntime(params IEnumerable<Process> processes)
+    /// <summary>Registers the single owner of a command type.</summary>
+    public InMemoryRuntime AddSlice<TCommand, TState, TEvent, TError>(Slice<TCommand, TState, TEvent, TError> slice)
+        where TCommand : ICommand
+        where TState : IState<TState>
+        where TEvent : IDomainEvent
+        where TError : notnull
     {
-        _processes = [.. processes];
-        var duplicate = _processes.GroupBy(p => p.Name).FirstOrDefault(g => g.Count() > 1);
-        if (duplicate is not null)
+        ArgumentNullException.ThrowIfNull(slice);
+        if (_slices.TryGetValue(typeof(TCommand), out var owner))
         {
-            throw new ArgumentException($"Process '{duplicate.Key}' is registered more than once.", nameof(processes));
+            throw new InvalidOperationException(
+                $"{typeof(TCommand).Name} is already owned by {owner.GetType().Name}. A command has exactly one owner.");
         }
+
+        _slices.Add(typeof(TCommand), slice);
+        return this;
+    }
+
+    /// <summary>Registers a mapping from a domain event to an integration event.</summary>
+    public InMemoryRuntime AddPublication<TDomainEvent, TIntegrationEvent>(Publication<TDomainEvent, TIntegrationEvent> publication)
+        where TDomainEvent : IDomainEvent
+        where TIntegrationEvent : IIntegrationEvent
+    {
+        ArgumentNullException.ThrowIfNull(publication);
+        _publications.Add(publication);
+        return this;
+    }
+
+    public InMemoryRuntime AddProcess(Process process)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        if (_processes.Any(p => p.Name == process.Name))
+        {
+            throw new InvalidOperationException($"Process '{process.Name}' is registered more than once.");
+        }
+
+        _processes.Add(process);
+        return this;
     }
 
     /// <summary>Virtual time elapsed since the runtime started.</summary>
@@ -33,22 +66,29 @@ public sealed class InMemoryRuntime
 
     public IReadOnlyList<JournalEntry> Journal => _journal;
 
-    /// <summary>Every accepted event, in order.</summary>
-    public IReadOnlyList<object> History => _history;
+    /// <summary>Every accepted domain event, in order.</summary>
+    public IReadOnlyList<IDomainEvent> History => _history;
+
+    /// <summary>Every integration event published to other contexts, in order.</summary>
+    public IReadOnlyList<IIntegrationEvent> Published => _published;
 
     /// <summary>Executes a command coming from outside a process (an API call, a UI action...).</summary>
     public Decision Send(ICommand command)
     {
         ArgumentNullException.ThrowIfNull(command);
-        Log(NoProcess, command.Key, $"-> {command.GetType().Name}");
+        var key = _slices.TryGetValue(command.GetType(), out var slice) ? slice.KeyOf(command) : null;
+        Log(NoProcess, key, $"-> {command.GetType().Name}");
         var decision = Decide(command);
-        Log(NoProcess, command.Key, Describe(decision));
+        Log(NoProcess, key, Describe(decision));
         Drain();
         return decision;
     }
 
-    /// <summary>Delivers an external event (a webhook, a message from another system...).</summary>
-    public void Publish(object @event)
+    /// <summary>
+    /// Delivers a fact from another context (a webhook, a message from another service...).
+    /// Only integration events can come from outside: domain events are produced by slices alone.
+    /// </summary>
+    public void Publish(IIntegrationEvent @event)
     {
         ArgumentNullException.ThrowIfNull(@event);
         _pending.Enqueue(@event);
@@ -97,15 +137,29 @@ public sealed class InMemoryRuntime
 
     private Decision Decide(ICommand command)
     {
-        var id = (command.StateType, command.Key);
-        var state = _states.TryGetValue(id, out var current) ? current : command.InitialState;
-        var decision = command.Execute(state);
+        if (!_slices.TryGetValue(command.GetType(), out var slice))
+        {
+            throw new InvalidOperationException(
+                $"No slice owns {command.GetType().Name}. Register its owner with AddSlice().");
+        }
+
+        var id = (slice.State, slice.KeyOf(command));
+        var state = _states.TryGetValue(id, out var current) ? current : slice.Initial;
+        var decision = slice.Decide(command, state);
 
         if (decision is Decision.Accepted accepted)
         {
             _states[id] = ((IState)state).Apply(accepted.Event);
             _history.Add(accepted.Event);
             _pending.Enqueue(accepted.Event);
+
+            foreach (var publication in _publications.Where(p => p.Source == accepted.Event.GetType()))
+            {
+                var published = publication.Map(accepted.Event);
+                _published.Add(published);
+                _pending.Enqueue(published);
+                Log(NoProcess, id.Item2, $"published {published.GetType().Name}");
+            }
         }
 
         return decision;
@@ -119,7 +173,7 @@ public sealed class InMemoryRuntime
         }
     }
 
-    private void Route(object @event)
+    private void Route(IEvent @event)
     {
         var type = @event.GetType();
 

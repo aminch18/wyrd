@@ -1,3 +1,4 @@
+using Shop.Contracts;
 using Shop.Inventory;
 using Shop.Orders;
 using Shop.Payments;

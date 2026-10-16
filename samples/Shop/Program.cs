@@ -1,3 +1,5 @@
+using Shop;
+using Shop.Contracts;
 using Shop.Fulfillment;
 using Shop.Inventory;
 using Shop.Orders;
@@ -11,7 +13,7 @@ if (args.Contains("--diagram"))
     return;
 }
 
-var shop = new InMemoryRuntime(Processes.OrderFulfillment);
+var shop = ShopModule.CreateRuntime();
 var printed = 0;
 
 shop.Send(new Restock("KEYBOARD", 5));
@@ -36,12 +38,18 @@ shop.Send(new PlaceOrder("A-1005", "KEYBOARD", 1, 89m));
 shop.Advance(15.Minutes);
 Flush("5. The customer abandons 3-D Secure: timeout, refund, release");
 
-shop.Publish(new OrderPlaced("A-1001", "KEYBOARD", 1, 89m));
-Flush("6. The broker redelivers a message: duplicates are ignored");
+shop.Send(new PlaceOrder("A-1001", "KEYBOARD", 1, 89m));
+Flush("6. The customer double-clicks \"Buy\": the second order is rejected");
 
 var keyboards = shop.StateOf<StockItem>("KEYBOARD").Available;
 Console.WriteLine();
 Write(ConsoleColor.White, $"Keyboards in stock: {keyboards} (5 received, 2 shipped, every failed order released its units)");
+Console.WriteLine();
+Write(ConsoleColor.White, "Integration events published to other services (public contracts):");
+foreach (var published in shop.Published)
+{
+    Write(ConsoleColor.Gray, $"  {published}");
+}
 Console.WriteLine();
 Write(ConsoleColor.DarkGray, "Run with --diagram to print the process as a Mermaid diagram.");
 
@@ -68,6 +76,7 @@ static ConsoleColor ColorOf(string message) => message switch
     _ when message.StartsWith("compensat", StringComparison.Ordinal) => ConsoleColor.Magenta,
     _ when message.StartsWith("awaiting", StringComparison.Ordinal) => ConsoleColor.Cyan,
     _ when message.StartsWith("duplicate", StringComparison.Ordinal) => ConsoleColor.DarkYellow,
+    _ when message.StartsWith("published", StringComparison.Ordinal) => ConsoleColor.Blue,
     _ => ConsoleColor.Gray,
 };
 

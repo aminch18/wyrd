@@ -7,6 +7,7 @@ namespace Wyrd.Processes;
 /// Steps are typed against the trigger: passing a function that doesn't accept it doesn't compile.
 /// </summary>
 public sealed class ProcessBuilder<TTrigger>
+    where TTrigger : IEvent
 {
     private readonly string _name;
     private readonly Func<object, object> _keyOf;
@@ -25,6 +26,7 @@ public sealed class ProcessBuilder<TTrigger>
 
     /// <summary>Waits for an external event. <paramref name="key"/> must match the process key.</summary>
     public ProcessBuilder<TTrigger> Await<TEvent>(Func<TEvent, object> key)
+        where TEvent : IEvent
     {
         ArgumentNullException.ThrowIfNull(key);
         return Append(new AwaitNode(typeof(TEvent)) { KeyOf = e => key((TEvent)e) });

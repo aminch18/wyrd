@@ -1,8 +1,11 @@
+using Shop.Contracts;
 using Wyrd;
 
 namespace Shop.Shipping;
 
-public sealed record OrderShipped(string OrderId);
+public sealed record ShipOrder(string OrderId) : ICommand;
+
+public sealed record OrderShipped(string OrderId) : IDomainEvent;
 
 public enum ShippingError
 {
@@ -14,7 +17,7 @@ public abstract record Shipment : IState<Shipment>
 {
     public static Shipment Initial { get; } = new Pending();
 
-    public Shipment Evolve(object domainEvent) => domainEvent is OrderShipped ? new Shipped() : this;
+    public Shipment Evolve(IDomainEvent domainEvent) => domainEvent is OrderShipped ? new Shipped() : this;
 
     public sealed record Pending : Shipment;
 
@@ -22,13 +25,18 @@ public abstract record Shipment : IState<Shipment>
 }
 
 /// <summary>Slice: hand the order to the carrier.</summary>
-public sealed record ShipOrder(string OrderId) : ICommand<ShipOrder, Shipment, OrderShipped, ShippingError>
+public sealed class ShipOrderSlice : Slice<ShipOrder, Shipment, OrderShipped, ShippingError>
 {
-    public object Key => OrderId;
+    public override object KeyOf(ShipOrder command) => command.OrderId;
 
-    public static Result<OrderShipped, ShippingError> Decide(ShipOrder cmd, Shipment shipment) => shipment switch
+    public override Result<OrderShipped, ShippingError> Decide(ShipOrder command, Shipment shipment) => shipment switch
     {
-        Shipment.Pending => new OrderShipped(cmd.OrderId),
+        Shipment.Pending => new OrderShipped(command.OrderId),
         _ => ShippingError.AlreadyShipped,
     };
+}
+
+public sealed class OrderShippedPublication : Publication<OrderShipped, OrderShippedV1>
+{
+    public override OrderShippedV1 Map(OrderShipped domainEvent) => new(domainEvent.OrderId, new DateOnly(2026, 10, 16));
 }

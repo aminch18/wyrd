@@ -29,6 +29,7 @@ public sealed class Process : IEquatable<Process>
 
     /// <summary>Starts a process on an event. <paramref name="key"/> correlates the instance, e.g. <c>e => e.OrderId</c>.</summary>
     public static ProcessBuilder<TEvent> StartOn<TEvent>(Func<TEvent, object> key, [CallerMemberName] string name = "")
+        where TEvent : IEvent
     {
         ArgumentNullException.ThrowIfNull(key);
         return new(name, e => key((TEvent)e), []);

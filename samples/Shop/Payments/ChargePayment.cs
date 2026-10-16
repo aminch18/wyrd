@@ -2,18 +2,19 @@ using Wyrd;
 
 namespace Shop.Payments;
 
+public sealed record ChargePayment(string OrderId, decimal Amount) : ICommand;
+
 /// <summary>Slice: charge the customer's card.</summary>
-public sealed record ChargePayment(string OrderId, decimal Amount)
-    : ICommand<ChargePayment, Payment, PaymentCharged, PaymentError>
+public sealed class ChargePaymentSlice : Slice<ChargePayment, Payment, PaymentCharged, PaymentError>
 {
     private const decimal CardLimit = 1_000m;
 
-    public object Key => OrderId;
+    public override object KeyOf(ChargePayment command) => command.OrderId;
 
-    public static Result<PaymentCharged, PaymentError> Decide(ChargePayment cmd, Payment payment) => payment switch
+    public override Result<PaymentCharged, PaymentError> Decide(ChargePayment command, Payment payment) => payment switch
     {
-        Payment.None when cmd.Amount > CardLimit => PaymentError.CardDeclined,
-        Payment.None => new PaymentCharged(cmd.OrderId, cmd.Amount),
+        Payment.None when command.Amount > CardLimit => PaymentError.CardDeclined,
+        Payment.None => new PaymentCharged(command.OrderId, command.Amount),
         _ => PaymentError.AlreadyCharged,
     };
 }
