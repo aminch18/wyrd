@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- `Wyrd.Tool`: generate AsyncAPI 3.0 documentation from reviewed contract snapshots and Mermaid diagrams from compiled processes.
+
 ## [0.2.0-alpha.1] - 2026-10-16
 
 The in-memory runtime now behaves like the distributed one, with read models, business-readable tests,

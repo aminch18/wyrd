@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>wyrd</ToolCommandName>
+    <IsAotCompatible>false</IsAotCompatible>
+    <Description>Generate AsyncAPI and Mermaid documentation from Wyrd contracts and processes.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Wyrd\Wyrd.csproj" />
+  </ItemGroup>
+
+</Project>

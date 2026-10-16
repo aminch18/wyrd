@@ -327,6 +327,20 @@ flowchart TD
     n4 --> done(["completed"])
 ```
 
+### `dotnet wyrd` documentation tool ✅
+
+Install the `Wyrd.Tool` .NET tool, then generate documentation from the reviewed contract snapshot and a compiled assembly:
+
+```bash
+dotnet tool install --global Wyrd.Tool
+dotnet wyrd asyncapi --contracts samples/Shop/contracts.wyrd.txt --output samples/Shop/asyncapi.yaml
+dotnet build samples/Shop
+dotnet wyrd diagram --assembly samples/Shop/bin/Debug/net10.0/Shop.dll --output docs/shop-processes.md
+```
+
+`asyncapi` emits AsyncAPI 3.0 YAML (use `--title` and `--version` to set document metadata). `diagram` finds
+public static process properties and fields. Both commands write to stdout when `--output` is omitted.
+
 ## Coming next
 
 ### Skuld finds the future where it breaks 🔜

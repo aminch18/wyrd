@@ -65,8 +65,8 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 
 - [ ] Process instance history capture
 - [ ] `dotnet wyrd replay <instance> --as-test`
-- [ ] `dotnet wyrd asyncapi`: AsyncAPI document from the integration event contracts (moved from v0.1)
-- [ ] `dotnet wyrd diagram`: Mermaid diagrams for every process
+- [x] `dotnet wyrd asyncapi`: AsyncAPI document from the integration event contracts (moved from v0.1)
+- [x] `dotnet wyrd diagram`: Mermaid diagrams for every process
 
 ## v0.5 — Verdandi (run the present)
 
