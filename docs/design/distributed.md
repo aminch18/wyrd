@@ -18,7 +18,8 @@ Teams write **decisions**; Wyrd owns **delivery, persistence, retries, timeouts,
 
 ### 1. Contracts (shared between services)
 
-Plain records. No logic, no Wyrd base classes beyond a marker.
+Plain records. No logic, no Wyrd base classes beyond a marker. Commands, domain events and integration events
+are different kinds of message with different rules — see [messages.md](messages.md).
 
 ```csharp
 // Shop.Contracts

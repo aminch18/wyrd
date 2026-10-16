@@ -21,7 +21,16 @@ Releases are named after the Norn they unlock.
 - [x] `samples/Shop`: four vertical slices, six scenarios
 - [x] Library scaffolding: central package management, MinVer, SourceLink, CI (3 OSes), templates
 
-## v0.1 — Skuld (simulate the future)
+## v0.1 — Messages done right ([design](design/messages.md))
+
+- [ ] Message taxonomy: `ICommand`, `IDomainEvent`, `IIntegrationEvent` + `[IntegrationEvent(name, Version)]`
+- [ ] Explicit publication mapping (domain event -> integration event)
+- [ ] Analyzers: one owner per command, send vs publish, no domain types in contracts, naming
+- [ ] Integration event contract snapshots + breaking-change detection at build time
+- [ ] Upcasters and multi-version publishing
+- [ ] AsyncAPI generation
+
+## v0.2 — Skuld (simulate the future)
 
 - [ ] Split contracts from slices: plain message records + `ISlice<TCommand, TState, TEvent, TError>` ([design](design/distributed.md))
 - [ ] Park awaited events that arrive before the instance reaches the `Await`
@@ -32,12 +41,12 @@ Releases are named after the Norn they unlock.
 - [ ] First analyzers: exhaustive `[Union]` switch, missing compensation, `Await` without timeout
 - [ ] Analyzer: `wyrd_process_style` enforcement with code fix fluent ⇄ pipe
 
-## v0.2 — Urd (replay the past)
+## v0.3 — Urd (replay the past)
 
 - [ ] Process instance history capture
 - [ ] `dotnet wyrd replay <instance> --as-test`
 
-## v0.3 — Verdandi (run the present)
+## v0.4 — Verdandi (run the present)
 
 - [ ] Integrations (`IIntegration<...>`): the only I/O, with idempotency keys and recorded outcomes
 - [ ] Framework reply envelope (Accepted / Rejected / Faulted) and re-send with stable message ids
@@ -50,7 +59,6 @@ Releases are named after the Norn they unlock.
 ## v1.0 — Production ready
 
 - [ ] **Process versioning**: snapshot of every process; breaking changes fail the build until in-flight instances are migrated
-- [ ] Integration event contract snapshots + upcasters
 - [ ] Native AOT verified end to end
 - [ ] `dotnet wyrd` CLI + MCP server for agents
 - [ ] Docs site
