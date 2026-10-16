@@ -51,7 +51,9 @@ internal sealed class Engine(
 
         if (await store.FindReplyAsync(envelope.MessageId, cancellationToken).ConfigureAwait(false) is { } stored)
         {
-            log(External, key, $"duplicate {command.GetType().Name} ignored, stored outcome replayed");
+            log(External, key, stored.Outcome == ReplyOutcome.Fenced
+                ? $"late {command.GetType().Name} arrived after being fenced: never executed"
+                : $"duplicate {command.GetType().Name} ignored, stored outcome replayed");
             Reply(envelope, stored, changes);
             await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
             return null;
@@ -60,6 +62,12 @@ internal sealed class Engine(
         if (envelope.Process is not null && fault(envelope, command.GetType()))
         {
             Reply(envelope, new ReplyMessage(ReplyOutcome.Faulted), changes);
+            await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+            return null;
+        }
+
+        if (envelope.Fences is { } original && await FenceAsync(envelope, original, command, key, changes, cancellationToken).ConfigureAwait(false))
+        {
             await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
             return null;
         }
@@ -100,6 +108,32 @@ internal sealed class Engine(
         Reply(envelope, reply, changes);
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
         return decision;
+    }
+
+    /// <summary>
+    /// The undo of a step with an unknown outcome. In the same transaction as the inbox: if the original command never
+    /// ran, it is fenced (a late copy will find the fence and never execute) and there is nothing to undo; if it ran
+    /// and was accepted, the undo runs normally. Returns true when the undo is answered without running.
+    /// </summary>
+    private async ValueTask<bool> FenceAsync(
+        Envelope undo, Guid original, ICommand command, string key, Changes changes, CancellationToken cancellationToken)
+    {
+        var outcome = await store.FindReplyAsync(original, cancellationToken).ConfigureAwait(false);
+        if (outcome is { Outcome: ReplyOutcome.Accepted })
+        {
+            return false;
+        }
+
+        if (outcome is null)
+        {
+            changes.Replies[original] = new ReplyMessage(ReplyOutcome.Fenced);
+            log(External, key, $"{command.GetType().Name}: the original command never ran, fenced");
+        }
+
+        var reply = new ReplyMessage(ReplyOutcome.NothingToUndo);
+        changes.Replies[undo.MessageId] = reply;
+        Reply(undo, reply, changes);
+        return true;
     }
 
     private void Reply(Envelope command, ReplyMessage reply, Changes changes)
@@ -186,7 +220,7 @@ internal sealed class Engine(
 
         var (triggerType, triggerPayload) = types.Serialize(trigger, process.Trigger);
         var instance = new StoredInstance(
-            process.Name, key, triggerType, triggerPayload, 0, ProcessStatus.Running, [], [], 0, null, false, null, 0);
+            process.Name, key, triggerType, triggerPayload, 0, ProcessStatus.Running, [], ImmutableDictionary<int, Guid>.Empty, 0, null, false, null, 0);
         log(process.Name, key, $"started by {trigger.GetType().Name}");
         changes.Save(await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false));
     }
@@ -293,7 +327,8 @@ internal sealed class Engine(
         var command = step.Invoke!(trigger);
         var (type, payload) = types.Serialize(command, step.Output ?? command.GetType());
         var id = newId();
-        changes.Outbox.Add(new Envelope(id, MessageKind.Command, type, payload, new ProcessRef(instance.Process, instance.Key, index, compensating)));
+        var fences = compensating && instance.Uncertain.TryGetValue(index, out var original) ? original : (Guid?)null;
+        changes.Outbox.Add(new Envelope(id, MessageKind.Command, type, payload, new ProcessRef(instance.Process, instance.Key, index, compensating), Fences: fences));
         log(instance.Process, instance.Key, $"-> {command.GetType().Name}");
         return instance with { Status = ProcessStatus.Running, Pending = id, Attempt = 1 };
     }
@@ -337,9 +372,9 @@ internal sealed class Engine(
                     : await AdvanceAsync(process, instance with { Completed = instance.Completed.Add(target.Step), Position = target.Step + 1, Pending = null }, trigger, changes, cancellationToken).ConfigureAwait(false);
                 break;
 
-            case ReplyOutcome.Rejected when target.Compensating && instance.Uncertain.Contains(target.Step):
-                // The step we gave up on never ran: there was nothing to undo.
-                log(instance.Process, instance.Key, $"rejected {types.Deserialize(reply.Type!, reply.Payload!)}: nothing to undo");
+            case ReplyOutcome.NothingToUndo:
+                // The owner fenced the original command: it never ran and never will. Proof, not a guess.
+                log(instance.Process, instance.Key, $"nothing to undo: {step.Action} never ran");
                 instance = ContinueCompensation(process, instance with { Completed = instance.Completed.RemoveAt(instance.Completed.Count - 1) }, trigger, changes);
                 break;
 
@@ -373,11 +408,15 @@ internal sealed class Engine(
             return Fail(instance, retried);
         }
 
-        // We give up without knowing whether the command ran: a delayed copy may still succeed. Undo it too.
+        // We give up without knowing whether the command ran: a delayed copy may still execute. Its undo fences it.
         if (step.Compensation is not null)
         {
-            log(instance.Process, instance.Key, $"outcome of {step.Action} unknown: it will be compensated too");
-            instance = instance with { Completed = instance.Completed.Add(target.Step), Uncertain = instance.Uncertain.Add(target.Step) };
+            log(instance.Process, instance.Key, $"outcome of {step.Action} unknown: its undo will fence it");
+            instance = instance with
+            {
+                Completed = instance.Completed.Add(target.Step),
+                Uncertain = instance.Uncertain.SetItem(target.Step, instance.Pending!.Value),
+            };
         }
 
         return StartCompensation(process, instance, trigger, changes);
@@ -400,8 +439,9 @@ internal sealed class Engine(
         var command = retried.Invoke!(trigger);
         var (type, payload) = types.Serialize(command, retried.Output ?? command.GetType());
         var next = instance.Attempt + 1;
+        var fences = target.Compensating && instance.Uncertain.TryGetValue(target.Step, out var original) ? original : (Guid?)null;
         changes.Schedule.Add(new Scheduled(now() + delay, new Envelope(
-            instance.Pending!.Value, MessageKind.Command, type, payload, target with { Attempt = next })));
+            instance.Pending!.Value, MessageKind.Command, type, payload, target with { Attempt = next }, Fences: fences)));
         return instance with { Attempt = next };
     }
 

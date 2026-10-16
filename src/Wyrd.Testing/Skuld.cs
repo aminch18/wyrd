@@ -33,6 +33,7 @@ public static class Skuld
         ArgumentNullException.ThrowIfNull(scenario);
         ArgumentNullException.ThrowIfNull(invariants);
         options ??= new SimulationOptions();
+        options.Validate();
 
         var violations = new List<Violation>();
         for (var run = 0; run < options.Runs; run++)

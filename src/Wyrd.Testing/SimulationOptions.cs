@@ -23,4 +23,26 @@ public sealed record SimulationOptions
 
     /// <summary>Replays exactly one future.</summary>
     public SimulationOptions Only(int seed) => this with { Seed = seed, Runs = 1 };
+
+    /// <summary>A misconfigured simulation must fail loudly, never pass without exploring anything.</summary>
+    internal void Validate()
+    {
+        if (Runs < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(Runs), Runs, "A simulation explores at least one future.");
+        }
+
+        foreach (var (name, rate) in new[] { (nameof(FaultRate), FaultRate), (nameof(DuplicateRate), DuplicateRate), (nameof(ReorderRate), ReorderRate) })
+        {
+            if (!double.IsFinite(rate) || rate is < 0 or > 1)
+            {
+                throw new ArgumentOutOfRangeException(name, rate, "A rate is a probability between 0 and 1.");
+            }
+        }
+
+        if (SettleFor < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(SettleFor), SettleFor, "The clock can't settle backwards.");
+        }
+    }
 }
