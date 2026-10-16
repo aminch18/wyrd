@@ -1,9 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>Wyrd</RootNamespace>
-    <IsAotCompatible>true</IsAotCompatible>
-    <Description>Deterministic event-driven processes for .NET.</Description>
+    <Description>Deterministic event-driven processes for .NET: pure deciders, declarative sagas, framework-owned side effects.</Description>
   </PropertyGroup>
 
 </Project>

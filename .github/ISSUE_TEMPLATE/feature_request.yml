@@ -1,0 +1,16 @@
+name: Feature request
+description: Propose a new capability or rule.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the failure mode or the pain, not only the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: api
+    attributes:
+      label: What would the API look like?
+      render: csharp

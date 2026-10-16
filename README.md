@@ -8,9 +8,9 @@
 
 </div>
 
-> [!WARNING]
-> 🚧 **This is a README from the future.** It describes the API Wyrd is being built towards.
-> What works today is marked ✅; everything else is on the [roadmap](docs/ROADMAP.md).
+> [!NOTE]
+> **Early alpha.** Everything marked ✅ works today and is covered by tests. Everything marked 🔜 is designed
+> and on the [roadmap](docs/ROADMAP.md).
 
 ---
 
@@ -20,88 +20,149 @@ never runs leaves stock reserved. It all compiles. It all passes the happy-path 
 
 **Wyrd makes the correct version the only one that compiles** — whether it's written by a human or by an AI agent.
 
-- **You write pure functions.** Command + state in, events out. No `DbContext`, no publisher, no `await`.
-- **Wyrd owns the side effects.** Outbox, idempotency, retries, timeouts and compensations are the framework's job, not yours.
-- **The compiler enforces the rules.** Missing compensation, non-exhaustive match, slice-to-slice coupling: build errors, with fixes.
-- **You review the process, not the plumbing.** Six declarative lines and a generated diagram instead of fifteen handler files.
+- **You write pure functions.** Command + state in, event or error out. No `DbContext`, no publisher, no `await`.
+- **Wyrd owns the side effects.** Retries, timeouts, compensations, idempotency and (soon) the outbox are the framework's job.
+- **The process is data.** Six declarative lines that a reviewer can read, and that Wyrd can run, draw, simulate and replay.
+- **Deterministic by design.** Same inputs, same outcome, every time.
 
 ## The three Norns
 
 In Norse myth, *wyrd* — fate — is woven by three Norns. Wyrd is built on the same three:
 
-| | Norn | Feature |
-|---|---|---|
-| ⏪ | **Urd** — *what was* | **Replay.** Export any production process instance and replay it locally, deterministically, as a test. |
-| ▶️ | **Verdandi** — *what is* | **Runtime.** Transactional outbox and inbox, durable timeouts, retries and compensations. |
-| ⏩ | **Skuld** — *what will be* | **Simulation.** Explore every combination of failure, retry, duplicate and timeout before you deploy. |
+| | Norn | Feature | |
+|---|---|---|---|
+| ⏩ | **Skuld** — *what will be* | **Simulation.** Explore every combination of failure, retry, duplicate and timeout before you deploy. | 🔜 |
+| ⏪ | **Urd** — *what was* | **Replay.** Export a production process instance and replay it locally, deterministically, as a test. | 🔜 |
+| ▶️ | **Verdandi** — *what is* | **Runtime.** Deterministic in-memory runtime today ✅; durable outbox, inbox and timeouts next. | 🚧 |
 
-## A taste
+## Quick start
 
-### State as a closed set of cases
+### 1. A slice is a command with a pure decision ✅
+
+```csharp
+public sealed record ChargePayment(string OrderId, decimal Amount)
+    : ICommand<ChargePayment, Payment, PaymentCharged, PaymentError>
+{
+    public object Key => OrderId;
+
+    public static Result<PaymentCharged, PaymentError> Decide(ChargePayment cmd, Payment payment) => payment switch
+    {
+        Payment.None when cmd.Amount > 1_000m => PaymentError.CardDeclined,
+        Payment.None                          => new PaymentCharged(cmd.OrderId, cmd.Amount),
+        _                                     => PaymentError.AlreadyCharged,
+    };
+}
+```
+
+No handler registration, no reflection, no infrastructure: Wyrd loads the state, calls `Decide`, stores the event.
+Expected failures are values (`Result`), not exceptions.
+
+### 2. State is a closed set of cases ✅
 
 ```csharp
 [Union]
-public abstract partial record Order
+public abstract record Payment : IState<Payment>
 {
-    public sealed record None : Order;
-    public sealed record Placed(OrderId Id, Lines Lines) : Order;
-    public sealed record Paid(OrderId Id, Money Amount) : Order;
-    public sealed record Shipped(OrderId Id, TrackingCode Tracking) : Order;
+    public static Payment Initial { get; } = new None();
+
+    public Payment Evolve(object domainEvent) => (this, domainEvent) switch
+    {
+        (None, PaymentCharged charged) => new Charged(charged.Amount),
+        (Charged, PaymentRefunded)     => new Refunded(),
+        _                              => this,
+    };
+
+    public sealed record None : Payment;
+    public sealed record Charged(decimal Amount) : Payment;
+    public sealed record Refunded : Payment;
 }
 ```
 
-Impossible states are unrepresentable. Add a case and forget to handle it: **build error**.
+Impossible states are unrepresentable: a `Refunded` payment has no amount to charge again.
 
-### A vertical slice is a pure function ✅
-
-```csharp
-[Slice]
-public static class PlaceOrder
-{
-    public record Command(OrderId Id, CustomerId Customer, Lines Lines);
-
-    public static Result<OrderPlaced, OrderError> Decide(Command cmd, Order state) =>
-        state switch
-        {
-            Order.None when cmd.Lines.IsEmpty => OrderError.EmptyOrder,
-            Order.None                        => new OrderPlaced(cmd.Id, cmd.Customer, cmd.Lines),
-            _                                 => OrderError.AlreadyExists,
-        };
-}
-```
-
-### A process reads like the business describes it ✅
-
-Fluent, by default:
+### 3. The process reads like the business describes it ✅
 
 ```csharp
 public static Process OrderFulfillment => Process
-    .StartOn<OrderPlaced>()
+    .StartOn<OrderPlaced>(e => e.OrderId)
     .Then(Stock.Reserve).Undo(Stock.Release)
-    .Then(Payment.Charge).Retry(3.Times, Backoff.Exponential).Undo(Payment.Refund)
-    .Await<PaymentConfirmed>().Within(15.Minutes)
+    .Then(Payments.Charge).Retry(3.Times, Backoff.Exponential).Undo(Payments.Refund)
+    .Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)
     .Then(Shipping.Ship);
 ```
 
-Or the opt-in pipe syntax — same model, same guarantees:
+Steps are pure functions from the event that started the process to the next command:
+
+```csharp
+public static ChargePayment Charge(OrderPlaced order) => new(order.OrderId, order.Amount);
+```
+
+They are type-checked against the trigger: a step that doesn't accept `OrderPlaced` doesn't compile.
+
+Prefer pipes? Opt in with a `using` — same model, same guarantees:
 
 ```csharp
 using Wyrd.Pipe;
 using static Wyrd.Pipe.Pipeline;
 
 public static Process OrderFulfillment =>
-    Start.On<OrderPlaced>()
+    Start.On<OrderPlaced>(e => e.OrderId)
       >> Step(Stock.Reserve).Undo(Stock.Release)
-      >> Step(Payment.Charge).Retry(3.Times, Backoff.Exponential).Undo(Payment.Refund)
-      >> Await<PaymentConfirmed>().Within(15.Minutes)
+      >> Step(Payments.Charge).Retry(3.Times, Backoff.Exponential).Undo(Payments.Refund)
+      >> Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)
       >> Step(Shipping.Ship);
 ```
 
-Pick one per repository with `wyrd_process_style = fluent | pipe | any` in `.editorconfig`.
+### 4. Run it ✅
 
-### Living documentation ✅
+```csharp
+var shop = new InMemoryRuntime(Processes.OrderFulfillment);
 
-Every process renders itself:
+shop.Send(new PlaceOrder("A-1005", "KEYBOARD", 1, 89m));
+shop.Advance(15.Minutes); // the customer never completes 3-D Secure
+```
+
+```
+[00:00:00] OrderFulfillment A-1005   started by OrderPlaced
+[00:00:00] OrderFulfillment A-1005   -> ReserveStock
+[00:00:00] OrderFulfillment A-1005   ok StockReserved
+[00:00:00] OrderFulfillment A-1005   -> ChargePayment
+[00:00:00] OrderFulfillment A-1005   ok PaymentCharged
+[00:00:00] OrderFulfillment A-1005   awaiting PaymentConfirmed (within 15m)
+[00:15:00] OrderFulfillment A-1005   timeout: PaymentConfirmed not received in time
+[00:15:00] OrderFulfillment A-1005   compensating
+[00:15:00] OrderFulfillment A-1005   -> RefundPayment
+[00:15:00] OrderFulfillment A-1005   ok PaymentRefunded
+[00:15:00] OrderFulfillment A-1005   -> ReleaseStock
+[00:15:00] OrderFulfillment A-1005   ok StockReleased
+[00:15:00] OrderFulfillment A-1005   compensated
+```
+
+The clock is virtual: a 15-minute timeout takes microseconds to test, and the journal is identical on every run.
+
+| Behaviour | |
+|---|---|
+| Domain rejection (`Result` error) → compensate completed steps, in reverse order | ✅ |
+| Transient failure → retry with backoff; retries exhausted → compensate | ✅ |
+| `Await` timeout → compensate | ✅ |
+| Duplicate trigger (at-least-once delivery) → ignored | ✅ |
+| External events correlated by key | ✅ |
+| Failed compensation → instance flagged as needing attention | ✅ |
+
+## Try the sample
+
+[`samples/Shop`](samples/Shop) is an order fulfillment process across four vertical slices — Orders, Inventory,
+Payments and Shipping — running six real-world scenarios: happy path, flaky payment gateway, card declined,
+out of stock, abandoned 3-D Secure and a redelivered message.
+
+```bash
+dotnet run --project samples/Shop
+dotnet run --project samples/Shop -- --diagram   # print the process as Mermaid
+```
+
+## Living documentation ✅
+
+Every process renders itself (`process.ToMermaid()`):
 
 ```mermaid
 flowchart TD
@@ -109,8 +170,8 @@ flowchart TD
     n1["Stock.Reserve"]
     n1 -. undo .-> n1u["Stock.Release"]
     start --> n1
-    n2["Payment.Charge<br/>retry 3x exponential"]
-    n2 -. undo .-> n2u["Payment.Refund"]
+    n2["Payments.Charge<br/>retry 3x exponential"]
+    n2 -. undo .-> n2u["Payments.Refund"]
     n1 --> n2
     n3{{"await PaymentConfirmed<br/>within 15m"}}
     n2 --> n3
@@ -119,17 +180,9 @@ flowchart TD
     n4 --> done(["completed"])
 ```
 
-### Tests are just data
+## Coming next
 
-```csharp
-[Fact]
-public void cannot_place_an_empty_order() =>
-    Given(new Order.None())
-      .When(new PlaceOrder.Command(id, customer, Lines.Empty))
-      .Then(OrderError.EmptyOrder);
-```
-
-### Skuld finds the future where it breaks
+### Skuld finds the future where it breaks 🔜
 
 ```
 $ dotnet wyrd simulate
@@ -139,41 +192,52 @@ $ dotnet wyrd simulate
   Payment refunded, but stock is still reserved.
 ```
 
-### Urd replays the past
+### Tests are just data 🔜
 
-```
-$ dotnet wyrd replay order-fulfillment/8f3c… --as-test
-✓ Written tests/Regressions/OrderFulfillment_8f3c.cs
+```csharp
+[Fact]
+public void cannot_charge_twice() =>
+    Given(new Payment.Charged(89m))
+      .When(new ChargePayment("A-1", 89m))
+      .Then(PaymentError.AlreadyCharged);
 ```
 
-## Built for agents
+### Built for agents 🔜
 
 Most event-driven code will be written by AI agents. Wyrd is designed so they can't get it wrong quietly:
-
-- **Analyzer diagnostics written for a feedback loop**: what's wrong, why, and the exact fix — with code fixes.
-- **A tiny surface**: pure deciders and a declarative process. The agent never touches the outbox.
-- **Deterministic tooling**: a `dotnet wyrd` CLI and an MCP server to scaffold slices and steps.
-- **Humans review intent**: the process definition and its diagram.
+analyzers whose diagnostics are written for a feedback loop, a tiny pure surface, and deterministic tooling
+(`dotnet wyrd` CLI and an MCP server).
 
 ```
-WYRD0012: 'Payment.Charge' has no compensation.
+WYRD0012: 'Payments.Charge' has no compensation.
   Why: if a later step fails, the charge is never reverted.
-  Fix: add .Undo(Payment.Refund) or mark it .NoCompensation("reason").
+  Fix: add .Undo(Payments.Refund) or mark it .NoCompensation("reason").
 ```
 
 ## What Wyrd guarantees — and what it doesn't
 
-Wyrd guarantees **structural** correctness: effects go through the outbox, handlers are idempotent,
-every step is compensated or explicitly not, every wait has a timeout, slices stay isolated.
+Wyrd guarantees **structural** correctness: effects are owned by the framework, every step is compensated or
+explicitly not, every wait can time out, duplicates are detected, failures are visible.
 
 It does **not** know your business rules. If you compute the tax wrong, Wyrd will deterministically compute it wrong.
 
-## Status
+## Repository layout
 
-Early spike. See the [roadmap](docs/ROADMAP.md).
+```
+src/Wyrd/            the library
+tests/Wyrd.Tests/    unit and runtime tests
+samples/Shop/        a runnable, vertically sliced example
+docs/                roadmap and design notes
+```
+
+## License
+
+[MIT](LICENSE). Free for any use, forever.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Requires the .NET 10 SDK (C# 14).
 
 ```bash
 dotnet test
 ```
-
-Requires the .NET 10 SDK (C# 14).

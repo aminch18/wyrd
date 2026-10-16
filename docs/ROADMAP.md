@@ -12,11 +12,19 @@ Releases are named after the Norn they unlock.
 - [x] `[Union]` marker for closed hierarchies
 - [x] Mermaid rendering (living docs)
 
+## ✅ v0.0.x — Runnable core
+
+- [x] Slices as commands with a static pure `Decide` (`ICommand<TSelf, TState, TEvent, TError>`), state via `IState<TSelf>`
+- [x] Steps as pure functions `trigger -> command`, type-checked in the fluent syntax, validated at build in the pipe syntax
+- [x] Explicit correlation: `StartOn<T>(e => e.Key)`, `Await<T>(e => e.Key)`
+- [x] Deterministic `InMemoryRuntime` with a virtual clock: retries, reverse compensation, timeouts, duplicates, correlation
+- [x] `samples/Shop`: four vertical slices, six scenarios
+- [x] Library scaffolding: central package management, MinVer, SourceLink, CI (3 OSes), templates
+
 ## v0.1 — Skuld (simulate the future)
 
-- [ ] Slice model: `Decide(command, state)` / `Evolve(state, event)`, discovered by a source generator
-- [ ] Step and compensation signatures (decide what a step receives and returns)
-- [ ] In-memory runtime that executes processes deterministically
+- [ ] Steps that read the process state, not only the trigger
+- [ ] Typed invokers via source generator (drop `DynamicInvoke` in the pipe syntax)
 - [ ] Given/When/Then testing package (`Wyrd.Testing`)
 - [ ] **Exhaustive failure simulation**: failures, retries, duplicates, reordering, timeouts
 - [ ] First analyzers: exhaustive `[Union]` switch, missing compensation, `Await` without timeout
@@ -51,6 +59,5 @@ Releases are named after the Norn they unlock.
 
 ## Open decisions
 
-- License (MIT vs Apache-2.0)
 - State persistence: state-stored, event-sourced, or both
 - The full rules catalog (what "correct" means, rule by rule)

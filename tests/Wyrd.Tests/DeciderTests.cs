@@ -7,7 +7,7 @@ public class DeciderTests
     [Fact]
     public void places_an_order_from_nothing() =>
         Assert.Equal(
-            (Result<OrderPlaced, OrderError>)new OrderPlaced(Id),
+            (Result<OrderPlaced, OrderError>)new OrderPlaced(Id.ToString(), 2, 0),
             PlaceOrder.Decide(new(Id, Lines: 2), new Order.None()));
 
     [Fact]

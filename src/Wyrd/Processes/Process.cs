@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Wyrd.Processes;
@@ -10,27 +11,39 @@ namespace Wyrd.Processes;
 /// </summary>
 public sealed class Process : IEquatable<Process>
 {
-    internal Process(Type trigger, ImmutableArray<ProcessNode> nodes)
+    internal Process(string name, Type trigger, Func<object, object> keyOf, ImmutableArray<ProcessNode> nodes)
     {
+        Name = name;
         Trigger = trigger;
+        KeyOf = keyOf;
         Nodes = nodes;
     }
 
+    public string Name { get; }
+
     public Type Trigger { get; }
+
+    internal Func<object, object> KeyOf { get; }
 
     public ImmutableArray<ProcessNode> Nodes { get; }
 
-    public static ProcessBuilder StartOn<TEvent>() => new(typeof(TEvent), []);
+    /// <summary>Starts a process on an event. <paramref name="key"/> correlates the instance, e.g. <c>e => e.OrderId</c>.</summary>
+    public static ProcessBuilder<TEvent> StartOn<TEvent>(Func<TEvent, object> key, [CallerMemberName] string name = "")
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return new(name, e => key((TEvent)e), []);
+    }
 
     /// <summary>Two processes are equal when they have the same trigger and the same nodes, in order.</summary>
     public bool Equals(Process? other) =>
-        other is not null && Trigger == other.Trigger && Nodes.SequenceEqual(other.Nodes);
+        other is not null && Name == other.Name && Trigger == other.Trigger && Nodes.SequenceEqual(other.Nodes);
 
     public override bool Equals(object? obj) => Equals(obj as Process);
 
     public override int GetHashCode()
     {
         var hash = new HashCode();
+        hash.Add(Name);
         hash.Add(Trigger);
         foreach (var node in Nodes)
         {
@@ -62,7 +75,7 @@ public sealed class Process : IEquatable<Process>
 
                     break;
                 case AwaitNode wait:
-                    var within = wait.Timeout is { } t ? $"<br/>within {Format(t)}" : "";
+                    var within = wait.Timeout is { } t ? $"<br/>within {Durations.Format(t)}" : "";
                     sb.AppendLine(CultureInfo.InvariantCulture, $"    {id}{{{{\"await {wait.Event.Name}{within}\"}}}}");
                     break;
             }
@@ -74,12 +87,4 @@ public sealed class Process : IEquatable<Process>
         sb.AppendLine(CultureInfo.InvariantCulture, $"    {previous} --> done([\"completed\"])");
         return sb.ToString();
     }
-
-    private static string Format(TimeSpan t) => t switch
-    {
-        { TotalDays: >= 1 } when t.TotalDays % 1 == 0 => $"{t.TotalDays}d",
-        { TotalHours: >= 1 } when t.TotalHours % 1 == 0 => $"{t.TotalHours}h",
-        { TotalMinutes: >= 1 } when t.TotalMinutes % 1 == 0 => $"{t.TotalMinutes}m",
-        _ => $"{t.TotalSeconds}s",
-    };
 }

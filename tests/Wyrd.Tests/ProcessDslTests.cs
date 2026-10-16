@@ -1,3 +1,4 @@
+using Wyrd.Pipe;
 using Wyrd.Processes;
 
 namespace Wyrd.Tests;
@@ -20,6 +21,7 @@ public class ProcessDslTests
     {
         var process = FluentProcess.OrderFulfillment;
 
+        Assert.Equal("OrderFulfillment", process.Name);
         Assert.Equal(typeof(OrderPlaced), process.Trigger);
         Assert.Collection(
             process.Nodes,
@@ -32,17 +34,28 @@ public class ProcessDslTests
     [Fact]
     public void a_different_process_is_not_equal()
     {
-        Process withoutRetry = Process.StartOn<OrderPlaced>().Then(Payment.Charge);
-        Process withRetry = Process.StartOn<OrderPlaced>().Then(Payment.Charge).Retry(3.Times);
+        Process withoutRetry = Process.StartOn<OrderPlaced>(e => e.OrderId).Then(Payment.Charge);
+        Process withRetry = Process.StartOn<OrderPlaced>(e => e.OrderId).Then(Payment.Charge).Retry(3.Times);
 
         Assert.NotEqual(withoutRetry, withRetry);
+    }
+
+    [Fact]
+    public void pipe_rejects_a_step_that_does_not_accept_the_trigger()
+    {
+        static ShipOrder FromConfirmation(PaymentConfirmed e) => new(e.OrderId);
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            Start.On<OrderPlaced>(e => e.OrderId) >> Pipeline.Step(FromConfirmation));
+
+        Assert.Contains("takes PaymentConfirmed, but the process starts on OrderPlaced", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
     public void undo_cannot_follow_an_await()
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>
-            Process.StartOn<OrderPlaced>().Await<PaymentConfirmed>().Undo(Stock.Release));
+            Process.StartOn<OrderPlaced>(e => e.OrderId).Await<PaymentConfirmed>(e => e.OrderId).Undo(Stock.Release));
 
         Assert.Contains("Undo() can only follow a step", ex.Message, StringComparison.Ordinal);
     }
@@ -50,11 +63,11 @@ public class ProcessDslTests
     [Fact]
     public void within_cannot_follow_a_step() =>
         Assert.Throws<InvalidOperationException>(() =>
-            Process.StartOn<OrderPlaced>().Then(Stock.Reserve).Within(5.Minutes));
+            Process.StartOn<OrderPlaced>(e => e.OrderId).Then(Stock.Reserve).Within(5.Minutes));
 
     [Fact]
     public void modifiers_need_a_preceding_node() =>
-        Assert.Throws<InvalidOperationException>(() => Process.StartOn<OrderPlaced>().Undo(Stock.Release));
+        Assert.Throws<InvalidOperationException>(() => Process.StartOn<OrderPlaced>(e => e.OrderId).Undo(Stock.Release));
 
     [Fact]
     public void renders_living_documentation_as_mermaid()

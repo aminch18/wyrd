@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/Shop/Shop.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Wyrd/Wyrd.csproj" />
   </Folder>

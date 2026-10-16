@@ -1,13 +1,21 @@
 # Agent guide
 
-Wyrd is a .NET 10 / C# 14 library for deterministic event-driven processes. Read `README.md` (target API) and
-`docs/ROADMAP.md` (what exists) before changing anything.
+Wyrd is a .NET 10 / C# 14 library for deterministic event-driven processes. Read `README.md` (✅ = works, 🔜 = planned) and
+`docs/ROADMAP.md` before changing anything.
+
+## Layout
+
+- `src/Wyrd` — the library. `Processes/` (model + fluent), `Pipe/` (opt-in syntax), `Runtime/` (in-memory runtime).
+- `tests/Wyrd.Tests` — unit and runtime tests. Runtime behaviour is tested through `InMemoryRuntime`.
+- `samples/Shop` — runnable vertical-slice sample; CI runs it as a smoke test.
+- Package versions live in `Directory.Packages.props`; shared settings in the `Directory.Build.props` files.
 
 ## Commands
 
 ```bash
 dotnet build   # warnings are errors
 dotnet test
+dotnet run --project samples/Shop
 ```
 
 ## Principles
@@ -23,5 +31,7 @@ dotnet test
 ## Conventions
 
 - Repository content is in English.
+- Keep `CHANGELOG.md` (Unreleased) up to date.
+- The runtime must stay deterministic: no wall-clock time, no randomness, no unordered iteration that changes the journal.
 - File-scoped namespaces, immutable types, records for data.
 - Tests: xUnit, `snake_case` method names describing behaviour.
