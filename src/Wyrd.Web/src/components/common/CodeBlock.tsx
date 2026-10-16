@@ -1,85 +1,93 @@
-import type { ReactNode } from 'react'
-import { useState } from 'react'
-import { Check, Copy } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Check, Copy, FileCode2, Terminal } from 'lucide-react'
+import styles from './CodeBlock.module.css'
 
 interface CodeBlockProps {
-  code: string
-  language?: string
-  title?: string
+    code: string
+    language?: 'csharp' | 'shellscript' | 'yaml' | 'text'
+    title?: string
 }
 
-const KEYWORDS = new Set([
-  'abstract', 'await', 'class', 'decimal', 'enum', 'int', 'namespace', 'new',
-  'object', 'override', 'partial', 'public', 'record', 'return', 'sealed',
-  'static', 'string', 'using', 'var', 'void', 'when',
-])
+export function CodeBlock({
+    code,
+    language = 'csharp',
+    title,
+}: CodeBlockProps) {
+    const [copied, setCopied] = useState(false)
+    const [highlighted, setHighlighted] = useState<{
+        code: string
+        language: string
+        html: string
+    }>()
+    const source = code.trim()
 
-const CONTROL_KEYWORDS = new Set(['else', 'for', 'foreach', 'if', 'switch', 'while'])
-const TOKEN = /\/\/.*$|"(?:\\.|[^"\\])*"|\[[A-Za-z0-9_]+(?:\([^\]]*\))?\]|\b\d+(?:_\d+)*(?:\.\d+)?m?\b|\b[A-Za-z_][A-Za-z0-9_]*\b/g
+    useEffect(() => {
+        let active = true
+        import('./highlighter')
+            .then(({ highlight }) => highlight(source, language))
+            .then((html) => {
+                if (active) setHighlighted({ code: source, language, html })
+            })
+            .catch(() => {
+                /* The readable plain-text fallback remains available. */
+            })
+        return () => {
+            active = false
+        }
+    }, [source, language])
 
-function tokenClass(token: string, source: string, start: number, end: number): string | undefined {
-  if (token.startsWith('//')) return 'tok-comment'
-  if (token.startsWith('"')) return 'tok-str'
-  if (token.startsWith('[')) return 'tok-attr'
-  if (/^\d/.test(token)) return 'tok-num'
-  if (CONTROL_KEYWORDS.has(token)) return 'tok-control'
-  if (KEYWORDS.has(token)) return 'tok-kw'
-  const next = source.slice(end).trimStart()
-  const prefix = source.slice(0, start).trimEnd()
-  if ((next.startsWith('(') || next.startsWith('<')) && !/\b(?:class|new|record)\s*$/.test(prefix)) return 'tok-fn'
-  if (/^[A-Z]/.test(token)) return 'tok-type'
-  return 'tok-variable'
-}
+    const handleCopy = async () => {
+        await navigator.clipboard.writeText(source)
+        setCopied(true)
+        window.setTimeout(() => setCopied(false), 1800)
+    }
 
-function highlightCSharpLine(line: string): ReactNode[] {
-  const parts: ReactNode[] = []
-  let cursor = 0
+    const html =
+        highlighted?.code === source && highlighted.language === language
+            ? highlighted.html
+            : undefined
+    const Icon = language === 'shellscript' ? Terminal : FileCode2
 
-  for (const match of line.matchAll(TOKEN)) {
-    const index = match.index
-    if (index > cursor) parts.push(line.slice(cursor, index))
-
-    const token = match[0]
-    const className = tokenClass(token, line, index, index + token.length)
-    parts.push(className ? <span key={index} className={className}>{token}</span> : token)
-    cursor = index + token.length
-  }
-
-  if (cursor < line.length) parts.push(line.slice(cursor))
-  return parts
-}
-
-export function CodeBlock({ code, language = 'csharp', title }: CodeBlockProps) {
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(code)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1800)
-  }
-
-  return (
-    <div className="code-card">
-      <div className="code-header">
-        <div className="code-header-left">
-          <span className="code-dot dot-red" />
-          <span className="code-dot dot-amber" />
-          <span className="code-dot dot-green" />
-          {title && <span className="code-title">{title}</span>}
+    return (
+        <div className={styles.card} data-code-block>
+            <div className={styles.header}>
+                <div className={styles.caption}>
+                    <Icon size={14} />
+                    <span>{title ?? language}</span>
+                </div>
+                <div className={styles.actions}>
+                    <span className={styles.language}>
+                        {language === 'shellscript'
+                            ? 'shell'
+                            : language === 'csharp'
+                              ? 'C#'
+                              : language}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={handleCopy}
+                        className={styles.copy}
+                        aria-label="Copy code"
+                    >
+                        {copied ? <Check size={14} /> : <Copy size={14} />}
+                        <span aria-live="polite">
+                            {copied ? 'Copied' : 'Copy'}
+                        </span>
+                    </button>
+                </div>
+            </div>
+            {html ? (
+                <div
+                    className={styles.syntax}
+                    dangerouslySetInnerHTML={{ __html: html }}
+                />
+            ) : (
+                <div className={styles.syntax}>
+                    <pre>
+                        <code>{source}</code>
+                    </pre>
+                </div>
+            )}
         </div>
-        <div className="code-header-right">
-          <span className="code-lang">{language}</span>
-          <button type="button" onClick={handleCopy} className="copy-btn" aria-label="Copy code" title="Copy to clipboard">
-            {copied ? <Check size={14} /> : <Copy size={14} />}
-            <span aria-live="polite">{copied ? 'Copied' : 'Copy'}</span>
-          </button>
-        </div>
-      </div>
-      <pre className="code-pre"><code>{code.trim().split('\n').map((line, index) => (
-          <span key={index} className="code-line">
-            {language === 'csharp' ? highlightCSharpLine(line) : line}
-          </span>
-        ))}</code></pre>
-    </div>
-  )
+    )
 }
