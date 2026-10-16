@@ -33,7 +33,7 @@ public sealed class SliceScenario<TCommand, TState, TEvent, TError>
     public SliceOutcome<TCommand, TState, TEvent, TError> When(TCommand command)
     {
         ArgumentNullException.ThrowIfNull(command);
-        Json.EnsureRoundTrips(command, "Command");
+        Json.EnsureRoundTrips(command, typeof(TCommand), "Command");
         return new(command, _state, _slice.Decide(command, _state));
     }
 }
@@ -106,8 +106,8 @@ public sealed class SliceOutcome<TCommand, TState, TEvent, TError>
             accepted => accepted,
             error => throw new WyrdAssertionException($"Expected {Name} {expectation}, but it was rejected with {error}."));
 
-        Json.EnsureRoundTrips(@event, "Event");
-        Json.EnsureRoundTrips(_before.Evolve(@event), "State");
+        Json.EnsureRoundTrips(@event, typeof(TEvent), "Event");
+        Json.EnsureRoundTrips(_before.Evolve(@event), typeof(TState), "State");
         return @event;
     }
 }

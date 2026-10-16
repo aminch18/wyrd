@@ -49,7 +49,10 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] Thread-safe in-memory host; `samples/Shop.Api` HTTP sample
 - [x] `Wyrd.Testing`: Given/When/Then for slices and projections, with JSON round-trip checks; `samples/Shop.Tests`
 - [x] Process outcomes as commands (`.OnCompensated(Orders.Cancel)`), so read models learn how a process ended
-- [ ] Source-generated JSON contexts (AOT)
+- [x] Source-generated JSON: `[WyrdJsonContext]`, named types (no `Type.GetType`), polymorphic unions,
+      analyzers WYRD0300/WYRD0301 with code fixes; reflection mode for development
+- [x] Native AOT: the shop sample publishes and runs as a native executable, checked in CI
+- [ ] Analyzer: union cases with the same name across unions need `TypeInfoPropertyName` (SYSLIB1031) — detect and fix
 
 ## v0.3 — Skuld (simulate the future)
 

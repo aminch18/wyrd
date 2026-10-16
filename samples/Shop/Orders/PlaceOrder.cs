@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Wyrd;
 
 namespace Shop.Orders;
@@ -15,6 +16,9 @@ public enum OrderError
 }
 
 [Union]
+[JsonDerivedType(typeof(None), "None")]
+[JsonDerivedType(typeof(Placed), "Placed")]
+[JsonDerivedType(typeof(Cancelled), "Cancelled")]
 public abstract record Order : IState<Order>
 {
     public static Order Initial { get; } = new None();

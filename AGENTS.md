@@ -37,7 +37,9 @@ dotnet run --project samples/Shop.Api   # http://localhost:5080, see Shop.Api.ht
 - **Commands, domain events and integration events are different things.** Never blur them: commands are
   sent to one owner, domain events stay internal, integration events are versioned public contracts.
 - **The process is data.** New process features become new node data first, then rendering/simulation/runtime.
-- **AOT-friendly.** No runtime code generation; prefer source generators.
+- **AOT-friendly.** No runtime code generation, no `Type.GetType`: types are resolved by registered name and
+  serialized with `JsonTypeInfo` from the app's `[WyrdJsonContext]`. Reflection lives only behind
+  `[RequiresUnreferencedCode]` entry points. CI publishes `samples/Shop.Console` with Native AOT.
 - **Readable over clever.** If a junior .NET dev can't read the user-facing API, it's too clever.
 
 ## Conventions

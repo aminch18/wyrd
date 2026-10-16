@@ -7,6 +7,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
+- States, events and views are serialized as their declared type; unions carry a `$type` case discriminator.
+
 - **Breaking:** the runtime is asynchronous: `SendAsync`, `PublishAsync`, `AdvanceAsync`.
 - The in-memory runtime now behaves like the distributed one: a message-driven engine where process steps are
   command messages answered by replies, JSON envelopes, one transaction per message (state, events, instances,
@@ -18,6 +20,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Storage port (`IWyrdStore`) with a deterministic in-memory implementation.
 - `Projection<TView>`: read models kept up to date from events with pure functions, stored in the same transaction;
   `View<TView>(key)` and `Views<TView>()` to query them. Redelivered messages are never applied twice.
+- Source-generated JSON: `new InMemoryRuntime(MyJson.Default)` with a `[WyrdJsonContext]` is reflection-free and
+  Native AOT ready; analyzers WYRD0300 (type missing from the context) and WYRD0301 (union case not declared as a
+  derived type) with code fixes. Types are resolved by registered name; unions are stored polymorphically.
 - `.OnCompensated(command)`: how a process ends when it is compensated (e.g. `CancelOrder`), so read models and
   slices learn the outcome; runs even when there was nothing to undo.
 - `Wyrd.Testing` package: `Scenario.For(slice).Given(...).When(...).Then(...)/ThenRejected(...)/ThenState(...)` and

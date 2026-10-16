@@ -28,6 +28,9 @@ public sealed record StepRef(string Name)
 
     internal Type? Input { get; init; }
 
+    /// <summary>The command type the step produces.</summary>
+    internal Type? Output { get; init; }
+
     public static StepRef From(Delegate step)
     {
         ArgumentNullException.ThrowIfNull(step);
@@ -36,7 +39,7 @@ public sealed record StepRef(string Name)
 
     internal static StepRef Typed<TIn, TCommand>(Func<TIn, TCommand> step)
         where TCommand : ICommand =>
-        From(step) with { Input = typeof(TIn), Invoke = input => step((TIn)input) };
+        From(step) with { Input = typeof(TIn), Output = typeof(TCommand), Invoke = input => step((TIn)input) };
 
     internal static StepRef Untyped(Delegate step)
     {
@@ -51,6 +54,7 @@ public sealed record StepRef(string Name)
         return reference with
         {
             Input = parameters[0].ParameterType,
+            Output = step.Method.ReturnType,
             Invoke = input =>
             {
                 try

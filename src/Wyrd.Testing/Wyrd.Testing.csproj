@@ -4,6 +4,8 @@
     <Description>Testing for Wyrd: Given/When/Then scenarios for slices and projections that read like business specifications. Works with any test framework.</Description>
     <!-- Test-time package: reflection-based JSON round trips are fine here. -->
     <IsAotCompatible>false</IsAotCompatible>
+    <!-- Reflection-based JSON is the point here; the trimming analyzers don't apply to a test package. -->
+    <NoWarn>$(NoWarn);IL2026;IL3050</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

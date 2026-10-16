@@ -30,7 +30,7 @@ public sealed class ProjectionScenario<TView>
             }
             else
             {
-                Json.EnsureRoundTrips(next, "View");
+                Json.EnsureRoundTrips(next, typeof(TView), "View");
                 views[key] = next;
             }
         }

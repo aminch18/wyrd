@@ -72,16 +72,17 @@ internal sealed class Engine(
         ReplyMessage reply;
         if (decision is Decision.Accepted accepted)
         {
-            var (nextType, nextPayload) = types.Serialize(((IState)state).Apply(accepted.Event));
+            var (nextType, nextPayload) = types.Serialize(((IState)state).Apply(accepted.Event), slice.State);
             changes.States.Add(new StoredState(stateType, key, nextType, nextPayload, (current?.Version ?? 0) + 1));
 
-            var (eventType, eventPayload) = types.Serialize(accepted.Event);
+            var (eventType, eventPayload) = types.Serialize(accepted.Event, slice.Event);
             changes.Events.Add(new StoredMessage(eventType, eventPayload));
             changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, eventType, eventPayload));
 
             foreach (var publication in registry.PublicationsOf(accepted.Event.GetType()))
             {
-                var (publishedType, publishedPayload) = types.Serialize(publication.Map(accepted.Event));
+                var published = publication.Map(accepted.Event);
+                var (publishedType, publishedPayload) = types.Serialize(published, published.GetType());
                 changes.Published.Add(new StoredMessage(publishedType, publishedPayload));
                 changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, publishedType, publishedPayload));
                 log(External, key, $"published {types.TypeOf(publishedType).Name}");
@@ -91,7 +92,7 @@ internal sealed class Engine(
         }
         else
         {
-            var (errorType, errorPayload) = types.Serialize(((Decision.Rejected)decision).Error);
+            var (errorType, errorPayload) = types.Serialize(((Decision.Rejected)decision).Error, slice.Error);
             reply = new ReplyMessage(ReplyOutcome.Rejected, errorType, errorPayload);
         }
 
@@ -180,7 +181,7 @@ internal sealed class Engine(
             return;
         }
 
-        var (type, payload) = types.Serialize(next);
+        var (type, payload) = types.Serialize(next, projection.View);
         changes.Views[(viewType, key)] = new StoredView(viewType, key, type, payload);
     }
 
@@ -194,7 +195,7 @@ internal sealed class Engine(
             return;
         }
 
-        var (triggerType, triggerPayload) = types.Serialize(trigger);
+        var (triggerType, triggerPayload) = types.Serialize(trigger, process.Trigger);
         var instance = new StoredInstance(
             process.Name, key, triggerType, triggerPayload, 0, ProcessStatus.Running, [], 0, null, false, null, 0);
         log(process.Name, key, $"started by {trigger.GetType().Name}");
@@ -219,7 +220,7 @@ internal sealed class Engine(
         {
             // Arrived before the process was waiting for it (common in distributed systems): keep it.
             log(process.Name, key, $"{awaited.GetType().Name} arrived early, parked");
-            var (type, payload) = types.Serialize(awaited);
+            var (type, payload) = types.Serialize(awaited, wait.Event);
             changes.Park.Add(new StoredParked(process.Name, key, step, type, payload));
         }
     }
@@ -301,7 +302,7 @@ internal sealed class Engine(
     private StoredInstance SendStep(StoredInstance instance, IEvent trigger, StepRef step, int index, bool compensating, Changes changes)
     {
         var command = step.Invoke!(trigger);
-        var (type, payload) = types.Serialize(command);
+        var (type, payload) = types.Serialize(command, step.Output ?? command.GetType());
         var id = newId();
         changes.Outbox.Add(new Envelope(id, MessageKind.Command, type, payload, new ProcessRef(instance.Process, instance.Key, index, compensating)));
         log(instance.Process, instance.Key, $"-> {command.GetType().Name}");
@@ -369,8 +370,9 @@ internal sealed class Engine(
             log(instance.Process, instance.Key, $"transient failure, retry {instance.Attempt}/{retries} after {Durations.Format(delay)}");
 
             // Same message id: if the first attempt did go through, the owner's inbox replays its outcome.
-            var command = (target.Compensating ? step.Compensation! : step.Action).Invoke!(trigger);
-            var (type, payload) = types.Serialize(command);
+            var retried = target.Compensating ? step.Compensation! : step.Action;
+            var command = retried.Invoke!(trigger);
+            var (type, payload) = types.Serialize(command, retried.Output ?? command.GetType());
             changes.Schedule.Add(new Scheduled(now() + delay, new Envelope(instance.Pending!.Value, MessageKind.Command, type, payload, target)));
             return instance with { Attempt = instance.Attempt + 1 };
         }

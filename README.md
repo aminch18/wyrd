@@ -284,6 +284,28 @@ Every expectation also checks that events, states and views survive a JSON round
 when Wyrd stores them — so a state that can't be persisted fails a unit test, not production.
 See [`samples/Shop.Tests`](samples/Shop.Tests).
 
+## Native AOT, source-generated JSON ✅
+
+Everything Wyrd stores or sends crosses as JSON. In development the runtime uses reflection; for production,
+declare a context and Wyrd's analyzers keep it complete:
+
+```csharp
+[WyrdJsonContext]
+[JsonSerializable(typeof(ChargePayment))]
+[JsonSerializable(typeof(Payment))]          // unions are stored polymorphically
+// ...
+public partial class ShopJson : JsonSerializerContext;
+
+var shop = new InMemoryRuntime(ShopJson.Default);
+```
+
+```
+error WYRD0300: 'PaymentCharged' is serialized by Wyrd but is not declared in ShopJson. [code fix]
+error WYRD0301: Union 'Payment' stores its case 'Charged' polymorphically, but 'Charged' is not declared. [code fix]
+```
+
+The shop sample compiles to a **3.8 MB native executable** and runs identically — CI checks it on every commit.
+
 ## Living documentation ✅
 
 Every process renders itself (`process.ToMermaid()`):
