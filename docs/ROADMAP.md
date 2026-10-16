@@ -52,7 +52,7 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] Source-generated JSON: `[WyrdJsonContext]`, named types (no `Type.GetType`), polymorphic unions,
       analyzers WYRD0300/WYRD0301 with code fixes; reflection mode for development
 - [x] Native AOT: the shop sample publishes and runs as a native executable, checked in CI
-- [ ] Analyzer: union cases with the same name across unions need `TypeInfoPropertyName` (SYSLIB1031) — detect and fix
+- [x] Analyzer WYRD0302: types sharing a name in the JSON context (union cases, namespaces, nested property types) get a unique `TypeInfoPropertyName` via code fix, before SYSLIB1031
 
 ## v0.3 — Skuld (simulate the future)
 

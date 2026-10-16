@@ -57,6 +57,12 @@ internal static class Diagnostics
         "Union '{0}' stores its case '{1}' polymorphically, but '{1}' is not declared. Add [JsonDerivedType(typeof({0}.{1}), \"{1}\")] to '{0}'.",
         Json, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink, customTags: WellKnownDiagnosticTags.CompilationEnd);
 
+    public static readonly DiagnosticDescriptor JsonNameCollision = new(
+        "WYRD0302",
+        "Types in the JSON context need unique names",
+        "'{0}' and {1} share the name '{2}' in {3}, which makes the System.Text.Json generator fail (SYSLIB1031). Declare it with [JsonSerializable(typeof({0}), TypeInfoPropertyName = \"{4}\")].",
+        Json, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink, customTags: WellKnownDiagnosticTags.CompilationEnd);
+
     public static readonly DiagnosticDescriptor NotInSnapshot = new(
         "WYRD0200",
         "Integration event is missing from the contract snapshot",

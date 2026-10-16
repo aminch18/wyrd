@@ -112,6 +112,138 @@ public class JsonContextTests
         Assert.True(payments.Contains("[JsonDerivedType(typeof(Charged), \"Charged\")]", StringComparison.Ordinal), payments);
     }
 
+    private const string TwoUnions = """
+        using System.Text.Json.Serialization;
+        using Wyrd;
+
+        namespace Shop;
+
+        [WyrdJsonContext]
+        [JsonSerializable(typeof(Order))]
+        [JsonSerializable(typeof(Payment))]
+        public abstract partial class ShopJson : JsonSerializerContext
+        {
+            protected ShopJson() : base(null) { }
+        }
+
+        [Union]
+        [JsonDerivedType(typeof(None), "None")]
+        [JsonDerivedType(typeof(Placed), "Placed")]
+        public abstract record Order
+        {
+            public sealed record None : Order;
+            public sealed record Placed : Order;
+        }
+
+        [Union]
+        [JsonDerivedType(typeof(None), "None")]
+        [JsonDerivedType(typeof(Charged), "Charged")]
+        public abstract record Payment
+        {
+            public sealed record None : Payment;
+            public sealed record Charged : Payment;
+        }
+        """;
+
+    [Fact]
+    public async Task union_cases_with_the_same_name_collide()
+    {
+        var collisions = (await Analyze(("Shop.cs", TwoUnions))).Where(d => d.Id == "WYRD0302").ToList();
+
+        Assert.Equal(2, collisions.Count);
+        Assert.Contains(
+            "'Shop.Order.None' and 'Shop.Payment.None' share the name 'None' in ShopJson",
+            collisions[0].GetMessage(CultureInfo.InvariantCulture),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task the_code_fix_gives_a_colliding_type_a_unique_name()
+    {
+        var project = Project(("Shop.cs", TwoUnions));
+
+        for (var i = 0; i < 10 && await FirstFixable(project) is { } diagnostic; i++)
+        {
+            project = await ApplyFix(project, diagnostic);
+        }
+
+        Assert.Empty(await Diagnostics(project));
+        Assert.Contains("TypeInfoPropertyName = \"OrderNone\")]", await Text(project, "Shop.cs"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task an_explicit_name_resolves_the_collision() =>
+        Assert.DoesNotContain(
+            await Analyze(("Shop.cs", TwoUnions.Replace(
+                "[JsonSerializable(typeof(Payment))]",
+                "[JsonSerializable(typeof(Payment))]\n[JsonSerializable(typeof(Payment.None), TypeInfoPropertyName = \"PaymentNone\")]",
+                StringComparison.Ordinal))),
+            d => d.Id == "WYRD0302");
+
+    [Fact]
+    public async Task types_with_the_same_name_in_different_namespaces_collide()
+    {
+        const string source = """
+            using System.Text.Json.Serialization;
+            using Wyrd;
+
+            namespace Shop
+            {
+                [WyrdJsonContext]
+                [JsonSerializable(typeof(Orders.Created))]
+                [JsonSerializable(typeof(Payments.Created))]
+                public abstract partial class ShopJson : JsonSerializerContext
+                {
+                    protected ShopJson() : base(null) { }
+                }
+            }
+
+            namespace Shop.Orders { public sealed record Created(string Id) : IDomainEvent; }
+            namespace Shop.Payments { public sealed record Created(string Id) : IDomainEvent; }
+            """;
+
+        var collisions = (await Analyze(("Shop.cs", source))).Where(d => d.Id == "WYRD0302").ToList();
+
+        Assert.Equal(2, collisions.Count);
+        Assert.Contains("TypeInfoPropertyName = \"OrdersCreated\"", collisions[0].GetMessage(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task types_used_inside_messages_are_checked_too()
+    {
+        const string source = """
+            using System.Text.Json.Serialization;
+            using Wyrd;
+
+            namespace Shop
+            {
+                [WyrdJsonContext]
+                [JsonSerializable(typeof(Shipping.ShipOrder))]
+                [JsonSerializable(typeof(Billing.SendInvoice))]
+                public abstract partial class ShopJson : JsonSerializerContext
+                {
+                    protected ShopJson() : base(null) { }
+                }
+            }
+
+            namespace Shop.Shipping
+            {
+                public sealed record Address(string Street);
+                public sealed record ShipOrder(string OrderId, Address To) : ICommand;
+            }
+
+            namespace Shop.Billing
+            {
+                public sealed record Address(string Street, string TaxId);
+                public sealed record SendInvoice(string OrderId, Address To) : ICommand;
+            }
+            """;
+
+        var collisions = (await Analyze(("Shop.cs", source))).Where(d => d.Id == "WYRD0302").ToList();
+
+        Assert.Equal(2, collisions.Count);
+    }
+
     private static async Task<ImmutableArray<Diagnostic>> Analyze(params (string Name, string Source)[] files) =>
         await Diagnostics(Project(files));
 

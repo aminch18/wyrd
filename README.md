@@ -302,6 +302,7 @@ var shop = new InMemoryRuntime(ShopJson.Default);
 ```
 error WYRD0300: 'PaymentCharged' is serialized by Wyrd but is not declared in ShopJson. [code fix]
 error WYRD0301: Union 'Payment' stores its case 'Charged' polymorphically, but 'Charged' is not declared. [code fix]
+error WYRD0302: 'Shop.Orders.Order.None' and 'Shop.Payments.Payment.None' share the name 'None' in ShopJson. [code fix]
 ```
 
 The shop sample compiles to a **3.8 MB native executable** and runs identically — CI checks it on every commit.

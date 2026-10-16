@@ -23,6 +23,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Source-generated JSON: `new InMemoryRuntime(MyJson.Default)` with a `[WyrdJsonContext]` is reflection-free and
   Native AOT ready; analyzers WYRD0300 (type missing from the context) and WYRD0301 (union case not declared as a
   derived type) with code fixes. Types are resolved by registered name; unions are stored polymorphically.
+- Analyzer WYRD0302: two types with the same name in the JSON context (union cases like `Order.None`/`Payment.None`,
+  same-named types in different namespaces, or types nested in messages) are reported with a code fix that adds a
+  unique `TypeInfoPropertyName`, instead of the generator's generic SYSLIB1031.
 - `.OnCompensated(command)`: how a process ends when it is compensated (e.g. `CancelOrder`), so read models and
   slices learn the outcome; runs even when there was nothing to undo.
 - `Wyrd.Testing` package: `Scenario.For(slice).Given(...).When(...).Then(...)/ThenRejected(...)/ThenState(...)` and

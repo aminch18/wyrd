@@ -18,7 +18,7 @@ public sealed class JsonContextAnalyzer : DiagnosticAnalyzer
     private static readonly SymbolDisplayFormat Qualified = SymbolDisplayFormat.FullyQualifiedFormat;
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
-        ImmutableArray.Create(Diagnostics.MissingFromJsonContext, Diagnostics.UnionCaseNotDerived);
+        ImmutableArray.Create(Diagnostics.MissingFromJsonContext, Diagnostics.UnionCaseNotDerived, Diagnostics.JsonNameCollision);
 
     public override void Initialize(AnalysisContext context)
     {
@@ -101,12 +101,14 @@ public sealed class JsonContextAnalyzer : DiagnosticAnalyzer
                 return; // Reflection mode: types don't need declaring.
             }
 
+            var declarations = contexts.SelectMany(c => c.GetAttributes())
+                .Where(a => SymbolEqualityComparer.Default.Equals(a.AttributeClass, serializable))
+                .Where(a => a.ConstructorArguments.FirstOrDefault().Value is ITypeSymbol)
+                .ToList();
             var declared = new HashSet<ITypeSymbol>(
-                contexts.SelectMany(c => c.GetAttributes())
-                    .Where(a => SymbolEqualityComparer.Default.Equals(a.AttributeClass, serializable))
-                    .Select(a => a.ConstructorArguments.FirstOrDefault().Value)
-                    .OfType<ITypeSymbol>(),
-                SymbolEqualityComparer.Default);
+                declarations.Select(a => (ITypeSymbol)a.ConstructorArguments[0].Value!), SymbolEqualityComparer.Default);
+
+            ReportNameCollisions(end, declaredIn, declarations, required.Keys, derived);
 
             foreach (var pair in required.OrderBy(p => p.Key.ToDisplayString(), StringComparer.Ordinal))
             {
@@ -126,6 +128,90 @@ public sealed class JsonContextAnalyzer : DiagnosticAnalyzer
             }
         });
     }
+
+    /// <summary>
+    /// The System.Text.Json generator names a property after every type it generates for — the declared types, their
+    /// derived types and the types of their properties. Two types with the same name break it (SYSLIB1031).
+    /// </summary>
+    private static void ReportNameCollisions(
+        CompilationAnalysisContext context,
+        INamedTypeSymbol jsonContext,
+        IReadOnlyList<AttributeData> declarations,
+        IEnumerable<ITypeSymbol> required,
+        INamedTypeSymbol derivedAttribute)
+    {
+        var explicitNames = new Dictionary<ITypeSymbol, string>(SymbolEqualityComparer.Default);
+        foreach (var declaration in declarations)
+        {
+            var name = declaration.NamedArguments.FirstOrDefault(a => a.Key == "TypeInfoPropertyName").Value.Value as string;
+            if (name is not null)
+            {
+                explicitNames[(ITypeSymbol)declaration.ConstructorArguments[0].Value!] = name;
+            }
+        }
+
+        var graph = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+        var pending = new Stack<ITypeSymbol>(declarations.Select(d => (ITypeSymbol)d.ConstructorArguments[0].Value!).Concat(required));
+        while (pending.Count > 0)
+        {
+            if (pending.Pop() is not INamedTypeSymbol type || type.SpecialType != SpecialType.None || !graph.Add(type))
+            {
+                continue;
+            }
+
+            foreach (var argument in type.TypeArguments)
+            {
+                pending.Push(argument);
+            }
+
+            foreach (var attribute in type.GetAttributes().Where(a => SymbolEqualityComparer.Default.Equals(a.AttributeClass, derivedAttribute)))
+            {
+                if (attribute.ConstructorArguments.FirstOrDefault().Value is ITypeSymbol derivedType)
+                {
+                    pending.Push(derivedType);
+                }
+            }
+
+            foreach (var property in type.GetMembers().OfType<IPropertySymbol>().Where(p => !p.IsStatic && p.DeclaredAccessibility == Accessibility.Public))
+            {
+                pending.Push(property.Type is IArrayTypeSymbol array ? array.ElementType : property.Type);
+            }
+        }
+
+        var groups = graph
+            .Where(t => !t.IsGenericType)
+            .GroupBy(t => explicitNames.TryGetValue(t, out var name) ? name : t.Name, StringComparer.Ordinal)
+            .Where(g => g.Count() > 1);
+
+        foreach (var group in groups)
+        {
+            var members = group.OrderBy(t => t.ToDisplayString(), StringComparer.Ordinal).ToList();
+            foreach (var type in members.Where(t => !explicitNames.ContainsKey(t)))
+            {
+                var others = string.Join(", ", members.Where(t => !SymbolEqualityComparer.Default.Equals(t, type)).Select(t => $"'{t.ToDisplayString()}'"));
+                var unique = UniqueName(type);
+                var properties = ImmutableDictionary<string, string?>.Empty
+                    .Add(JsonContextFix.TypeProperty, type.ToDisplayString(Qualified))
+                    .Add(JsonContextFix.NameProperty, unique);
+                context.ReportDiagnostic(Diagnostic.Create(
+                    Diagnostics.JsonNameCollision,
+                    type.Locations.FirstOrDefault(l => l.IsInSource) ?? jsonContext.Locations.FirstOrDefault(),
+                    additionalLocations: jsonContext.Locations,
+                    properties: properties,
+                    type.ToDisplayString(),
+                    others,
+                    group.Key,
+                    jsonContext.Name,
+                    unique));
+            }
+        }
+    }
+
+    /// <summary><c>Payment.None</c> → <c>PaymentNone</c>; a top-level <c>Shop.Orders.Created</c> → <c>OrdersCreated</c>.</summary>
+    private static string UniqueName(INamedTypeSymbol type) =>
+        type.ContainingType is { } container
+            ? container.Name + type.Name
+            : (type.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.Name : "Global") + type.Name;
 
     private static void CheckUnionCases(CompilationAnalysisContext context, INamedTypeSymbol union, INamedTypeSymbol derivedAttribute, bool mustDeclare)
     {

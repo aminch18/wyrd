@@ -24,7 +24,7 @@ public sealed class JsonContextCodeFix : CodeFixProvider
 {
     private const string Serialization = "global::System.Text.Json.Serialization";
 
-    public override ImmutableArray<string> FixableDiagnosticIds { get; } = ImmutableArray.Create("WYRD0300", "WYRD0301");
+    public override ImmutableArray<string> FixableDiagnosticIds { get; } = ImmutableArray.Create("WYRD0300", "WYRD0301", "WYRD0302");
 
     public override FixAllProvider? GetFixAllProvider() => null;
 
@@ -37,7 +37,22 @@ public sealed class JsonContextCodeFix : CodeFixProvider
                 continue;
             }
 
-            if (diagnostic.Id == "WYRD0300" && diagnostic.AdditionalLocations.Count > 0
+            if (diagnostic.Id == "WYRD0302" && diagnostic.AdditionalLocations.Count > 0
+                && diagnostic.AdditionalLocations[0] is { SourceTree: { } contextTree } contextLocation
+                && diagnostic.Properties.TryGetValue(JsonContextFix.NameProperty, out var unique) && unique is not null)
+            {
+                var document = context.Document.Project.Solution.GetDocument(contextTree);
+                if (document is not null)
+                {
+                    context.RegisterCodeFix(
+                        CodeAction.Create(
+                            $"Name it '{unique}' in the JSON context",
+                            ct => AddAttribute(document, contextLocation, $"[{Serialization}.JsonSerializable(typeof({type}), TypeInfoPropertyName = \"{unique}\")]", ct),
+                            equivalenceKey: $"{nameof(JsonContextCodeFix)}:name:{type}"),
+                        diagnostic);
+                }
+            }
+            else if (diagnostic.Id == "WYRD0300" && diagnostic.AdditionalLocations.Count > 0
                 && diagnostic.AdditionalLocations[0] is { SourceTree: { } tree } target)
             {
                 var document = context.Document.Project.Solution.GetDocument(tree);
