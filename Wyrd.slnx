@@ -3,6 +3,7 @@
     <Project Path="samples/Shop/Shop.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/Wyrd.Analyzers.CodeFixes/Wyrd.Analyzers.CodeFixes.csproj" />
     <Project Path="src/Wyrd.Analyzers/Wyrd.Analyzers.csproj" />
     <Project Path="src/Wyrd/Wyrd.csproj" />
   </Folder>

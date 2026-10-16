@@ -10,7 +10,7 @@ namespace Wyrd.Analyzers.Tests;
 /// <summary>Compiles a snippet against Wyrd, with an optional contracts.wyrd.txt, and runs the analyzer.</summary>
 internal static class AnalyzerHarness
 {
-    private static readonly MetadataReference[] References =
+    internal static readonly MetadataReference[] References =
     [
         .. ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator)

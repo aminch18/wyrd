@@ -2,10 +2,12 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Wyrd.Analyzers\Wyrd.Analyzers.csproj" />
+    <ProjectReference Include="..\..\src\Wyrd.Analyzers.CodeFixes\Wyrd.Analyzers.CodeFixes.csproj" />
     <ProjectReference Include="..\..\src\Wyrd\Wyrd.csproj" />
   </ItemGroup>
 

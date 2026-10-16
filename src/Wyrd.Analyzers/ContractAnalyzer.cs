@@ -117,9 +117,13 @@ public sealed class ContractAnalyzer : DiagnosticAnalyzer
 
     private static void CompareWithSnapshot(SymbolAnalysisContext context, ContractSnapshot snapshot, ContractSchema schema, Location? location)
     {
+        var fix = ImmutableDictionary<string, string?>.Empty
+            .Add(SnapshotFix.LineProperty, schema.ToLine())
+            .Add(SnapshotFix.IdProperty, schema.Id);
+
         if (!snapshot.Entries.TryGetValue(schema.Id, out var entry))
         {
-            context.ReportDiagnostic(Diagnostic.Create(Diagnostics.NotInSnapshot, location, schema.Name, schema.Version, schema.ToLine()));
+            context.ReportDiagnostic(Diagnostic.Create(Diagnostics.NotInSnapshot, location, fix, schema.Name, schema.Version, schema.ToLine()));
             return;
         }
 
@@ -150,7 +154,7 @@ public sealed class ContractAnalyzer : DiagnosticAnalyzer
         else if (added.Count > 0)
         {
             context.ReportDiagnostic(Diagnostic.Create(
-                Diagnostics.SnapshotOutdated, location, schema.Name, schema.Version, string.Join(", ", added.Select(f => f.Key)), schema.ToLine()));
+                Diagnostics.SnapshotOutdated, location, fix, schema.Name, schema.Version, string.Join(", ", added.Select(f => f.Key)), schema.ToLine()));
         }
     }
 

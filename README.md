@@ -200,8 +200,8 @@ subscribers migrate, or revert the change.
 
 | Change | Result |
 |---|---|
-| New integration event | `WYRD0200` — add the suggested line to the snapshot |
-| Add an optional field | `WYRD0202` — compatible; update the line |
+| New integration event | `WYRD0200` — add the suggested line (IDE code fix: one click) |
+| Add an optional field | `WYRD0202` — compatible; update the line (one click) |
 | Remove, rename or retype a field; add a required one | `WYRD0201` — **build error** |
 | Delete a published contract | `WYRD0203` — **build error**, unless its line is marked `retired` |
 | Same name and version twice | `WYRD0204` — **build error** |
@@ -209,7 +209,13 @@ subscribers migrate, or revert the change.
 | A type that is both a command and an event | `WYRD0001` — **build error** |
 
 Moving to a new version is explicit: declare `PaymentChargedV2`, register its `Publication` next to V1's,
-and both are published until subscribers migrate.
+and both are published until subscribers migrate. Subscribers that already moved to V2 can also consume V1
+through an `Upcaster<PaymentChargedV1, PaymentChargedV2>` — each subscriber receives every fact once, in its version.
+
+| Rule | |
+|---|---|
+| A command decided by two slices | `WYRD0002` — **build error** |
+| Events not in the past tense, commands that read like events | `WYRD0003`, `WYRD0004` — suggestions |
 
 ## Try the sample
 
@@ -284,6 +290,7 @@ It does **not** know your business rules. If you compute the tax wrong, Wyrd wil
 ```
 src/Wyrd/                  the library
 src/Wyrd.Analyzers/        Roslyn analyzers, shipped inside the Wyrd package
+src/Wyrd.Analyzers.CodeFixes/  IDE code fixes, shipped inside the Wyrd package
 tests/Wyrd.Tests/          unit and runtime tests
 tests/Wyrd.Analyzers.Tests analyzer tests
 samples/Shop/              a runnable, vertically sliced example
