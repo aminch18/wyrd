@@ -104,4 +104,18 @@ public class SkuldTests
 
         Assert.Equal(3, report.Violations.Count(v => v.Invariant == "runs without errors" && v.Detail.Contains("boom", StringComparison.Ordinal)));
     }
+
+    [Theory]
+    [InlineData(0, 0.1)]
+    [InlineData(-1, 0.1)]
+    [InlineData(10, -0.1)]
+    [InlineData(10, 1.5)]
+    [InlineData(10, double.NaN)]
+    public async Task a_misconfigured_simulation_fails_instead_of_passing(int runs, double faultRate)
+    {
+        var alwaysBroken = new Invariant("always broken", _ => "broken");
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => Skuld.SimulateAsync(
+            System(Robust), TwoOrders, [alwaysBroken], new SimulationOptions { Runs = runs, FaultRate = faultRate }));
+    }
 }

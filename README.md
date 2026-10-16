@@ -231,7 +231,7 @@ microseconds to test, and the journal is identical on every run.
 | An awaited event that arrives early is parked until the process needs it | ✅ |
 | Duplicate command delivery → the owner's inbox replays the stored outcome | ✅ |
 | Redelivered failure replies never consume extra retries; late successes are accepted | ✅ |
-| A step given up on with an unknown outcome is compensated too | ✅ |
+| A step given up on with an unknown outcome is fenced by its undo: a late copy never executes | ✅ |
 | `Await` timeout → compensate | ✅ |
 | Duplicate trigger (at-least-once delivery) → ignored | ✅ |
 | External events correlated by key | ✅ |
@@ -351,7 +351,7 @@ What it taught us — and what Wyrd now does about it:
 |---|---|
 | An undo that can't retry loses stock after one network blip | Steps that can be undone retry; `.OnCompensated(...)` can `.Retry(...)` too |
 | A redelivered failure reply consumed an extra retry | Replies carry their attempt: stale faults are ignored, a late success is always accepted |
-| A command we gave up on still ran later, and its stock was never released | Steps with an unknown outcome are compensated too; compensations must be harmless when there is nothing to undo |
+| A command we gave up on still ran later, and its stock was never released | Its undo **fences** the original command: if it never ran, it never will; if it ran, it is undone |
 | An event arriving late moved an order from *Cancelled* back to *Released* | Read models must tolerate reordering: statuses only move forward |
 
 After the fixes, the shop holds in every one of 5,000 futures with 20% faults, 20% duplicates and 50% reordering.

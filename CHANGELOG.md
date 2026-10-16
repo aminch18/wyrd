@@ -23,8 +23,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Fixed
 
 - A redelivered failure reply no longer consumes an extra retry: replies carry their attempt; late successes are accepted.
-- A step given up on without knowing whether it ran is compensated too ("outcome unknown"); a compensation rejected
-  for such a step means there was nothing to undo.
+- A step given up on without knowing whether it ran is fenced by its undo: the owner atomically blocks the original
+  command if it never ran (late copies never execute) or undoes it if it did. A domain rejection of an undo is no
+  longer taken as proof that there was nothing to undo.
+- Skuld rejects misconfigured simulations (no runs, rates outside [0, 1]) instead of passing without exploring.
 - The message type registry is thread-safe (scenarios in parallel test classes could corrupt it).
 
 ### Changed (samples)

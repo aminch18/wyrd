@@ -154,9 +154,12 @@ Simulating the sample shop in thousands of hostile futures taught four rules eve
 
 1. **Every step that can be undone retries.** Its undo uses the same policy; an undo that gives up after one
    transient failure leaves the world inconsistent.
-2. **Compensations are harmless when there is nothing to undo.** When a process gives up on a step it can't know
-   whether the step ran (a delayed copy may still succeed), so Wyrd compensates it anyway. `ReleaseStock` for an order
-   that reserved nothing must be rejected, not add stock.
+2. **A step given up on is fenced, never guessed.** When a process gives up on a step it can't know whether the
+   step ran: a delayed copy may still execute. Its undo carries the original command id and the owner decides, in
+   the same transaction as its inbox: if the original ran, the undo runs; if it never ran, the original is
+   **fenced** — any late copy finds the fence and never executes — and only then is there nothing to undo.
+   A domain rejection of an undo ("not reserved") is never taken as proof: it only describes the current state.
+   *Requirement:* the undo of a step must be handled by the same service (same inbox) as the step itself.
 3. **Read models tolerate reordering.** Events from different slices arrive in any order; a late `StockReleased` must
    not move a cancelled order back.
 4. **Stale replies are expected.** Redelivered replies and replies to earlier attempts are ignored; a success is
