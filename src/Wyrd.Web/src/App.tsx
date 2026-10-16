@@ -9,11 +9,13 @@ import {
   Copy,
   Github,
   Menu,
+  Moon,
   Network,
   PackageCheck,
   Route,
   ShieldCheck,
   Sparkles,
+  Sun,
   X,
 } from 'lucide-react'
 import { CodeBlock } from './components/CodeBlock'
@@ -23,6 +25,7 @@ const GITHUB_URL = 'https://github.com/aminch18/wyrd'
 const NUGET_URL = 'https://www.nuget.org/packages/Wyrd'
 
 type Page = 'home' | 'docs'
+type Theme = 'dark' | 'light'
 
 function pageFromHash(): Page {
   return window.location.hash.startsWith('#/docs') ? 'docs' : 'home'
@@ -36,17 +39,12 @@ function navigate(page: Page, section?: string) {
 function Brand() {
   return (
     <button className="brand" type="button" onClick={() => navigate('home')} aria-label="Wyrd home">
-      <span className="brand-mark" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </span>
-      <span>wyrd</span>
+      <span className="brand-image" aria-hidden="true" />
     </button>
   )
 }
 
-function Header({ page }: { page: Page }) {
+function Header({ page, theme, onThemeChange }: { page: Page; theme: Theme; onThemeChange: () => void }) {
   const [open, setOpen] = useState(false)
 
   const go = (target: Page, section?: string) => {
@@ -77,6 +75,9 @@ function Header({ page }: { page: Page }) {
           <a href={GITHUB_URL} target="_blank" rel="noreferrer">
             GitHub <Github size={16} />
           </a>
+          <button className="theme-toggle" type="button" onClick={onThemeChange} aria-label={`Use ${theme === 'dark' ? 'light' : 'dark'} theme`}>
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
           <button className="nav-cta" type="button" onClick={() => go('docs', 'quick-start')}>
             Get started <ArrowRight size={15} />
           </button>
@@ -92,9 +93,9 @@ function ThreadMark({ compact = false }: { compact?: boolean }) {
       <svg viewBox="0 0 680 420" role="img">
         <defs>
           <linearGradient id="thread-gradient" x1="90" y1="60" x2="590" y2="360" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#67e8f9" />
-            <stop offset="0.48" stopColor="#818cf8" />
-            <stop offset="1" stopColor="#c084fc" />
+            <stop stopColor="#4ed8b1" />
+            <stop offset="0.48" stopColor="#6ca89d" />
+            <stop offset="1" stopColor="#9ce5d0" />
           </linearGradient>
           <filter id="thread-glow" x="-30%" y="-30%" width="160%" height="160%">
             <feGaussianBlur stdDeviation="12" result="blur" />
@@ -535,6 +536,11 @@ function Footer() {
 
 export function App() {
   const [route, setRoute] = useState(window.location.hash)
+  const [theme, setTheme] = useState<Theme>(() => {
+    const stored = window.localStorage.getItem('wyrd-theme')
+    if (stored === 'dark' || stored === 'light') return stored
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+  })
   const page = pageFromHash()
 
   useEffect(() => {
@@ -550,9 +556,15 @@ export function App() {
       : 'Wyrd — Deterministic Event-Driven Processes for .NET'
   }, [page, route])
 
+  useEffect(() => {
+    window.localStorage.setItem('wyrd-theme', theme)
+    document.documentElement.style.colorScheme = theme
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0c1413' : '#eef4f2')
+  }, [theme])
+
   return (
-    <div className="app">
-      <Header page={page} />
+    <div className="app" data-theme={theme}>
+      <Header page={page} theme={theme} onThemeChange={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} />
       {page === 'home' ? <HomePage /> : <DocsPage />}
       <Footer />
     </div>
