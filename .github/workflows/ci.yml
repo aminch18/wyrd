@@ -23,7 +23,7 @@ jobs:
         with:
           fetch-depth: 0 # MinVer computes the version from tags
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
