@@ -21,7 +21,7 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] `samples/Shop`: four vertical slices, six scenarios
 - [x] Library scaffolding: central package management, MinVer, SourceLink, CI (3 OSes), templates
 
-## v0.1 — Messages done right ([design](design/messages.md)) · preview `0.1.0-alpha.1`
+## ✅ v0.1 — Messages done right ([design](design/messages.md)) · `0.1.0-alpha.1`
 
 - [x] Message taxonomy: `ICommand`, `IDomainEvent`, `IIntegrationEvent` + `[IntegrationEvent(name, Version)]`
 - [x] Contracts split from slices: `Slice<TCommand, TState, TEvent, TError>`
@@ -34,9 +34,8 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] Upcasters for subscribers: each subscriber gets a fact once, in its version (chained v1 -> v2 -> v3)
 - [x] Analyzer: one owner per command at compile time (WYRD0002)
 - [x] Analyzer: naming suggestions, imperative commands and past-tense events (WYRD0003, WYRD0004)
-- [ ] AsyncAPI generation
 
-## v0.2 — Distributed-shaped core, in memory
+## ✅ v0.2 — Distributed-shaped core, in memory · `0.2.0-alpha.1`
 
 - [x] Message-driven engine: steps are command messages, owners answer with replies (Accepted / Rejected / Faulted)
 - [x] Everything crosses the queue as JSON envelopes; states are stored as JSON
@@ -62,10 +61,12 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [ ] First analyzers: exhaustive `[Union]` switch, missing compensation, `Await` without timeout
 - [ ] Analyzer: `wyrd_process_style` enforcement with code fix fluent ⇄ pipe
 
-## v0.4 — Urd (replay the past)
+## v0.4 — Urd (replay the past) and the `dotnet wyrd` tool
 
 - [ ] Process instance history capture
 - [ ] `dotnet wyrd replay <instance> --as-test`
+- [ ] `dotnet wyrd asyncapi`: AsyncAPI document from the integration event contracts (moved from v0.1)
+- [ ] `dotnet wyrd diagram`: Mermaid diagrams for every process
 
 ## v0.5 — Verdandi (run the present)
 

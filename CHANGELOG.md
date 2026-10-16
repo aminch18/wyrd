@@ -5,11 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.2.0-alpha.1] - 2026-10-16
+
+The in-memory runtime now behaves like the distributed one, with read models, business-readable tests,
+process outcomes, and source-generated JSON verified under Native AOT.
+
 ### Changed
 
-- States, events and views are serialized as their declared type; unions carry a `$type` case discriminator.
-
 - **Breaking:** the runtime is asynchronous: `SendAsync`, `PublishAsync`, `AdvanceAsync`.
+- **Breaking:** states, events and views are serialized as their declared type; unions carry a `$type` case discriminator.
 - The in-memory runtime now behaves like the distributed one: a message-driven engine where process steps are
   command messages answered by replies, JSON envelopes, one transaction per message (state, events, instances,
   inbox, outbox, timers), retries scheduled with backoff and re-sent with the same message id, deterministic ids.
@@ -60,5 +64,6 @@ First preview: the core model, a deterministic in-memory runtime and versioned i
   timeouts, duplicate detection and correlation.
 - `samples/Shop`: an order fulfillment process across four vertical slices.
 
-[Unreleased]: https://github.com/aminch18/wyrd/compare/v0.1.0-alpha.1...HEAD
+[Unreleased]: https://github.com/aminch18/wyrd/compare/v0.2.0-alpha.1...HEAD
+[0.2.0-alpha.1]: https://github.com/aminch18/wyrd/compare/v0.1.0-alpha.1...v0.2.0-alpha.1
 [0.1.0-alpha.1]: https://github.com/aminch18/wyrd/releases/tag/v0.1.0-alpha.1
