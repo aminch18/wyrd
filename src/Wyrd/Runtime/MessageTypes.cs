@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
@@ -16,7 +17,8 @@ internal sealed class MessageTypes
     private const string ReflectionReason = "Reflection-based System.Text.Json. Pass a [WyrdJsonContext] for AOT and trimming.";
 
     private readonly JsonSerializerOptions _options;
-    private readonly Dictionary<string, Type> _byName = new(StringComparer.Ordinal);
+    // Shared by concurrent callers (e.g. scenarios running in parallel test classes): must be thread-safe.
+    private readonly ConcurrentDictionary<string, Type> _byName = new(StringComparer.Ordinal);
 
     private MessageTypes(JsonSerializerOptions options) => _options = options;
 
@@ -34,12 +36,11 @@ internal sealed class MessageTypes
     public void Register(Type type)
     {
         var name = NameOf(type);
-        if (_byName.TryGetValue(name, out var existing) && existing != type)
+        var registered = _byName.GetOrAdd(name, type);
+        if (registered != type)
         {
-            throw new InvalidOperationException($"Two types share the message name '{name}': {existing} and {type}.");
+            throw new InvalidOperationException($"Two types share the message name '{name}': {registered} and {type}.");
         }
-
-        _byName[name] = type;
     }
 
     /// <summary>Serializes <paramref name="value"/> as <paramref name="declared"/> (e.g. a union base).</summary>

@@ -8,8 +8,8 @@ internal enum MessageKind
     Timeout,
 }
 
-/// <summary>Which process instance, step and phase a message belongs to.</summary>
-internal sealed record ProcessRef(string Process, string Key, int Step, bool Compensating);
+/// <summary>Which process instance, step, phase and attempt a message belongs to.</summary>
+internal sealed record ProcessRef(string Process, string Key, int Step, bool Compensating, int Attempt = 1);
 
 /// <summary>
 /// A message as it travels between services: an id, a kind, a type name and a JSON payload.

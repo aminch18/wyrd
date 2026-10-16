@@ -8,7 +8,10 @@ internal sealed record StoredMessage(string Type, string Payload);
 
 internal sealed record StoredParked(string Process, string Key, int Step, string Type, string Payload);
 
-/// <summary>Where a process instance is. In a database this is one row.</summary>
+/// <summary>
+/// Where a process instance is. In a database this is one row. <c>Uncertain</c> holds steps the process gave up on
+/// without knowing whether they ran (a late success is always possible): they are compensated too.
+/// </summary>
 internal sealed record StoredInstance(
     string Process,
     string Key,
@@ -17,6 +20,7 @@ internal sealed record StoredInstance(
     int Position,
     ProcessStatus Status,
     ImmutableList<int> Completed,
+    ImmutableList<int> Uncertain,
     int Attempt,
     Guid? Pending,
     bool Compensating,

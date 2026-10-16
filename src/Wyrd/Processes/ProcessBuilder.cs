@@ -12,14 +12,17 @@ public sealed class ProcessBuilder<TTrigger>
     private readonly string _name;
     private readonly Func<object, object> _keyOf;
     private readonly ImmutableArray<ProcessNode> _nodes;
-    private readonly StepRef? _onCompensated;
+    private readonly CompensatedNode? _outcome;
+    private readonly bool _outcomeIsLast;
 
-    internal ProcessBuilder(string name, Func<object, object> keyOf, ImmutableArray<ProcessNode> nodes, StepRef? onCompensated = null)
+    internal ProcessBuilder(
+        string name, Func<object, object> keyOf, ImmutableArray<ProcessNode> nodes, CompensatedNode? outcome = null, bool outcomeIsLast = false)
     {
         _name = name;
         _keyOf = keyOf;
         _nodes = nodes;
-        _onCompensated = onCompensated;
+        _outcome = outcome;
+        _outcomeIsLast = outcomeIsLast;
     }
 
     public ProcessBuilder<TTrigger> Then<TCommand>(Func<TTrigger, TCommand> step)
@@ -51,7 +54,7 @@ public sealed class ProcessBuilder<TTrigger>
 
     public ProcessBuilder<TTrigger> Within(TimeSpan timeout) => ModifyLast(n => NodeModifiers.Within(n, timeout));
 
-    public Process ToProcess() => new(_name, typeof(TTrigger), _keyOf, _nodes, _onCompensated);
+    public Process ToProcess() => new(_name, typeof(TTrigger), _keyOf, _nodes, _outcome);
 
     public static implicit operator Process(ProcessBuilder<TTrigger> builder)
     {
@@ -64,16 +67,21 @@ public sealed class ProcessBuilder<TTrigger>
         NodeModifiers.EnsureAccepts(node, typeof(TTrigger));
         if (node is CompensatedNode outcome)
         {
-            return _onCompensated is null
-                ? new(_name, _keyOf, _nodes, outcome.Action)
+            return _outcome is null
+                ? new(_name, _keyOf, _nodes, outcome, outcomeIsLast: true)
                 : throw new InvalidOperationException("A process has a single OnCompensated outcome.");
         }
 
-        return new(_name, _keyOf, _nodes.Add(node), _onCompensated);
+        return new(_name, _keyOf, _nodes.Add(node), _outcome);
     }
 
     private ProcessBuilder<TTrigger> ModifyLast(Func<ProcessNode, ProcessNode> modify)
     {
+        if (_outcomeIsLast)
+        {
+            return new(_name, _keyOf, _nodes, (CompensatedNode)modify(_outcome!), outcomeIsLast: true);
+        }
+
         if (_nodes.IsEmpty)
         {
             throw new InvalidOperationException("Modifiers need a preceding Then() or Await().");
@@ -81,6 +89,6 @@ public sealed class ProcessBuilder<TTrigger>
 
         var modified = modify(_nodes[^1]);
         NodeModifiers.EnsureAccepts(modified, typeof(TTrigger));
-        return new(_name, _keyOf, _nodes.SetItem(_nodes.Length - 1, modified), _onCompensated);
+        return new(_name, _keyOf, _nodes.SetItem(_nodes.Length - 1, modified), _outcome);
     }
 }

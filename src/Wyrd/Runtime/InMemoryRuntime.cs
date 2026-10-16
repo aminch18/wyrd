@@ -16,7 +16,7 @@ public sealed class InMemoryRuntime : IDisposable
     private readonly Registry _registry = new();
     private readonly InMemoryStore _store = new();
     private readonly MessageTypes _types;
-    private readonly Queue<Envelope> _queue = new();
+    private readonly List<Envelope> _queue = [];
     private readonly Dictionary<Type, int> _faults = [];
     private readonly List<JournalEntry> _journal = [];
     private readonly Engine _engine;
@@ -41,7 +41,7 @@ public sealed class InMemoryRuntime : IDisposable
     private InMemoryRuntime(MessageTypes types)
     {
         _types = types;
-        _engine = new Engine(_registry, _store, _types, () => _now, NextId, _faults, Log);
+        _engine = new Engine(_registry, _store, _types, () => _now, NextId, Fault, Log);
     }
 
     /// <summary>Virtual time elapsed since the runtime started.</summary>
@@ -119,7 +119,7 @@ public sealed class InMemoryRuntime : IDisposable
             }
         }
 
-        Register(process.OnCompensated?.Output);
+        Register(process.Outcome?.Action.Output);
         return this;
     }
 
@@ -170,7 +170,7 @@ public sealed class InMemoryRuntime : IDisposable
         try
         {
             var (type, payload) = _types.Serialize(@event, @event.GetType());
-            _queue.Enqueue(new Envelope(NextId(), MessageKind.Event, type, payload));
+            _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload));
             await DrainAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -190,7 +190,7 @@ public sealed class InMemoryRuntime : IDisposable
             while (await _store.TakeNextDueAsync(until, cancellationToken).ConfigureAwait(false) is { } due)
             {
                 _now = due.At > _now ? due.At : _now;
-                _queue.Enqueue(due.Envelope);
+                _queue.Add(due.Envelope);
                 await DrainAsync(cancellationToken).ConfigureAwait(false);
             }
 
@@ -244,8 +244,16 @@ public sealed class InMemoryRuntime : IDisposable
     private async Task DrainAsync(CancellationToken cancellationToken)
     {
         await RelayAsync(cancellationToken).ConfigureAwait(false);
-        while (_queue.TryDequeue(out var envelope))
+        while (_queue.Count > 0)
         {
+            var index = Simulation?.PickNext(_queue) ?? 0;
+            var envelope = _queue[index];
+            _queue.RemoveAt(index);
+            if (Simulation?.Duplicate(envelope) == true)
+            {
+                _queue.Add(envelope); // the broker will deliver it again, later
+            }
+
             await _engine.HandleAsync(envelope, cancellationToken).ConfigureAwait(false);
             await RelayAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -256,11 +264,40 @@ public sealed class InMemoryRuntime : IDisposable
     {
         foreach (var envelope in await _store.TakeOutboxAsync(cancellationToken).ConfigureAwait(false))
         {
-            _queue.Enqueue(envelope);
+            _queue.Add(envelope);
         }
     }
 
     public void Dispose() => _gate.Dispose();
+
+    /// <summary>The simulator perturbing delivery (Skuld), if any.</summary>
+    internal ISimulation? Simulation { get; set; }
+
+    /// <summary>Adds a line to the journal on behalf of the simulator.</summary>
+    internal void Note(string message) => Log("skuld", null, message);
+
+    /// <summary>Every process instance and its status, in creation order.</summary>
+    internal IReadOnlyList<(string Process, string Key, ProcessStatus Status)> Instances() =>
+        Read(() => (IReadOnlyList<(string, string, ProcessStatus)>)[.. _store.Instances.Select(i => (i.Process, i.Key, i.Status))]);
+
+    /// <summary>Short, readable name of a message for journals and reports.</summary>
+    internal string Describe(Envelope envelope) => envelope.Kind switch
+    {
+        MessageKind.Reply => $"reply to {envelope.Process!.Process} {envelope.Process.Key}",
+        MessageKind.Timeout => $"timeout of {envelope.Process!.Process} {envelope.Process.Key}",
+        _ => $"{_types.TypeOf(envelope.Type).Name}{(envelope.Process is { } p ? $" ({p.Key})" : string.Empty)}",
+    };
+
+    private bool Fault(Envelope command, Type commandType)
+    {
+        if (_faults.GetValueOrDefault(commandType) > 0)
+        {
+            _faults[commandType]--;
+            return true;
+        }
+
+        return Simulation?.Fault(command, commandType) ?? false;
+    }
 
     private void Register(params Type?[] types)
     {
