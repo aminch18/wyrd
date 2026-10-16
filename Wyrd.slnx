@@ -2,11 +2,13 @@
   <Folder Name="/samples/">
     <Project Path="samples/Shop.Api/Shop.Api.csproj" />
     <Project Path="samples/Shop.Console/Shop.Console.csproj" />
+    <Project Path="samples/Shop.Tests/Shop.Tests.csproj" />
     <Project Path="samples/Shop/Shop.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Wyrd.Analyzers.CodeFixes/Wyrd.Analyzers.CodeFixes.csproj" />
     <Project Path="src/Wyrd.Analyzers/Wyrd.Analyzers.csproj" />
+    <Project Path="src/Wyrd.Testing/Wyrd.Testing.csproj" />
     <Project Path="src/Wyrd/Wyrd.csproj" />
   </Folder>
   <Folder Name="/tests/">

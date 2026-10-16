@@ -18,6 +18,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Storage port (`IWyrdStore`) with a deterministic in-memory implementation.
 - `Projection<TView>`: read models kept up to date from events with pure functions, stored in the same transaction;
   `View<TView>(key)` and `Views<TView>()` to query them. Redelivered messages are never applied twice.
+- `Wyrd.Testing` package: `Scenario.For(slice).Given(...).When(...).Then(...)/ThenRejected(...)/ThenState(...)` and
+  `Scenario.For(projection).Given(...).Then(key, view)`; every expectation checks the JSON round trip.
+- `samples/Shop.Tests`: the shop's business specifications.
 - `InMemoryRuntime` is safe to share across concurrent requests (one message at a time, like a queue consumer).
 - `samples/Shop.Api`: the shop as a minimal HTTP API with a `.http` walkthrough; the console sample moves to
   `samples/Shop.Console` and the domain becomes the `samples/Shop` library.

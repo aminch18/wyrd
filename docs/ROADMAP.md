@@ -47,6 +47,7 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] Deterministic message ids
 - [x] Projections (read models) with redelivery protection
 - [x] Thread-safe in-memory host; `samples/Shop.Api` HTTP sample
+- [x] `Wyrd.Testing`: Given/When/Then for slices and projections, with JSON round-trip checks; `samples/Shop.Tests`
 - [ ] Process outcomes as commands (`.OnCompensated(Orders.Cancel)`), so read models learn how a process ended
 - [ ] Source-generated JSON contexts (AOT)
 
@@ -54,7 +55,6 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 
 - [ ] Steps that read the process state, not only the trigger
 - [ ] Typed invokers via source generator (drop `DynamicInvoke` in the pipe syntax)
-- [ ] Given/When/Then testing package (`Wyrd.Testing`)
 - [ ] **Exhaustive failure simulation**: failures, retries, duplicates, reordering, timeouts
 - [ ] First analyzers: exhaustive `[Union]` switch, missing compensation, `Await` without timeout
 - [ ] Analyzer: `wyrd_process_style` enforcement with code fix fluent ⇄ pipe

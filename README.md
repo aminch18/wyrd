@@ -259,6 +259,30 @@ dotnet run --project samples/Shop.Console
 dotnet run --project samples/Shop.Console -- --diagram   # print the process as Mermaid
 ```
 
+## Tests read like business specifications ✅
+
+`Wyrd.Testing` turns slices and projections into Given/When/Then specifications. They are pure: no runtime,
+no database, no mocks — and they work with any test framework.
+
+```csharp
+[Fact]
+public void an_order_is_never_charged_twice() =>
+    Scenario.For(new ChargePaymentSlice())
+        .Given(new PaymentCharged("A-1", 89m))      // what already happened
+        .When(new ChargePayment("A-1", 89m))        // what is asked
+        .ThenRejected(PaymentError.AlreadyCharged); // what the business decides
+
+[Fact]
+public void a_shipped_order_shows_as_shipped() =>
+    Scenario.For(new OrderSummaries())
+        .Given(new OrderPlaced("A-1", "KEYBOARD", 1, 89m), new OrderShipped("A-1"))
+        .Then("A-1", new OrderSummary("A-1", "KEYBOARD", 1, 89m, "Shipped"));
+```
+
+Every expectation also checks that events, states and views survive a JSON round trip — exactly what happens
+when Wyrd stores them — so a state that can't be persisted fails a unit test, not production.
+See [`samples/Shop.Tests`](samples/Shop.Tests).
+
 ## Living documentation ✅
 
 Every process renders itself (`process.ToMermaid()`):
@@ -291,16 +315,6 @@ $ dotnet wyrd simulate
   Payment refunded, but stock is still reserved.
 ```
 
-### Tests are just data 🔜
-
-```csharp
-[Fact]
-public void cannot_charge_twice() =>
-    Given(new Payment.Charged(89m))
-      .When(new ChargePayment("A-1", 89m))
-      .Then(PaymentError.AlreadyCharged);
-```
-
 ### Built for agents 🔜
 
 Most event-driven code will be written by AI agents. Wyrd is designed so they can't get it wrong quietly:
@@ -323,9 +337,11 @@ src/Wyrd.Analyzers/        Roslyn analyzers, shipped inside the Wyrd package
 src/Wyrd.Analyzers.CodeFixes/  IDE code fixes, shipped inside the Wyrd package
 tests/Wyrd.Tests/          unit and runtime tests
 tests/Wyrd.Analyzers.Tests analyzer tests
+src/Wyrd.Testing/          Given/When/Then scenarios (package)
 samples/Shop/              the shop's domain: slices, contracts, process, read models
 samples/Shop.Api/          the shop as an HTTP API
 samples/Shop.Console/      the shop as a console walkthrough
+samples/Shop.Tests/        the shop's business specifications
 docs/                      roadmap and design notes
 ```
 
