@@ -9,6 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Spectre.Console" />
+    <PackageReference Include="Spectre.Console.Cli" />
+    <PackageReference Include="YamlDotNet" />
     <ProjectReference Include="..\Wyrd\Wyrd.csproj" />
   </ItemGroup>
 

@@ -9,6 +9,11 @@ public class AsyncApiTests
     [InlineData("int", "type: integer")]
     [InlineData("long", "type: integer")]
     [InlineData("short", "type: integer")]
+    [InlineData("byte", "type: integer")]
+    [InlineData("sbyte", "type: integer")]
+    [InlineData("ushort", "type: integer")]
+    [InlineData("uint", "type: integer")]
+    [InlineData("ulong", "type: integer")]
     [InlineData("decimal", "type: number")]
     [InlineData("double", "type: number")]
     [InlineData("float", "type: number")]
@@ -21,6 +26,10 @@ public class AsyncApiTests
     [InlineData("IReadOnlyList<Guid>", "type: array\n            items:\n              type: string\n              format: uuid")]
     [InlineData("List<int>", "type: array\n            items:\n              type: integer")]
     [InlineData("string[]", "type: array\n            items:\n              type: string")]
+    [InlineData("IReadOnlyList<string?>", "type: array\n            items:\n              type: string")]
+    [InlineData("ImmutableList<string?>", "type: array\n            items:\n              type: string")]
+    [InlineData("ImmutableArray<uint>", "type: array\n            items:\n              type: integer")]
+    [InlineData("IReadOnlyCollection<Guid?>", "type: array\n            items:\n              type: string\n              format: uuid")]
     [InlineData("CustomThing", "type: object\n            description: \"CustomThing\"")]
     public void maps_snapshot_types_to_schema(string type, string expected)
     {
@@ -73,5 +82,34 @@ public class AsyncApiTests
         var error = Assert.Throws<FormatException>(() => Contracts.Parse("# comment\n\nwrong line"));
 
         Assert.Contains("line 3", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void nested_nullable_collections_preserve_the_element_type()
+    {
+        var schema = SchemaType.Parse("ImmutableArray<IReadOnlyList<string?>?>?");
+
+        Assert.Equal("array", schema.Type);
+        Assert.Equal("array", schema.Items!.Type);
+        Assert.Equal(new SchemaType("string"), schema.Items.Items);
+    }
+
+    [Fact]
+    public void unknown_generic_type_descriptions_keep_angle_brackets()
+    {
+        var yaml = AsyncApi.Generate(Contracts.Parse("example.done v1 | Value: Dictionary<string, int>"), "x", "1");
+
+        Assert.Contains("description: \"Dictionary<string, int>\"", yaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\u003", yaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void sample_document_is_unchanged_by_the_serializer_refactor()
+    {
+        var directory = Path.Combine(AppContext.BaseDirectory, "Samples");
+        var contracts = Contracts.Parse(File.ReadAllText(Path.Combine(directory, "contracts.wyrd.txt")));
+        var expected = File.ReadAllText(Path.Combine(directory, "asyncapi.yaml")).ReplaceLineEndings("\n");
+
+        Assert.Equal(expected, AsyncApi.Generate(contracts, "Shop", "0.0.0"));
     }
 }

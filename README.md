@@ -340,6 +340,8 @@ dotnet wyrd diagram --assembly samples/Shop/bin/Debug/net10.0/Shop.dll --output 
 
 `asyncapi` emits AsyncAPI 3.0 YAML (use `--title` and `--version` to set document metadata). `diagram` finds
 public static process properties and fields. Both commands write to stdout when `--output` is omitted.
+Use `dotnet wyrd --help` or `dotnet wyrd asyncapi --help` for command and option descriptions. Invalid inputs
+are reported on stderr with a nonzero exit code, so redirected documents stay clean.
 
 ## Coming next
 
