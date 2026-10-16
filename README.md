@@ -22,6 +22,10 @@ never runs leaves stock reserved. It all compiles. It all passes the happy-path 
 DDD, event-driven and saga theory, applied correctly by construction, so teams can focus on what actually matters:
 understanding the business and modelling it well.
 
+**The vision:** bring DDD to the functional paradigm in everyday C#, so that the people who understand the
+business can build distributed systems — and .NET engineers become *product engineers*: domain, architecture
+and code, three in one.
+
 - **You write pure functions.** Command + state in, event or error out. No `DbContext`, no publisher, no `await`.
 - **Wyrd owns the side effects.** Retries, timeouts, compensations, idempotency and (soon) the outbox are the framework's job.
 - **The process is data.** Six declarative lines that a reviewer can read, and that Wyrd can run, draw, simulate and replay.
