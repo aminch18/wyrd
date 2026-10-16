@@ -49,3 +49,23 @@ dotnet run --project samples/Shop.Api   # http://localhost:5080, see Shop.Api.ht
 - The runtime must stay deterministic: no wall-clock time, no randomness, no unordered iteration that changes the journal.
 - File-scoped namespaces, immutable types, records for data.
 - Tests: xUnit, `snake_case` method names describing behaviour.
+
+## Working in parallel
+
+Several agents may work on this repository at the same time. To stay out of each other's way:
+
+- **Never commit to `main`.** Work on a branch (`<agent>/<topic>`, e.g. `codex/wyrd-tool`, `feature/skuld`) and open
+  a pull request. CI must be green; one concern per PR.
+- **Use your own working copy.** If another agent is using a folder, create a `git worktree` for your branch.
+- **Stay in your scope.** Tasks live in `docs/tasks/`, each with its files in and out of bounds. If you need to change
+  something outside your scope, don't: say so in the PR.
+- **Shared files:** in `CHANGELOG.md` add your lines under *Unreleased* only; in `docs/ROADMAP.md` tick only your
+  items; in `README.md` add or edit only your own section. Rebase on `main` before opening the PR.
+- **Commits:** imperative summary line, a body explaining what and why. No AI attribution trailers.
+
+### Current assignments
+
+| Work | Owner | Branch | In bounds |
+|---|---|---|---|
+| Skuld — simulation (v0.3) | Claude | `feature/skuld` | `src/Wyrd/**`, `src/Wyrd.Testing/**`, `tests/Wyrd.Tests/**`, `samples/**` |
+| [Task 001](docs/tasks/001-wyrd-tool.md) — `dotnet wyrd` tool | Codex | `codex/wyrd-tool` | `src/Wyrd.Tool/**`, `tests/Wyrd.Tool.Tests/**`, generated sample docs |
