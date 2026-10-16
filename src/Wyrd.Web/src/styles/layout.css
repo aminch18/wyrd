@@ -1,0 +1,23 @@
+.site-header { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(18px); }
+.nav-shell { height: 72px; display: flex; align-items: center; justify-content: space-between; }
+.brand { width: 116px; height: 42px; position: relative; border: 0; background: none; padding: 0; display: inline-flex; align-items: center; cursor: pointer; }
+.brand-image { position: absolute; inset: 0; display: block; background-repeat: no-repeat; background-size: 714px auto; background-position: center -20px; }
+.brand-image-light { display: none; background-position: center -16px; }
+.app[data-theme='light'] .brand-image-dark { display: none; }
+.app[data-theme='light'] .brand-image-light { display: block; }
+.nav-links { display: flex; align-items: center; gap: 28px; }
+.nav-links button, .nav-links a { border: 0; background: none; padding: 8px 0; display: inline-flex; gap: 6px; align-items: center; cursor: pointer; color: var(--muted); font-size: 14px; font-weight: 600; }
+.nav-links button:hover, .nav-links a:hover, .nav-links .active { color: var(--heading); }
+.nav-links .nav-cta { padding: 10px 16px; border: 1px solid color-mix(in srgb, var(--cyan) 38%, transparent); border-radius: 8px; color: var(--cyan); background: color-mix(in srgb, var(--cyan) 8%, transparent); }
+.nav-links .theme-toggle { width: 34px; height: 34px; padding: 0; justify-content: center; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); }
+.nav-links .theme-toggle:hover { color: var(--cyan); border-color: color-mix(in srgb, var(--cyan) 45%, transparent); }
+.menu-button { display: none; border: 0; background: transparent; }
+
+footer { border-top: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 90%, #000); }
+.footer-inner { min-height: 180px; display: grid; grid-template-columns: 1fr auto auto; gap: 70px; align-items: center; }
+.footer-inner > div:first-child p { color: var(--muted); font-size: 12px; }
+.footer-links { display: flex; gap: 24px; }
+.footer-links button, .footer-links a { padding: 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; }
+.footer-links button:hover, .footer-links a:hover { color: var(--heading); }
+.footer-note { color: var(--muted); font-size: 11px; }
+.app[data-theme='light'] footer { background: #dfe9e6; }
