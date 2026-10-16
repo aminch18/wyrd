@@ -29,3 +29,4 @@ dotnet run --project samples/Shop
 - Keep them focused; one concern per PR.
 - Add tests. Runtime behaviour is tested through `InMemoryRuntime`.
 - Update `CHANGELOG.md` under *Unreleased*.
+- Releases are cut from tags; see [docs/RELEASING.md](docs/RELEASING.md).

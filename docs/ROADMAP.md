@@ -1,7 +1,7 @@
 # Roadmap
 
 Wyrd's identity is **determinism**: pure deciders + a process model as data, with every side effect owned by the framework.
-Releases are named after the Norn they unlock.
+Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged `-alpha.n`. See [RELEASING.md](RELEASING.md).
 
 ## ✅ v0.0 — Spike
 
@@ -21,7 +21,7 @@ Releases are named after the Norn they unlock.
 - [x] `samples/Shop`: four vertical slices, six scenarios
 - [x] Library scaffolding: central package management, MinVer, SourceLink, CI (3 OSes), templates
 
-## v0.1 — Messages done right ([design](design/messages.md))
+## v0.1 — Messages done right ([design](design/messages.md)) · preview `0.1.0-alpha.1`
 
 - [x] Message taxonomy: `ICommand`, `IDomainEvent`, `IIntegrationEvent` + `[IntegrationEvent(name, Version)]`
 - [x] Contracts split from slices: `Slice<TCommand, TState, TEvent, TError>`

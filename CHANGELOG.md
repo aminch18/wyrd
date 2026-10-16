@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.1.0-alpha.1] - 2026-10-16
+
+First preview: the core model, a deterministic in-memory runtime and versioned integration contracts.
+
 ### Added
 
 - Message taxonomy: `ICommand`, `IDomainEvent`, `IIntegrationEvent` and `[IntegrationEvent(name, Version)]`.
@@ -25,3 +29,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Deterministic `InMemoryRuntime` with a virtual clock: retries for transient faults, compensation in reverse order,
   timeouts, duplicate detection and correlation.
 - `samples/Shop`: an order fulfillment process across four vertical slices.
+
+[Unreleased]: https://github.com/aminch18/wyrd/compare/v0.1.0-alpha.1...HEAD
+[0.1.0-alpha.1]: https://github.com/aminch18/wyrd/releases/tag/v0.1.0-alpha.1
