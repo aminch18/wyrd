@@ -1,10 +1,12 @@
 <div align="center">
 
-# Wyrd
+<img src="src/Wyrd.Web/public/wyrd-logo-dark-compact.png" alt="Wyrd" width="300" height="130" />
 
 **Deterministic event-driven processes for .NET.**
 
 *Event-driven that's no longer weird.*
+
+[Website & documentation](https://aminch18.github.io/wyrd/) · [Philosophy](docs/guides/philosophy.md) · [From DDD to Wyrd](docs/guides/from-ddd-to-wyrd.md) · [Roadmap](docs/ROADMAP.md)
 
 </div>
 
@@ -18,9 +20,10 @@ Sagas, outboxes, retries and compensations are where event-driven systems quietl
 message charges a customer twice, a missing timeout leaves an order stuck forever, a compensation that
 never runs leaves stock reserved. It all compiles. It all passes the happy-path tests.
 
-**Wyrd makes the correct version the only one that compiles** — whether it's written by a human or by an AI agent.
-DDD, event-driven and saga theory, applied correctly by construction, so teams can focus on what actually matters:
-understanding the business and modelling it well.
+**Make the business decision explicit. Let the framework execute its consequences.**
+Wyrd brings functional domain modeling and declarative process policies to everyday C#. A command and current
+state produce an accepted fact or a rejection. State evolves from accepted facts. A process describes how those
+decisions connect over time, while the runtime owns the message-handling mechanics around them.
 
 **The vision:** bring DDD to the functional paradigm in everyday C#, so that the people who understand the
 business can build distributed systems — and .NET engineers become *product engineers*: domain, architecture
@@ -32,6 +35,47 @@ and code, three in one.
 - **Commands, domain events and integration events are different things** — and the compiler knows it.
 - **Integration events are versioned contracts.** Breaking a published event is a build error, not a production incident.
 - **Deterministic by design.** Same inputs, same outcome, every time.
+
+## Why this changes the way you model
+
+DDD starts with the business: its language, its boundaries, and the rules that must always hold. Wyrd keeps
+those ideas. It changes how behavior is expressed, from a method that checks and mutates an aggregate to a pure
+decision against immutable state, followed by an explicit state transition.
+
+That is a separation of responsibilities, not a removal of behavior. Your order still owns its invariants.
+Its entities retain their identities. A `Money` value still owns its currency rules. Shared policies belong
+close to the domain and must be used by every relevant decision; splitting commands into slices is not a
+reason to duplicate rules or split a consistency boundary.
+
+The practical difference is what a reviewer has to understand. To review whether an order may be cancelled,
+read a decision and its specifications. To review what happens after a payment times out, read the process
+policy. You should not need to reconstruct a business workflow from a chain of handlers and infrastructure
+callbacks before you can challenge the rule.
+
+```text
+Command + current state  →  domain event or rejection
+Current state + event   →  next state
+Process policy         →  next command, wait, retry, or compensation
+```
+
+The domain chooses what is allowed and what failure means. The runtime supplies the execution mechanics.
+Determinism makes the result reproducible; it does not prove that the business rule itself is correct.
+
+This uses ordinary C# records, methods, and pattern matching. It does not require an event-sourced storage
+model or a microservices deployment: the current host loads serialized state, and the Shop sample is a
+modular monolith. Domain boundaries and deployment boundaries are separate choices.
+
+### Start with the mental model
+
+- [The Wyrd philosophy](docs/guides/philosophy.md): why decisions, effects, and processes have distinct responsibilities; when that separation helps.
+- [From classic DDD to Wyrd](docs/guides/from-ddd-to-wyrd.md): the same order-cancellation rule in both styles, with aggregates, entities, value objects, invariants, repositories, and events mapped one by one.
+- [Quick start](#quick-start): see the concrete APIs after the architectural change makes sense.
+- [The Shop sample](samples/Shop) and [business specifications](samples/Shop.Tests): follow the model in working code.
+
+Start with one meaningful behavior or bounded context. Wyrd is not a requirement to rewrite an application,
+and a simple CRUD screen may not benefit from a command/event/process model. Today the runtime is in memory
+and loses its data on restart; durable storage, transports, simulation, and recorded-instance replay remain
+roadmap capabilities rather than production guarantees.
 
 ## The three Norns
 
@@ -364,8 +408,14 @@ and deterministic tooling (`dotnet wyrd` CLI and an MCP server).
 
 ## What Wyrd guarantees — and what it doesn't
 
-Wyrd guarantees **structural** correctness: effects are owned by the framework, every step is compensated or
-explicitly not, every wait can time out, duplicates are detected, failures are visible.
+Wyrd provides structure and execution policies around pure business decisions: the current in-memory runtime
+handles declared retries, timeouts and compensation, detects duplicate delivery, and records process progress.
+Its analyzers enforce specific message and contract rules. They do not yet reject every unsafe process definition;
+additional process analyzers are on the roadmap.
+
+Atomic handling of one envelope is not an atomic transaction across an entire business process. Compensation
+is a domain action that can itself fail, not an erasure of the original action. The current host is not durable
+across restarts, and production storage and transport integrations are still planned.
 
 It does **not** know your business rules. If you compute the tax wrong, Wyrd will deterministically compute it wrong.
 
@@ -378,11 +428,13 @@ src/Wyrd.Analyzers.CodeFixes/  IDE code fixes, shipped inside the Wyrd package
 tests/Wyrd.Tests/          unit and runtime tests
 tests/Wyrd.Analyzers.Tests analyzer tests
 src/Wyrd.Testing/          Given/When/Then scenarios (package)
+src/Wyrd.Tool/             AsyncAPI and Mermaid documentation CLI
+src/Wyrd.Web/              marketing site and framework documentation
 samples/Shop/              the shop's domain: slices, contracts, process, read models
 samples/Shop.Api/          the shop as an HTTP API
 samples/Shop.Console/      the shop as a console walkthrough
 samples/Shop.Tests/        the shop's business specifications
-docs/                      roadmap and design notes
+docs/                      philosophy, DDD migration guide, roadmap and design notes
 ```
 
 ## License

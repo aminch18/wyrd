@@ -83,12 +83,12 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 Wyrd is a paradigm shift for most .NET teams: functional DDD instead of mutable aggregates. Teaching the
 mental model matters as much as the code.
 
-- [ ] Guide: **From classic DDD to Wyrd** — aggregate root, entities, value objects, invariants, repositories
+- [x] Guide: **[From classic DDD to Wyrd](guides/from-ddd-to-wyrd.md)** — aggregate root, entities, value objects, invariants, repositories
       and domain events mapped one by one, with the same example written both ways
 - [ ] Rich aggregate in `samples/Shop`: `Order` with `OrderLine` entities and a `Money` value object;
       `AddLine`, `CancelLine` and `CancelOrder` slices sharing invariants defined on the state; API endpoints
-- [ ] Guidance: shared invariants live as methods on the state record, never duplicated across slices
-      (possible analyzer: all slices of one state live in one module)
+- [x] Guidance: shared invariants live on the state or in pure domain policies, never duplicated across slices
+      (covered in the DDD guide; an analyzer for state-module cohesion is still a possible future addition)
 - [ ] Guide: modelling read models (projections) for screens and reports
 - [ ] Docs site with the mental model first, API reference second
 
