@@ -31,7 +31,7 @@ internal static class AnalyzerHarness
 
         ImmutableArray<AdditionalText> files = contracts is null ? [] : [new InMemoryText("contracts.wyrd.txt", contracts)];
         var diagnostics = await compilation
-            .WithAnalyzers([new ContractAnalyzer()], new AnalyzerOptions(files))
+            .WithAnalyzers([new ContractAnalyzer(), new SliceAnalyzer(), new NamingAnalyzer()], new AnalyzerOptions(files))
             .GetAnalyzerDiagnosticsAsync();
 
         return [.. diagnostics.OrderBy(d => d.Id, StringComparer.Ordinal)];

@@ -6,6 +6,9 @@
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
 WYRD0001 | Wyrd.Messages | Error | A message is either a command or an event
+WYRD0002 | Wyrd.Messages | Error | A command has exactly one owner
+WYRD0003 | Wyrd.Messages | Info | Name events in the past tense
+WYRD0004 | Wyrd.Messages | Info | Name commands in the imperative
 WYRD0101 | Wyrd.Messages | Error | Integration events must not expose domain types
 WYRD0102 | Wyrd.Messages | Error | Integration events need a name, a version and IIntegrationEvent
 WYRD0200 | Wyrd.Contracts | Warning | Integration event is missing from the contract snapshot

@@ -32,8 +32,8 @@ Releases are named after the Norn they unlock.
 - [x] Multi-version publishing (several publications per domain event)
 - [ ] Code fix: write the suggested line into `contracts.wyrd.txt`
 - [ ] Upcasters for subscribers (consume V1 as V2)
-- [ ] Analyzer: one owner per command at compile time (today: runtime check)
-- [ ] Analyzer: naming (imperative commands, past-tense events)
+- [x] Analyzer: one owner per command at compile time (WYRD0002)
+- [x] Analyzer: naming suggestions, imperative commands and past-tense events (WYRD0003, WYRD0004)
 - [ ] AsyncAPI generation
 
 ## v0.2 — Skuld (simulate the future)

@@ -14,6 +14,24 @@ internal static class Diagnostics
         "'{0}' is both a command and an event. A command is an intention that can be rejected; an event is a fact that already happened. Split it into two types.",
         Messages, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink);
 
+    public static readonly DiagnosticDescriptor MultipleOwners = new(
+        "WYRD0002",
+        "A command has exactly one owner",
+        "Command '{0}' is decided by more than one slice ({1}). An intention needs exactly one owner: keep one slice, or split the command.",
+        Messages, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink, customTags: WellKnownDiagnosticTags.CompilationEnd);
+
+    public static readonly DiagnosticDescriptor EventNaming = new(
+        "WYRD0003",
+        "Name events in the past tense",
+        "Event '{0}' should be named in the past tense, as a fact that already happened (e.g. 'PaymentCharged', 'OrderShipped').",
+        Messages, DiagnosticSeverity.Info, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly DiagnosticDescriptor CommandNaming = new(
+        "WYRD0004",
+        "Name commands in the imperative",
+        "Command '{0}' reads like an event ('{1}'). Name it as an intention in the imperative (e.g. 'ChargePayment', 'ShipOrder').",
+        Messages, DiagnosticSeverity.Info, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
     public static readonly DiagnosticDescriptor LeaksDomainType = new(
         "WYRD0101",
         "Integration events must not expose domain types",
