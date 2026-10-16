@@ -31,7 +31,7 @@ jobs:
       - run: dotnet build --no-restore -c Release
       - run: dotnet test --no-build -c Release
       - name: Sample smoke test
-        run: dotnet run --no-build -c Release --project samples/Shop
+        run: dotnet run --no-build -c Release --project samples/Shop.Console
 
       - name: Pack
         if: matrix.os == 'ubuntu-latest'

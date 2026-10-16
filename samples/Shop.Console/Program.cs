@@ -42,6 +42,13 @@ Flush("5. The customer abandons 3-D Secure: timeout, refund, release");
 await shop.SendAsync(new PlaceOrder("A-1001", "KEYBOARD", 1, 89m));
 Flush("6. The customer double-clicks \"Buy\": the second order is rejected");
 
+Console.WriteLine();
+Write(ConsoleColor.White, "Orders screen (read model):");
+foreach (var order in shop.Views<OrderSummary>())
+{
+    Write(ConsoleColor.Gray, $"  {order.OrderId}  {order.Quantity} x {order.Sku,-9} {order.Amount,8:0.00}  {order.Status}");
+}
+
 var keyboards = shop.StateOf<StockItem>("KEYBOARD").Available;
 Console.WriteLine();
 Write(ConsoleColor.White, $"Keyboards in stock: {keyboards} (5 received, 2 shipped, every failed order released its units)");

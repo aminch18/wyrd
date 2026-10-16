@@ -222,16 +222,37 @@ through an `Upcaster<PaymentChargedV1, PaymentChargedV2>` — each subscriber re
 | A command decided by two slices | `WYRD0002` — **build error** |
 | Events not in the past tense, commands that read like events | `WYRD0003`, `WYRD0004` — suggestions |
 
-## Try the sample
+## Try the samples
 
-[`samples/Shop`](samples/Shop) is a modular monolith: Orders, Inventory, Payments and Shipping slices, public
-contracts in `Contracts/` with their `contracts.wyrd.txt`, and an order fulfillment process running six
-real-world scenarios: happy path, flaky payment gateway, card declined, out of stock, abandoned 3-D Secure
-and a double-clicked "Buy" button.
+[`samples/Shop`](samples/Shop) is the domain of a small shop, as a modular monolith: Orders, Inventory, Payments
+and Shipping slices, public contracts in `Contracts/` with their `contracts.wyrd.txt`, the order fulfillment
+process and an orders read model. Two hosts run it:
+
+**A real HTTP API** — [`samples/Shop.Api`](samples/Shop.Api), with every request ready in
+[`Shop.Api.http`](samples/Shop.Api/Shop.Api.http):
 
 ```bash
-dotnet run --project samples/Shop
-dotnet run --project samples/Shop -- --diagram   # print the process as Mermaid
+dotnet run --project samples/Shop.Api      # http://localhost:5080
+```
+
+```http
+POST /orders              { "orderId": "A-1001", "sku": "KEYBOARD", "quantity": 1, "amount": 89 }   -> 202
+GET  /orders              [{ "orderId": "A-1001", "status": "Paid", ... }]
+POST /webhooks/payments   { "orderId": "A-1001" }                                                    -> 202
+GET  /orders/A-1001       { "order": { "status": "Shipped", ... }, "fulfillment": "Completed" }
+POST /orders              (same order again)                                       -> 409 AlreadyPlaced
+```
+
+Plus developer endpoints to read the journal, make the payment gateway flaky and jump the clock forward.
+It runs on the in-memory runtime; PostgreSQL and RabbitMQ will replace one line of configuration.
+
+**A console walkthrough** — [`samples/Shop.Console`](samples/Shop.Console): six scenarios (happy path, flaky
+gateway with an early confirmation, card declined, out of stock, abandoned 3-D Secure, double-clicked "Buy")
+with a colored journal.
+
+```bash
+dotnet run --project samples/Shop.Console
+dotnet run --project samples/Shop.Console -- --diagram   # print the process as Mermaid
 ```
 
 ## Living documentation ✅
@@ -298,7 +319,9 @@ src/Wyrd.Analyzers/        Roslyn analyzers, shipped inside the Wyrd package
 src/Wyrd.Analyzers.CodeFixes/  IDE code fixes, shipped inside the Wyrd package
 tests/Wyrd.Tests/          unit and runtime tests
 tests/Wyrd.Analyzers.Tests analyzer tests
-samples/Shop/              a runnable, vertically sliced example
+samples/Shop/              the shop's domain: slices, contracts, process, read models
+samples/Shop.Api/          the shop as an HTTP API
+samples/Shop.Console/      the shop as a console walkthrough
 docs/                      roadmap and design notes
 ```
 

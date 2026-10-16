@@ -14,7 +14,8 @@ Wyrd is a .NET 10 / C# 14 library for deterministic event-driven processes. Read
 - `src/Wyrd.Analyzers.CodeFixes` — IDE code fixes (needs Workspaces, so it can't live in the analyzer assembly).
 - `tests/Wyrd.Tests` — unit and runtime tests. Runtime behaviour is tested through `InMemoryRuntime`.
 - `tests/Wyrd.Analyzers.Tests` — compile a snippet with `AnalyzerHarness.Analyze(source, contracts)`.
-- `samples/Shop` — runnable vertical-slice sample with its `contracts.wyrd.txt`; CI runs it as a smoke test.
+- `samples/Shop` — the sample domain (library) with its `contracts.wyrd.txt`; hosted by `samples/Shop.Api`
+  (minimal API + `.http` file) and `samples/Shop.Console` (CI runs it as a smoke test).
 - Package versions live in `Directory.Packages.props`; shared settings in the `Directory.Build.props` files.
 
 ## Commands
@@ -22,7 +23,8 @@ Wyrd is a .NET 10 / C# 14 library for deterministic event-driven processes. Read
 ```bash
 dotnet build   # warnings are errors
 dotnet test
-dotnet run --project samples/Shop
+dotnet run --project samples/Shop.Console
+dotnet run --project samples/Shop.Api   # http://localhost:5080, see Shop.Api.http
 ```
 
 ## Principles

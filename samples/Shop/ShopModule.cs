@@ -20,5 +20,6 @@ public static class ShopModule
         .AddSlice(new ShipOrderSlice())
         .AddPublication(new PaymentChargedPublication())
         .AddPublication(new OrderShippedPublication())
+        .AddProjection(new OrderSummaries())
         .AddProcess(Processes.OrderFulfillment);
 }

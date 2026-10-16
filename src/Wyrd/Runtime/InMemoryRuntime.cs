@@ -8,7 +8,7 @@ namespace Wyrd.Runtime;
 /// distributed runtime — messages, replies, JSON, outbox, inbox, durable timers — but deterministically:
 /// same inputs, same journal, every time. Use it for local development, tests, simulation and replay.
 /// </summary>
-public sealed class InMemoryRuntime
+public sealed class InMemoryRuntime : IDisposable
 {
     private static readonly DateTimeOffset Epoch = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
@@ -19,6 +19,7 @@ public sealed class InMemoryRuntime
     private readonly Dictionary<Type, int> _faults = [];
     private readonly List<JournalEntry> _journal = [];
     private readonly Engine _engine;
+    private readonly SemaphoreSlim _gate = new(1, 1);
     private DateTimeOffset _now = Epoch;
     private long _ids;
 
@@ -30,13 +31,15 @@ public sealed class InMemoryRuntime
     /// <summary>Virtual time elapsed since the runtime started.</summary>
     public TimeSpan Now => _now - Epoch;
 
-    public IReadOnlyList<JournalEntry> Journal => _journal;
+    public IReadOnlyList<JournalEntry> Journal => Read(() => (IReadOnlyList<JournalEntry>)[.. _journal]);
 
     /// <summary>Every accepted domain event, in order (as stored, after a JSON round trip).</summary>
-    public IReadOnlyList<IDomainEvent> History => [.. _store.Events.Select(e => (IDomainEvent)_types.Deserialize(e.Type, e.Payload))];
+    public IReadOnlyList<IDomainEvent> History =>
+        Read(() => (IReadOnlyList<IDomainEvent>)[.. _store.Events.Select(e => (IDomainEvent)_types.Deserialize(e.Type, e.Payload))]);
 
     /// <summary>Every integration event published to other contexts, in order.</summary>
-    public IReadOnlyList<IIntegrationEvent> Published => [.. _store.Published.Select(e => (IIntegrationEvent)_types.Deserialize(e.Type, e.Payload))];
+    public IReadOnlyList<IIntegrationEvent> Published =>
+        Read(() => (IReadOnlyList<IIntegrationEvent>)[.. _store.Published.Select(e => (IIntegrationEvent)_types.Deserialize(e.Type, e.Payload))]);
 
     /// <summary>Registers the single owner of a command type.</summary>
     public InMemoryRuntime AddSlice<TCommand, TState, TEvent, TError>(Slice<TCommand, TState, TEvent, TError> slice)
@@ -102,6 +105,19 @@ public sealed class InMemoryRuntime
     public async Task<Decision> SendAsync(ICommand command, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await SendCoreAsync(command, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task<Decision> SendCoreAsync(ICommand command, CancellationToken cancellationToken)
+    {
         var key = Keys.Of(_registry.OwnerOf(command.GetType()).KeyOf(command));
         Log(Engine.External, key, $"-> {command.GetType().Name}");
 
@@ -125,24 +141,40 @@ public sealed class InMemoryRuntime
     public async Task PublishAsync(IIntegrationEvent @event, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(@event);
-        var (type, payload) = _types.Serialize(@event);
-        _queue.Enqueue(new Envelope(NextId(), MessageKind.Event, type, payload));
-        await DrainAsync(cancellationToken).ConfigureAwait(false);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var (type, payload) = _types.Serialize(@event);
+            _queue.Enqueue(new Envelope(NextId(), MessageKind.Event, type, payload));
+            await DrainAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     /// <summary>Moves the virtual clock forward, delivering every timer and scheduled retry that falls due, in order.</summary>
     public async Task AdvanceAsync(TimeSpan by, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(by, TimeSpan.Zero);
-        var until = _now + by;
-        while (await _store.TakeNextDueAsync(until, cancellationToken).ConfigureAwait(false) is { } due)
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            _now = due.At > _now ? due.At : _now;
-            _queue.Enqueue(due.Envelope);
-            await DrainAsync(cancellationToken).ConfigureAwait(false);
-        }
+            var until = _now + by;
+            while (await _store.TakeNextDueAsync(until, cancellationToken).ConfigureAwait(false) is { } due)
+            {
+                _now = due.At > _now ? due.At : _now;
+                _queue.Enqueue(due.Envelope);
+                await DrainAsync(cancellationToken).ConfigureAwait(false);
+            }
 
-        _now = until;
+            _now = until;
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     /// <summary>Makes the next <paramref name="times"/> executions of a command, sent by a process, fail transiently.</summary>
@@ -150,23 +182,23 @@ public sealed class InMemoryRuntime
         where TCommand : ICommand
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(times, 1);
-        _faults[typeof(TCommand)] = _faults.GetValueOrDefault(typeof(TCommand)) + times;
+        Read(() => _faults[typeof(TCommand)] = _faults.GetValueOrDefault(typeof(TCommand)) + times);
     }
 
     public ProcessStatus? StatusOf(Process process, object key)
     {
         ArgumentNullException.ThrowIfNull(process);
         ArgumentNullException.ThrowIfNull(key);
-        return _store.Instance(process.Name, Keys.Of(key))?.Status;
+        return Read(() => _store.Instance(process.Name, Keys.Of(key))?.Status);
     }
 
     public TState StateOf<TState>(object key)
         where TState : IState<TState>
     {
         ArgumentNullException.ThrowIfNull(key);
-        return _store.State(typeof(TState).FullName!, Keys.Of(key)) is { } state
+        return Read(() => _store.State(typeof(TState).FullName!, Keys.Of(key)) is { } state
             ? (TState)_types.Deserialize(state.Type, state.Payload)
-            : TState.Initial;
+            : TState.Initial);
     }
 
     /// <summary>Reads one document of a read model, or null.</summary>
@@ -174,15 +206,15 @@ public sealed class InMemoryRuntime
         where TView : class
     {
         ArgumentNullException.ThrowIfNull(key);
-        return _store.View(typeof(TView).FullName!, Keys.Of(key)) is { Payload: { } payload, Type: { } type }
+        return Read(() => _store.View(typeof(TView).FullName!, Keys.Of(key)) is { Payload: { } payload, Type: { } type }
             ? (TView)_types.Deserialize(type, payload)
-            : null;
+            : null);
     }
 
     /// <summary>Reads every document of a read model, in creation order.</summary>
     public IReadOnlyList<TView> Views<TView>()
         where TView : class =>
-        [.. _store.Views(typeof(TView).FullName!).Select(v => (TView)_types.Deserialize(v.Type!, v.Payload!))];
+        Read(() => (IReadOnlyList<TView>)[.. _store.Views(typeof(TView).FullName!).Select(v => (TView)_types.Deserialize(v.Type!, v.Payload!))]);
 
     private async Task DrainAsync(CancellationToken cancellationToken)
     {
@@ -200,6 +232,21 @@ public sealed class InMemoryRuntime
         foreach (var envelope in await _store.TakeOutboxAsync(cancellationToken).ConfigureAwait(false))
         {
             _queue.Enqueue(envelope);
+        }
+    }
+
+    public void Dispose() => _gate.Dispose();
+
+    private T Read<T>(Func<T> read)
+    {
+        _gate.Wait();
+        try
+        {
+            return read();
+        }
+        finally
+        {
+            _gate.Release();
         }
     }
 

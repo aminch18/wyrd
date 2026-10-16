@@ -18,6 +18,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Storage port (`IWyrdStore`) with a deterministic in-memory implementation.
 - `Projection<TView>`: read models kept up to date from events with pure functions, stored in the same transaction;
   `View<TView>(key)` and `Views<TView>()` to query them. Redelivered messages are never applied twice.
+- `InMemoryRuntime` is safe to share across concurrent requests (one message at a time, like a queue consumer).
+- `samples/Shop.Api`: the shop as a minimal HTTP API with a `.http` walkthrough; the console sample moves to
+  `samples/Shop.Console` and the domain becomes the `samples/Shop` library.
 
 ## [0.1.0-alpha.1] - 2026-10-16
 

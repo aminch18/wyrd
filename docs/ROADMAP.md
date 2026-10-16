@@ -46,6 +46,8 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] Early events parked until the process reaches the matching `Await`
 - [x] Deterministic message ids
 - [x] Projections (read models) with redelivery protection
+- [x] Thread-safe in-memory host; `samples/Shop.Api` HTTP sample
+- [ ] Process outcomes as commands (`.OnCompensated(Orders.Cancel)`), so read models learn how a process ended
 - [ ] Source-generated JSON contexts (AOT)
 
 ## v0.3 — Skuld (simulate the future)
