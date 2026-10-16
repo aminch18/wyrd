@@ -31,7 +31,7 @@ Releases are named after the Norn they unlock.
 - [x] Contract snapshots (`contracts.wyrd.txt`) + breaking-change detection (WYRD0200–0204), shipped in the package
 - [x] Multi-version publishing (several publications per domain event)
 - [ ] Code fix: write the suggested line into `contracts.wyrd.txt`
-- [ ] Upcasters for subscribers (consume V1 as V2)
+- [x] Upcasters for subscribers: each subscriber gets a fact once, in its version (chained v1 -> v2 -> v3)
 - [x] Analyzer: one owner per command at compile time (WYRD0002)
 - [x] Analyzer: naming suggestions, imperative commands and past-tense events (WYRD0003, WYRD0004)
 - [ ] AsyncAPI generation

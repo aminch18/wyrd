@@ -16,7 +16,8 @@ public sealed class InMemoryRuntime
     private readonly Dictionary<(Type State, object Key), object> _states = [];
     private readonly Dictionary<(string Process, object Key), ProcessInstance> _instances = [];
     private readonly Dictionary<Type, int> _faults = [];
-    private readonly Queue<IEvent> _pending = new();
+    private readonly Dictionary<(string Name, int Version), IUpcasterHandler> _upcasters = [];
+    private readonly Queue<Fact> _pending = new();
     private readonly List<IDomainEvent> _history = [];
     private readonly List<IIntegrationEvent> _published = [];
     private readonly List<JournalEntry> _journal = [];
@@ -46,6 +47,27 @@ public sealed class InMemoryRuntime
     {
         ArgumentNullException.ThrowIfNull(publication);
         _publications.Add(publication);
+        return this;
+    }
+
+    /// <summary>Registers an upcaster from one contract version to the next.</summary>
+    public InMemoryRuntime AddUpcaster<TFrom, TTo>(Upcaster<TFrom, TTo> upcaster)
+        where TFrom : IIntegrationEvent
+        where TTo : IIntegrationEvent
+    {
+        ArgumentNullException.ThrowIfNull(upcaster);
+        IUpcasterHandler handler = upcaster;
+        if (handler.From.Name != handler.To.Name || handler.To.Version != handler.From.Version + 1)
+        {
+            throw new InvalidOperationException(
+                $"An upcaster moves one contract one version forward, but {upcaster.GetType().Name} maps {handler.From} to {handler.To}.");
+        }
+
+        if (!_upcasters.TryAdd((handler.From.Name, handler.From.Version), handler))
+        {
+            throw new InvalidOperationException($"There is already an upcaster from {handler.From}.");
+        }
+
         return this;
     }
 
@@ -91,7 +113,7 @@ public sealed class InMemoryRuntime
     public void Publish(IIntegrationEvent @event)
     {
         ArgumentNullException.ThrowIfNull(@event);
-        _pending.Enqueue(@event);
+        _pending.Enqueue(Fact.Of(@event));
         Drain();
     }
 
@@ -151,14 +173,20 @@ public sealed class InMemoryRuntime
         {
             _states[id] = ((IState)state).Apply(accepted.Event);
             _history.Add(accepted.Event);
-            _pending.Enqueue(accepted.Event);
+            _pending.Enqueue(Fact.Of(accepted.Event));
 
+            var versions = new List<IEvent>();
             foreach (var publication in _publications.Where(p => p.Source == accepted.Event.GetType()))
             {
                 var published = publication.Map(accepted.Event);
                 _published.Add(published);
-                _pending.Enqueue(published);
+                versions.Add(published);
                 Log(NoProcess, id.Item2, $"published {published.GetType().Name}");
+            }
+
+            if (versions.Count > 0)
+            {
+                _pending.Enqueue(new Fact(versions));
             }
         }
 
@@ -167,43 +195,89 @@ public sealed class InMemoryRuntime
 
     private void Drain()
     {
-        while (_pending.TryDequeue(out var @event))
+        while (_pending.TryDequeue(out var fact))
         {
-            Route(@event);
+            Route(fact);
         }
     }
 
-    private void Route(IEvent @event)
+    private void Route(Fact fact)
     {
-        var type = @event.GetType();
-
-        foreach (var process in _processes.Where(p => p.Trigger == type))
+        foreach (var process in _processes)
         {
+            if (Resolve(fact, process.Trigger) is not { } @event)
+            {
+                continue;
+            }
+
             var key = process.KeyOf(@event);
             if (_instances.ContainsKey((process.Name, key)))
             {
-                Log(process.Name, key, $"duplicate {type.Name} ignored");
+                Log(process.Name, key, $"duplicate {@event.GetType().Name} ignored");
                 continue;
             }
 
             var instance = new ProcessInstance(process, key, @event);
             _instances.Add((process.Name, key), instance);
-            Log(instance, $"started by {type.Name}");
+            Log(instance, $"started by {@event.GetType().Name}");
             Run(instance);
         }
 
-        var waiting = _instances.Values
-            .Where(i => i.Awaiting is { } wait && wait.Event == type && Equals(wait.KeyOf!(@event), i.Key))
-            .ToList();
-
+        var waiting = _instances.Values.Where(i => i.Awaiting is not null).ToList();
         foreach (var instance in waiting)
         {
-            Log(instance, $"<- {type.Name}");
+            var wait = instance.Awaiting!;
+            if (Resolve(fact, wait.Event) is not { } @event || !Equals(wait.KeyOf!(@event), instance.Key))
+            {
+                continue;
+            }
+
+            Log(instance, $"<- {@event.GetType().Name}");
             instance.Status = ProcessStatus.Running;
             instance.Deadline = null;
             instance.Position++;
             Run(instance);
         }
+    }
+
+    /// <summary>
+    /// The form of a fact a subscriber understands: the exact type, or for integration events the same contract
+    /// in the subscriber's version, upcast from the closest older version when needed.
+    /// </summary>
+    private IEvent? Resolve(Fact fact, Type wanted)
+    {
+        var exact = fact.Versions.FirstOrDefault(v => v.GetType() == wanted);
+        if (exact is not null || Contract.Find(wanted) is not { } target)
+        {
+            return exact;
+        }
+
+        var older = fact.Versions
+            .OfType<IIntegrationEvent>()
+            .Select(v => (Event: v, Contract: Contract.Find(v.GetType())))
+            .Where(v => v.Contract is not null && v.Contract.Name == target.Name && v.Contract.Version < target.Version)
+            .OrderByDescending(v => v.Contract!.Version)
+            .FirstOrDefault();
+
+        if (older.Event is null)
+        {
+            return null;
+        }
+
+        var current = older.Event;
+        for (var version = older.Contract!.Version; version < target.Version; version++)
+        {
+            if (!_upcasters.TryGetValue((target.Name, version), out var upcaster))
+            {
+                throw new InvalidOperationException(
+                    $"A subscriber expects {target} but {target.Name} v{version} was published, and there is no upcaster from v{version}. Register one with AddUpcaster().");
+            }
+
+            current = upcaster.Map(current);
+        }
+
+        Log(NoProcess, null, $"upcast {older.Event.GetType().Name} -> {current.GetType().Name}");
+        return current;
     }
 
     private void Run(ProcessInstance instance)

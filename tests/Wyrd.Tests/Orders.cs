@@ -32,6 +32,24 @@ public sealed record PaymentChargedV1(string OrderId, decimal Amount) : IIntegra
 [IntegrationEvent("payments.payment-charged", Version = 2)]
 public sealed record PaymentChargedV2(string OrderId, decimal Amount, string Currency) : IIntegrationEvent;
 
+[IntegrationEvent("payments.payment-charged", Version = 3)]
+public sealed record PaymentChargedV3(string OrderId, decimal Amount, string Currency, string Channel) : IIntegrationEvent;
+
+public sealed class PaymentChargedV1ToV2 : Upcaster<PaymentChargedV1, PaymentChargedV2>
+{
+    public override PaymentChargedV2 Map(PaymentChargedV1 previous) => new(previous.OrderId, previous.Amount, "EUR");
+}
+
+public sealed class PaymentChargedV2ToV3 : Upcaster<PaymentChargedV2, PaymentChargedV3>
+{
+    public override PaymentChargedV3 Map(PaymentChargedV2 previous) => new(previous.OrderId, previous.Amount, previous.Currency, "web");
+}
+
+public sealed class PaymentChargedV1ToV3 : Upcaster<PaymentChargedV1, PaymentChargedV3>
+{
+    public override PaymentChargedV3 Map(PaymentChargedV1 previous) => new(previous.OrderId, previous.Amount, "EUR", "web");
+}
+
 public enum StockError
 {
     OutOfStock,
@@ -150,6 +168,10 @@ public static class Shipping
     public static ShipOrder Ship(OrderPlaced e) => new(e.OrderId);
 
     public static ShipOrder ShipPaid(PaymentChargedV1 e) => new(e.OrderId);
+
+    public static ShipOrder ShipPaidV2(PaymentChargedV2 e) => new($"{e.OrderId}/{e.Currency}");
+
+    public static ShipOrder ShipPaidV3(PaymentChargedV3 e) => new($"{e.OrderId}/{e.Currency}/{e.Channel}");
 }
 
 // A pure decider with a closed state, used by DeciderTests.

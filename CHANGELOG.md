@@ -15,6 +15,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   integration events exposed separately from domain events (`Published`).
 - `Wyrd.Analyzers`, shipped inside the package: message rules (WYRD0001, WYRD0101, WYRD0102) and integration
   event contract snapshots in `contracts.wyrd.txt` with breaking-change detection (WYRD0200–WYRD0204).
+- `Upcaster<TFrom, TTo>`: subscribers receive integration events in the contract version they understand, upcast
+  step by step; during dual publishing each subscriber gets the fact once.
 - Analyzers: one slice per command (WYRD0002), naming suggestions for events and commands (WYRD0003, WYRD0004).
 
 - Process model as data with structural equality and Mermaid rendering.
