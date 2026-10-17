@@ -85,7 +85,7 @@ public sealed record StepNode(StepRef Action, StepRef? Compensation = null, Retr
 /// How the process ends when it is compensated: a command that tells the business (e.g. <c>CancelOrder</c>),
 /// so read models and other slices learn the outcome. Not a position in the flow.
 /// </summary>
-public sealed record CompensatedNode(StepRef Action) : ProcessNode;
+public sealed record CompensatedNode(StepRef Action, RetryPolicy? Retry = null) : ProcessNode;
 
 /// <summary>Waits for an external event correlated to the process instance.</summary>
 public sealed record AwaitNode(Type Event, TimeSpan? Timeout = null) : ProcessNode
@@ -109,7 +109,8 @@ internal static class NodeModifiers
     public static ProcessNode Retry(ProcessNode node, Attempts attempts, Backoff backoff) => node switch
     {
         StepNode step => step with { Retry = new RetryPolicy(attempts, backoff) },
-        _ => throw Misplaced(nameof(Retry), "a step", node),
+        CompensatedNode outcome => outcome with { Retry = new RetryPolicy(attempts, backoff) },
+        _ => throw Misplaced(nameof(Retry), "a step or OnCompensated", node),
     };
 
     public static ProcessNode Within(ProcessNode node, TimeSpan timeout) => node switch

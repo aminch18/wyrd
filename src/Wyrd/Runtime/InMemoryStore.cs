@@ -23,6 +23,8 @@ internal sealed class InMemoryStore : IWyrdStore
 
     public StoredInstance? Instance(string process, string key) => _instances.GetValueOrDefault((process, key));
 
+    public IEnumerable<StoredInstance> Instances => _instances.Values;
+
     public StoredView? View(string viewType, string key) => _views.GetValueOrDefault((viewType, key));
 
     public IEnumerable<StoredView> Views(string viewType) => _views.Values.Where(v => v.ViewType == viewType);

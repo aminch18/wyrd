@@ -17,6 +17,11 @@ export function TestingDoc() {
                 boundaries.
             </p>
             <CodeBlock code={SNIPPETS.testing} title="PaymentTests.cs" />
+            <p>
+                Specifications check one decision at a time. To check a whole
+                process against faults, duplicates and reordering, use{' '}
+                <a href="#/docs/simulation">Skuld simulation</a>.
+            </p>
             <h2>Source-generated serialization</h2>
             <p>
                 Production code resolves registered names through your generated{' '}

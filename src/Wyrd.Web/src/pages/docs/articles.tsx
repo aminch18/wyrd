@@ -7,6 +7,7 @@ import { ProcessesDoc } from './ProcessesDoc'
 import { ContractsDoc } from './ContractsDoc'
 import { TestingDoc } from './TestingDoc'
 import { RoadmapDoc } from './RoadmapDoc'
+import { SimulationDoc } from './SimulationDoc'
 import { ToolDoc } from './ToolDoc'
 
 export const DOC_COMPONENTS: Record<string, ComponentType> = {
@@ -15,6 +16,7 @@ export const DOC_COMPONENTS: Record<string, ComponentType> = {
     'from-ddd': FromDddDoc,
     messages: MessagesDoc,
     processes: ProcessesDoc,
+    simulation: SimulationDoc,
     contracts: ContractsDoc,
     tool: ToolDoc,
     'testing-aot': TestingDoc,

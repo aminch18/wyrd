@@ -33,6 +33,12 @@ export const DOC_SECTIONS: DocSection[] = [
             'Sagas as data: fluent & pipe syntax, retries, timeouts, compensations.',
     },
     {
+        id: 'simulation',
+        title: 'Simulation (Skuld)',
+        subtitle:
+            'Hostile futures, invariants, and exact replay of any broken run.',
+    },
+    {
         id: 'contracts',
         title: 'Versioned Contracts',
         subtitle:
@@ -60,21 +66,22 @@ export const DOC_SECTIONS: DocSection[] = [
 export const SNIPPETS = {
     fluentProcess: `public static Process OrderFulfillment => Process
     .StartOn<OrderPlaced>(e => e.OrderId)
-    .Then(Stock.Reserve).Undo(Stock.Release)
-    .Then(Payments.Charge).Retry(3.Times, Backoff.Exponential).Undo(Payments.Refund)
+    .Then(Stock.Reserve).Retry(5.Times).Undo(Stock.Release)
+    .Then(Payments.Charge).Retry(5.Times, Backoff.Exponential).Undo(Payments.Refund)
     .Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)
-    .Then(Shipping.Ship)
-    .OnCompensated(Orders.Cancel);`,
+    .Then(Shipping.Ship).Retry(5.Times)
+    .OnCompensated(Orders.Cancel).Retry(5.Times);`,
 
     pipeProcess: `using Wyrd.Pipe;
 using static Wyrd.Pipe.Pipeline;
 
 public static Process OrderFulfillment =>
     Start.On<OrderPlaced>(e => e.OrderId)
-      >> Step(Stock.Reserve).Undo(Stock.Release)
-      >> Step(Payments.Charge).Retry(3.Times, Backoff.Exponential).Undo(Payments.Refund)
+      >> Step(Stock.Reserve).Retry(5.Times).Undo(Stock.Release)
+      >> Step(Payments.Charge).Retry(5.Times, Backoff.Exponential).Undo(Payments.Refund)
       >> Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)
-      >> Step(Shipping.Ship);`,
+      >> Step(Shipping.Ship).Retry(5.Times)
+      >> OnCompensated(Orders.Cancel).Retry(5.Times);`,
 
     messages: `// An intention sent to exactly one owner
 public sealed record ChargePayment(string OrderId, decimal Amount) : ICommand;
@@ -164,6 +171,45 @@ public void a_shipped_order_shows_as_shipped() =>
     Scenario.For(new OrderSummaries())
         .Given(new OrderPlaced("A-1", "KEYBOARD", 1, 89m), new OrderShipped("A-1"))
         .Then("A-1", new OrderSummary("A-1", "KEYBOARD", 1, 89m, "Shipped"));`,
+
+    skuld: `private static readonly Invariant StockIsConserved = new("stock is conserved", shop =>
+{
+    var shipped = shop.Views<OrderSummary>().Where(o => o.Status == "Shipped").Sum(o => o.Quantity);
+    var available = shop.StateOf<StockItem>("KEYBOARD").Available;
+    return available == 5 - shipped ? null : $"{available} available, expected {5 - shipped}";
+});
+
+[Fact]
+public async Task the_business_holds_in_every_future()
+{
+    var report = await Skuld.SimulateAsync(
+        ShopModule.CreateRuntime,
+        async shop =>
+        {
+            await shop.SendAsync(new Restock("KEYBOARD", 5));
+            await shop.SendAsync(new PlaceOrder("A-1", "KEYBOARD", 1, 89m));
+            await shop.SendAsync(new PlaceOrder("A-2", "KEYBOARD", 2, 2_500m)); // card declined
+            await shop.PublishAsync(new PaymentConfirmed("A-1"));
+        },
+        [.. Invariant.Defaults, StockIsConserved],
+        new SimulationOptions { Runs = 200, FaultRate = 0.1, DuplicateRate = 0.1, ReorderRate = 0.3 });
+
+    report.ThrowIfViolated();
+}`,
+
+    skuldReport: `Skuld explored 200 futures: 85 broke an invariant.
+
+✗ "stock is conserved" broke in 41 futures. First: seed 3.
+  1 available, expected 4
+  Perturbations: ...; ReleaseStock (A-2) failed transiently; ...
+  Journal:
+    [00:00:00] OrderFulfillment A-2   rejected CardDeclined
+    [00:00:00] OrderFulfillment A-2   compensating
+    [00:00:00] OrderFulfillment A-2   -> ReleaseStock
+    [00:00:00] skuld                  ReleaseStock (A-2) failed transiently
+    [00:00:00] OrderFulfillment A-2   transient failure, no retry policy
+    [00:00:00] OrderFulfillment A-2   FAILED: Stock.Release could not run, needs attention
+  Replay it: Skuld.SimulateAsync(..., options.Only(3))`,
 
     aotJson: `[WyrdJsonContext]
 [JsonSerializable(typeof(ChargePayment))]

@@ -13,7 +13,7 @@ const ROADMAP = [
         'v0.3',
         'Skuld — simulation',
         'In progress',
-        'Exhaustive failure simulation, state-aware steps, typed invokers, and the first process analyzers.',
+        'Skuld simulation is available: seeded hostile futures, invariants, exact replay, and the engine fixes it found, such as fencing for unknown outcomes. Next: an analyzer for undos without retries, ordered projections, state-aware steps, and typed invokers.',
     ],
     [
         'v0.4',

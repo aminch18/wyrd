@@ -60,6 +60,7 @@ public enum StockError
 public enum PaymentError
 {
     Declined,
+    NothingToRefund,
 }
 
 // States are stored as JSON: they hold plain data (here, the names of what happened), never interfaces.
@@ -107,7 +108,7 @@ public sealed class RefundPaymentSlice : Slice<RefundPayment, EventLog, PaymentR
     public override object KeyOf(RefundPayment command) => command.OrderId;
 
     public override Result<PaymentRefunded, PaymentError> Decide(RefundPayment command, EventLog state) =>
-        new PaymentRefunded(command.OrderId);
+        state.Events.Contains(nameof(PaymentCharged)) ? new PaymentRefunded(command.OrderId) : PaymentError.NothingToRefund;
 }
 
 public sealed class ShipOrderSlice : Slice<ShipOrder, EventLog, OrderShipped, StockError>

@@ -26,6 +26,10 @@ export function ProcessesDoc() {
                     or exhausted faults.
                 </li>
                 <li>
+                    A step given up on with an unknown outcome is fenced by its
+                    undo: a late copy of it never executes.
+                </li>
+                <li>
                     Early awaited events are parked until the process reaches
                     the matching await.
                 </li>
