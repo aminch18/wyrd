@@ -37,7 +37,7 @@ export const GUARANTEES: Feature[] = [
     },
     {
         title: 'Processes are data',
-        copy: 'Run, draw, and inspect one model today, with simulation and replay on the roadmap.',
+        copy: 'Run, draw, inspect, and simulate one model today, with replay on the roadmap.',
         icon: Route,
     },
     {
@@ -52,9 +52,9 @@ export const NORNS: Norn[] = [
         name: 'Skuld',
         tense: 'what will be',
         label: 'Simulate',
-        status: 'In progress',
+        status: 'Available',
         icon: Sparkles,
-        copy: 'Explore failure, retry, duplicate, reordering, and timeout paths before production finds them.',
+        copy: 'Run your scenario in hundreds of hostile futures, with faults, duplicates, and reordering, and replay any broken one by its seed.',
     },
     {
         name: 'Urd',
