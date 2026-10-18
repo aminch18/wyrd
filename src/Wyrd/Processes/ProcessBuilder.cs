@@ -71,6 +71,7 @@ public sealed class ProcessBuilder<TTrigger>
     internal ProcessBuilder<TTrigger> Append(ProcessNode node)
     {
         NodeModifiers.EnsureAccepts(node, typeof(TTrigger));
+        node = NodeModifiers.Bind<TTrigger>(node);
         if (node is CompensatedNode outcome)
         {
             return _outcome is null
@@ -95,6 +96,7 @@ public sealed class ProcessBuilder<TTrigger>
 
         var modified = modify(_nodes[^1]);
         NodeModifiers.EnsureAccepts(modified, typeof(TTrigger));
+        modified = NodeModifiers.Bind<TTrigger>(modified);
         return new(_name, _keyOf, _nodes.SetItem(_nodes.Length - 1, modified), _outcome);
     }
 }

@@ -56,7 +56,8 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 ## v0.3 — Skuld (simulate the future)
 
 - [ ] Steps that read the process state, not only the trigger
-- [ ] Typed invokers via source generator (drop `DynamicInvoke` in the pipe syntax)
+- [x] Typed invokers in the pipe syntax, no reflection: `DynamicInvoke` is gone; plain delegates are bound to typed
+      calls through delegate variance when the stage is added (no source generator needed)
 - [x] **Failure simulation** (`Skuld.SimulateAsync`): seeded futures with transient faults, redelivery and reordering,
       timers on the clock, invariants (`Invariant.Defaults` + your own), replay by seed, actionable reports
 - [x] Engine fixes found by Skuld: attempt-aware replies (stale faults ignored), unknown-outcome steps compensated,

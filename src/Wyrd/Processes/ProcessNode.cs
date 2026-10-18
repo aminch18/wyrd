@@ -41,6 +41,10 @@ public sealed record StepRef(string Name)
         where TCommand : ICommand =>
         From(step) with { Input = typeof(TIn), Output = typeof(TCommand), Invoke = input => step((TIn)input) };
 
+    /// <summary>
+    /// A step given as a plain delegate (pipe syntax). It is bound to a typed call once the process trigger is known:
+    /// see <see cref="Bind{TTrigger}"/>.
+    /// </summary>
     internal static StepRef Untyped(Delegate step)
     {
         var reference = From(step);
@@ -51,23 +55,27 @@ public sealed record StepRef(string Name)
                 $"Step '{reference}' must take exactly one argument and return an ICommand.");
         }
 
-        return reference with
+        return reference with { Input = parameters[0].ParameterType, Output = step.Method.ReturnType, Raw = step };
+    }
+
+    /// <summary>The delegate of a step not bound yet (pipe syntax).</summary>
+    internal Delegate? Raw { get; init; }
+
+    /// <summary>
+    /// Turns a plain delegate into a typed call, without reflection: delegate variance makes a
+    /// <c>Func&lt;OrderPlaced, ReserveStock&gt;</c> a <c>Func&lt;OrderPlaced, ICommand&gt;</c>.
+    /// </summary>
+    internal StepRef Bind<TTrigger>()
+    {
+        if (Invoke is not null || Raw is null)
         {
-            Input = parameters[0].ParameterType,
-            Output = step.Method.ReturnType,
-            Invoke = input =>
-            {
-                try
-                {
-                    return (ICommand)step.DynamicInvoke(input)!;
-                }
-                catch (System.Reflection.TargetInvocationException ex) when (ex.InnerException is not null)
-                {
-                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(ex.InnerException);
-                    throw;
-                }
-            },
-        };
+            return this;
+        }
+
+        return Raw is Func<TTrigger, ICommand> step
+            ? this with { Invoke = input => step((TTrigger)input), Raw = null }
+            : throw new InvalidOperationException(
+                $"Step '{Name}' can't be called with {typeof(TTrigger).Name}: it must take {typeof(TTrigger).Name} (or a type it derives from) and return a command record.");
     }
 
     public bool Equals(StepRef? other) => other is not null && Name == other.Name;
@@ -135,6 +143,14 @@ internal static class NodeModifiers
     {
         AwaitNode wait => wait with { Timeout = timeout },
         _ => throw Misplaced(nameof(Within), "an Await", node),
+    };
+
+    /// <summary>Binds the steps of a node given as plain delegates to typed calls for this trigger.</summary>
+    public static ProcessNode Bind<TTrigger>(ProcessNode node) => node switch
+    {
+        StepNode step => step with { Action = step.Action.Bind<TTrigger>(), Compensation = step.Compensation?.Bind<TTrigger>() },
+        CompensatedNode outcome => outcome with { Action = outcome.Action.Bind<TTrigger>() },
+        _ => node,
     };
 
     /// <summary>Checks that step functions accept the process trigger.</summary>

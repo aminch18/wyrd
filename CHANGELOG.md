@@ -11,6 +11,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   (a step followed by others must say how it is undone) and WYRD0012 (`Await` without `.Within(...)`).
 - `.NoCompensation("why")`: declares that a step needs no undo, explicitly.
 
+### Changed
+
+- Pipe-syntax steps no longer use reflection to run: they are bound to typed calls (delegate variance) when the stage
+  is added, so a step may also take a more general type than the trigger.
+
 - `Wyrd.Tool`: generate AsyncAPI 3.0 documentation from reviewed contract snapshots and Mermaid diagrams from compiled processes, with Spectre CLI help and validation, typed YAML serialization, and nullable/immutable collection mapping.
 - `Wyrd.Web`: responsive marketing and framework documentation site with light/dark themes, IDE-matched code palettes, and automated GitHub Pages deployment.
 - Shared Markdown guides for the Wyrd philosophy and the transition from classic DDD, with equivalent cancellation examples, a concept map, and adoption guidance.
