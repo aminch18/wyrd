@@ -5,7 +5,7 @@
 - [x] Repository is public; description, topics and Discussions are set.
 - [x] Dependabot updates merged (GitHub Actions and test packages); stale merged branches deleted.
 - [x] CI runs build and test on Linux, Windows and macOS; Native AOT smoke test and pack stay on Linux.
-- [x] Release job pushes `.nupkg` and `.snupkg` to nuget.org when `NUGET_API_KEY` exists, and skips otherwise.
+- [x] Release job pushes `.nupkg` and `.snupkg` to nuget.org with Trusted Publishing when `NUGET_USER` is set, and skips otherwise.
 - [x] README opens with what Wyrd is, an honest preview status and a two-minute way to try it.
 - [x] `CODE_OF_CONDUCT.md`, issue templates (Discussions link) and `SECURITY.md` in place.
 - [x] Demo script and terminal recording script: [demo.md](demo.md), [demo.tape](demo.tape).
@@ -13,8 +13,8 @@
 
 ## Owner steps
 
-1. **NuGet key (once).** Follow "Publishing to nuget.org" in [../RELEASING.md](../RELEASING.md): reserve the `Wyrd*`
-   prefix, create an API key scoped to `Wyrd*` with push rights, add it as the repository secret `NUGET_API_KEY`.
+1. **NuGet Trusted Publishing (once).** Follow "Publishing to nuget.org" in [../RELEASING.md](../RELEASING.md): create
+   the trusted publishing policy on nuget.org and set the repository variable `NUGET_USER`. No API key needed.
 2. **Decide on the Verdandi status line.** The README says the durable runtime is in progress. If that changes before
    the tag, update the README warning and the `CHANGELOG.md` entry first.
 3. **Merge the launch PR**, then update `main` locally.

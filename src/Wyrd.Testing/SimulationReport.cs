@@ -52,7 +52,7 @@ public sealed class SimulationReport(int runs, SimulationOptions options, IReadO
             if (violation.Shrunk is { } shrunk)
             {
                 text.AppendLine(CultureInfo.InvariantCulture,
-                    $"  Smallest future that breaks it: {shrunk.Perturbations.Count} perturbations ({shrunk.Replays} replays; smallest found within budget).");
+                    $"  Smallest future that breaks it: {Count(shrunk.Perturbations.Count, "perturbation")} ({Count(shrunk.Replays, "replay")}; smallest found within budget).");
             }
 
             text.AppendLine(CultureInfo.InvariantCulture, $"  {violation.Shrunk?.Detail ?? violation.Detail}");
@@ -75,4 +75,6 @@ public sealed class SimulationReport(int runs, SimulationOptions options, IReadO
 
         return text.ToString();
     }
+
+    private static string Count(int count, string noun) => count == 1 ? $"1 {noun}" : $"{count} {noun}s";
 }

@@ -1,0 +1,63 @@
+.status-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border: 1px solid currentColor;
+    border-radius: 99px;
+    font:
+        normal 600 10px/1.2 'JetBrains Mono',
+        monospace;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+.status-badge.implemented {
+    color: var(--cyan);
+}
+.status-badge.planned {
+    color: var(--gold);
+}
+.status-badge.limit {
+    color: var(--muted);
+}
+.doc-table .rule-cell {
+    min-width: 0;
+}
+.doc-table .status-cell {
+    width: 1%;
+    min-width: 140px;
+}
+.decision-status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    align-items: center;
+    margin: 6px 0 14px;
+    color: var(--muted);
+    font-size: 13px;
+}
+.doc-article > .decision-status {
+    line-height: 1.5;
+}
+.roadmap-items {
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 6px;
+    color: var(--copy);
+    font-size: 13px;
+    line-height: 1.6;
+}
+.roadmap-items li {
+    display: grid;
+    grid-template-columns: 52px 1fr;
+    gap: 10px;
+}
+.roadmap-items li > span {
+    color: var(--muted);
+    font:
+        normal 600 10px/2 'JetBrains Mono',
+        monospace;
+}
+.roadmap-items li.done > span {
+    color: var(--cyan);
+}

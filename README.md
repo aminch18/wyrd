@@ -1,12 +1,12 @@
 <div align="center">
 
-<img src="src/Wyrd.Web/public/wyrd-logo-dark-compact.png" alt="Wyrd" width="300" height="130" />
+<img src="https://raw.githubusercontent.com/aminch18/wyrd/main/src/Wyrd.Web/public/wyrd-logo-dark-compact.png" alt="Wyrd" width="300" height="130" />
 
 **Deterministic event-driven processes for .NET.**
 
 *Event-driven that's no longer weird.*
 
-[Website & documentation](https://aminch18.github.io/wyrd/) · [Philosophy](docs/guides/philosophy.md) · [From DDD to Wyrd](docs/guides/from-ddd-to-wyrd.md) · [Roadmap](docs/ROADMAP.md)
+[Website & documentation](https://aminch18.github.io/wyrd/) · [Philosophy](https://github.com/aminch18/wyrd/blob/main/docs/guides/philosophy.md) · [From DDD to Wyrd](https://github.com/aminch18/wyrd/blob/main/docs/guides/from-ddd-to-wyrd.md) · [Roadmap](https://github.com/aminch18/wyrd/blob/main/docs/ROADMAP.md)
 
 </div>
 
@@ -18,7 +18,7 @@ idempotency, enforces versioned message contracts at compile time, and simulates
 > **Preview for feedback, not for production yet.** Available today: the message and process model, the analyzers
 > and contract snapshots, the in-memory runtime, `Wyrd.Testing`, the `dotnet wyrd` tool and **Skuld** (failure
 > simulation). The durable runtime (PostgreSQL, transports) is in progress. Everything marked ✅ works and is
-> covered by tests; 🔜 and 🚧 are designed and on the [roadmap](docs/ROADMAP.md). APIs may change before 1.0.
+> covered by tests; 🔜 and 🚧 are designed and on the [roadmap](https://github.com/aminch18/wyrd/blob/main/docs/ROADMAP.md). APIs may change before 1.0.
 > Please [tell us what you think](https://github.com/aminch18/wyrd/discussions).
 
 ## Try it in two minutes
@@ -32,9 +32,19 @@ dotnet test samples/Shop.Tests              # business specs, including Skuld ex
 dotnet run --project samples/Shop.Api       # the same shop as an HTTP API on http://localhost:5080
 ```
 
+Use it in your own project (.NET 10, C# 14):
+
+```bash
+dotnet add package Wyrd                    # model, in-memory runtime and analyzers
+dotnet add package Wyrd.Testing            # in your test project: Given/When/Then and Skuld
+dotnet tool install --global Wyrd.Tool     # optional: AsyncAPI and Mermaid docs (dotnet wyrd)
+```
+
+The [quick start](https://aminch18.github.io/wyrd/#/docs/quick-start) builds a first process step by step.
+
 Then break something on purpose: change a field type in `samples/Shop/Contracts/IntegrationEvents.cs` and
 rebuild to see `WYRD0201`, or remove a `.Retry(...)` from the order process and run the Skuld specs. The
-[demo script](docs/launch/demo.md) walks through both. Questions and ideas are welcome in
+[demo script](https://github.com/aminch18/wyrd/blob/main/docs/launch/demo.md) walks through both. Questions and ideas are welcome in
 [Discussions](https://github.com/aminch18/wyrd/discussions); the [documentation site](https://aminch18.github.io/wyrd/)
 has the mental model first and the details second.
 
@@ -91,11 +101,11 @@ modular monolith. Domain boundaries and deployment boundaries are separate choic
 
 ### Start with the mental model
 
-- [The Wyrd philosophy](docs/guides/philosophy.md): why decisions, effects, and processes have distinct responsibilities; when that separation helps.
-- [From classic DDD to Wyrd](docs/guides/from-ddd-to-wyrd.md): the same order-cancellation rule in both styles, with aggregates, entities, value objects, invariants, repositories, and events mapped one by one.
-- [Modelling read models](docs/guides/read-models.md): projections for screens and reports, ordering guarantees, testing, and query endpoints.
+- [The Wyrd philosophy](https://github.com/aminch18/wyrd/blob/main/docs/guides/philosophy.md): why decisions, effects, and processes have distinct responsibilities; when that separation helps.
+- [From classic DDD to Wyrd](https://github.com/aminch18/wyrd/blob/main/docs/guides/from-ddd-to-wyrd.md): the same order-cancellation rule in both styles, with aggregates, entities, value objects, invariants, repositories, and events mapped one by one.
+- [Modelling read models](https://github.com/aminch18/wyrd/blob/main/docs/guides/read-models.md): projections for screens and reports, ordering guarantees, testing, and query endpoints.
 - [Quick start](#quick-start): see the concrete APIs after the architectural change makes sense.
-- [The Shop sample](samples/Shop) and [business specifications](samples/Shop.Tests): follow the model in working code.
+- [The Shop sample](https://github.com/aminch18/wyrd/tree/main/samples/Shop) and [business specifications](https://github.com/aminch18/wyrd/tree/main/samples/Shop.Tests): follow the model in working code.
 
 Start with one meaningful behavior or bounded context. Wyrd is not a requirement to rewrite an application,
 and a simple CRUD screen may not benefit from a command/event/process model. Today the runtime is in memory
@@ -271,6 +281,9 @@ microseconds to test, and the journal is identical on every run.
 | Duplicate trigger (at-least-once delivery) → ignored | ✅ |
 | External events correlated by key | ✅ |
 | Undos always insist; one that never succeeds → **suspended**, then resumed or compensated by an operator | ✅ |
+| A redeploy that changes a process's structure suspends the instances in flight instead of running the wrong step | ✅ |
+| A step reads events of earlier steps (`Ship(OrderPlaced order, PaymentCharged charged)`), checked before the first message | ✅ |
+| Read models get the events of one stream in the order they happened | ✅ |
 
 ## Versioned integration contracts ✅
 
@@ -315,12 +328,12 @@ through an `Upcaster<PaymentChargedV1, PaymentChargedV2>` — each subscriber re
 
 ## Try the samples
 
-[`samples/Shop`](samples/Shop) is the domain of a small shop, as a modular monolith: Orders, Inventory, Payments
+[`samples/Shop`](https://github.com/aminch18/wyrd/tree/main/samples/Shop) is the domain of a small shop, as a modular monolith: Orders, Inventory, Payments
 and Shipping slices, public contracts in `Contracts/` with their `contracts.wyrd.txt`, the order fulfillment
 process and an orders read model. Two hosts run it:
 
-**A real HTTP API** — [`samples/Shop.Api`](samples/Shop.Api), with every request ready in
-[`Shop.Api.http`](samples/Shop.Api/Shop.Api.http):
+**A real HTTP API** — [`samples/Shop.Api`](https://github.com/aminch18/wyrd/tree/main/samples/Shop.Api), with every request ready in
+[`Shop.Api.http`](https://github.com/aminch18/wyrd/blob/main/samples/Shop.Api/Shop.Api.http):
 
 ```bash
 dotnet run --project samples/Shop.Api      # http://localhost:5080
@@ -337,7 +350,7 @@ POST /orders              (same order again)                                    
 Plus developer endpoints to read the journal, make the payment gateway flaky and jump the clock forward.
 It runs on the in-memory runtime, so its data is lost on restart; PostgreSQL and RabbitMQ hosts are planned.
 
-**A console walkthrough** — [`samples/Shop.Console`](samples/Shop.Console): six scenarios (happy path, flaky
+**A console walkthrough** — [`samples/Shop.Console`](https://github.com/aminch18/wyrd/tree/main/samples/Shop.Console): six scenarios (happy path, flaky
 gateway with an early confirmation, card declined, out of stock, abandoned 3-D Secure, double-clicked "Buy")
 with a colored journal.
 
@@ -425,7 +438,7 @@ public void a_shipped_order_shows_as_shipped() =>
 
 Every expectation also checks that events, states and views survive a JSON round trip — exactly what happens
 when Wyrd stores them — so a state that can't be persisted fails a unit test, not production.
-See [`samples/Shop.Tests`](samples/Shop.Tests).
+See [`samples/Shop.Tests`](https://github.com/aminch18/wyrd/tree/main/samples/Shop.Tests).
 
 ## Native AOT, source-generated JSON ✅
 
@@ -492,8 +505,9 @@ are reported on stderr with a nonzero exit code, so redirected documents stay cl
 
 Most event-driven code will be written by AI agents. Wyrd is designed so they can't get it wrong quietly:
 a tiny pure surface, and diagnostics written for a feedback loop — *what* is wrong, *why* it matters and
-*how* to fix it, like `WYRD0201` above. Next: process rules (missing compensation, `Await` without timeout)
-and more deterministic tooling (replay from the CLI and an MCP server).
+*how* to fix it, like `WYRD0201` above; the process rules (WYRD0011–0014) already ask for every retry, undo and
+time limit. Next: **Urd**, replaying a recorded instance as a test (`dotnet wyrd replay --as-test`), and an MCP
+server.
 
 ## What Wyrd guarantees — and what it doesn't
 
@@ -528,11 +542,11 @@ docs/                      philosophy, DDD migration guide, roadmap and design n
 
 ## License
 
-[MIT](LICENSE). Free for any use, forever.
+[MIT](https://github.com/aminch18/wyrd/blob/main/LICENSE). Free for any use, forever.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Requires the .NET 10 SDK (C# 14).
+See [CONTRIBUTING.md](https://github.com/aminch18/wyrd/blob/main/CONTRIBUTING.md) and the [Code of Conduct](https://github.com/aminch18/wyrd/blob/main/CODE_OF_CONDUCT.md). Requires the .NET 10 SDK (C# 14).
 
 ```bash
 dotnet test

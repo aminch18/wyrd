@@ -7,7 +7,7 @@ import { DocArticle } from './DocArticle'
 const FINDINGS = [
     [
         'An undo without retries leaves stock reserved after a single transient failure.',
-        'Every step that can be undone retries, and .OnCompensated(...) can .Retry(...) too.',
+        'Undos always insist with their own policy instead of borrowing one from the step, and every step declares .Retry(...) or .NoRetry("why") (WYRD0014).',
     ],
     [
         'A redelivered failure reply consumed an extra retry.',
@@ -25,8 +25,8 @@ const FINDINGS = [
 
 const LESSONS = [
     [
-        'Every step that can be undone retries.',
-        'Its undo uses the same policy. An undo that gives up after one transient failure leaves the world inconsistent.',
+        'Retries are decided, never assumed, and undos insist.',
+        'An undo that gives up after one transient failure leaves the world inconsistent. Every step declares .Retry(...) or .NoRetry("why") (WYRD0014), and undos always retry with their own adjustable policy.',
     ],
     [
         'A step given up on is fenced, never guessed.',
@@ -71,14 +71,19 @@ export function SimulationDoc() {
             <h2>Read the report, replay the future</h2>
             <p>
                 Each broken invariant comes with the first future that broke it:
-                the perturbations Skuld injected, the complete journal and the
-                seed. <code>options.Only(seed)</code> replays exactly that
-                future, as many times as you need to debug it.
+                the perturbations Skuld injected, the journal and the seed.
+                Skuld then shrinks the future: it replays it with fewer
+                perturbations while the invariant still breaks, and the report
+                shows the smallest failing future first (
+                <code>SimulationOptions.Shrink</code>, on by default, with at
+                most <code>ShrinkBudget</code> = 200 replays per broken future).{' '}
+                <code>options.Only(seed)</code> replays the original future
+                exactly, as many times as you need to debug it.
             </p>
             <CodeBlock
                 code={SNIPPETS.skuldReport}
                 language="text"
-                title="Test output"
+                title="Test output (a deliberately fragile process)"
             />
             <Callout title="A misconfigured simulation fails">
                 Zero runs or rates outside <code>[0, 1]</code> throw instead of
