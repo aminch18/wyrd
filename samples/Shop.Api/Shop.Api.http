@@ -74,6 +74,8 @@ Content-Type: application/json
 
 { "lineId": "extra", "sku": "KEYBOARD", "quantity": 2, "amount": 100, "currency": "EUR" }
 
+# Draft lines and total appear in details; order retains the existing fulfillment summary
+# and is null until the draft is submitted.
 ### Inspect draft lines and their total
 GET {{api}}/orders/D-1001
 

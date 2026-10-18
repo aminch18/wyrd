@@ -52,8 +52,13 @@ app.MapGet("/orders", (InMemoryRuntime wyrd) => wyrd.Views<OrderSummary>());
 app.MapGet("/order-details", (InMemoryRuntime wyrd) => wyrd.Views<OrderDetail>());
 
 app.MapGet("/orders/{orderId}", (string orderId, InMemoryRuntime wyrd) =>
-    wyrd.View<OrderDetail>(orderId) is { } order
-        ? Results.Ok(new { order, fulfillment = wyrd.StatusOf(Processes.OrderFulfillment, orderId)?.ToString() })
+    wyrd.View<OrderDetail>(orderId) is { } details
+        ? Results.Ok(new
+        {
+            order = wyrd.View<OrderSummary>(orderId),
+            details,
+            fulfillment = wyrd.StatusOf(Processes.OrderFulfillment, orderId)?.ToString(),
+        })
         : Results.NotFound());
 
 app.MapGet("/stock/{sku}", (string sku, InMemoryRuntime wyrd) =>
