@@ -4,6 +4,7 @@
 |---|---|
 | Branch | `codex/wyrd-mcp` |
 | Roadmap | v1.0 — "`dotnet wyrd` CLI + MCP server for agents" (the MCP half; the CLI exists) |
+| Starts after | v0.5 is done: the server exposes the finished CLI, `replay` included |
 
 Read first: `AGENTS.md` (review checklist), `src/Wyrd.Tool/**`, `tests/Wyrd.Tool.Tests/**`,
 `docs/tasks/001-wyrd-tool.md`, the [MCP specification](https://modelcontextprotocol.io/specification) and the

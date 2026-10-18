@@ -81,13 +81,14 @@ into `main`. Merge the latest `main` into your branch right before opening the P
 | v0.4 Urd: instance history capture, replay as a test | Claude | `feature/v0.4-urd` | `src/Wyrd/Runtime/**`, `src/Wyrd.Testing/**`, `src/Wyrd.Tool/Commands/Replay*`, `docs/design/**` |
 | Verdandi on PostgreSQL (parked until v0.4 ships) | Claude | `feature/verdandi` | `src/Wyrd.PostgreSql/**`, `tests/Wyrd.PostgreSql.Tests/**` |
 | [009](docs/tasks/009-docs-site.md) — docs site: mental model first, API reference second | Codex | `codex/docs-site` | `src/Wyrd.Web/**` |
-| [010](docs/tasks/010-native-aot-end-to-end.md) — Native AOT verified end to end | Codex | `codex/aot-end-to-end` | `samples/Shop.Api/**`, AOT steps in `ci.yml` |
-| [011](docs/tasks/011-wyrd-mcp-server.md) — `dotnet wyrd mcp` for agents | Codex | `codex/wyrd-mcp` | `src/Wyrd.Tool/Mcp/**`, `tests/Wyrd.Tool.Tests/**` |
-| [012](docs/tasks/012-process-snapshots.md) — process snapshots: a changed process fails CI | Codex | `codex/process-snapshots` | `src/Wyrd.Tool/Processes*`, `samples/Shop/processes.wyrd.txt` |
+| [010](docs/tasks/010-native-aot-end-to-end.md) — Native AOT verified end to end (**queued: starts after v0.5**) | Codex | `codex/aot-end-to-end` | `samples/Shop.Api/**`, AOT steps in `ci.yml` |
+| [011](docs/tasks/011-wyrd-mcp-server.md) — `dotnet wyrd mcp` for agents (**queued: starts after v0.5**) | Codex | `codex/wyrd-mcp` | `src/Wyrd.Tool/Mcp/**`, `tests/Wyrd.Tool.Tests/**` |
+| [012](docs/tasks/012-process-snapshots.md) — process snapshots: a changed process fails CI (**queued: starts after v0.5**) | Codex | `codex/process-snapshots` | `src/Wyrd.Tool/Processes*`, `samples/Shop/processes.wyrd.txt` |
 | [013](docs/tasks/013-opentelemetry-traces.md) — OpenTelemetry process traces (**starts after v0.4 merges**) | Codex | `codex/opentelemetry` | `src/Wyrd/Runtime/**` (tracing only) |
-| Next for Claude after v0.4: migration of in-flight instances (completes process versioning), then Verdandi | Claude | — | — |
+| Next for Claude after v0.4: Verdandi (v0.5), then the migration of in-flight instances (v1.0 process versioning) | Claude | — | — |
 
-Each task file lists its exact bounds. **Tasks come only from open items in `docs/ROADMAP.md`**, in milestone order;
+Each task file lists its exact bounds and, when it waits for a milestone, a *Starts after* line: a queued task is
+written ahead so nobody waits for a brief, but it is not started before then. **Tasks come only from open items in `docs/ROADMAP.md`**, in milestone order;
 an idea that is not on the roadmap is proposed to the owner first, never started.
 
 ## Review checklist (learned from earlier pull requests)
