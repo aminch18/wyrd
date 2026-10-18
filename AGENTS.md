@@ -68,9 +68,9 @@ Several agents may work on this repository at the same time. To stay out of each
 
 ### Base branch
 
-Branch from, and open pull requests into, **`main`** once release 0.3.0 is merged (PR #14); until then use
-`feature/v0.3-skuld`. Merge the latest base into your branch right before opening the PR and resolve conflicts
-yourself (`CHANGELOG.md`, `README.md` and the solution file are the usual ones).
+Tasks are written so they can be done from **`main`**: branch from the latest `main` and open the pull request
+into `main`. Merge the latest `main` into your branch right before opening the PR and resolve conflicts yourself
+(`CHANGELOG.md`, `README.md` and the solution file are the usual ones).
 
 ### Current assignments
 
