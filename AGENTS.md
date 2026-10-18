@@ -64,7 +64,9 @@ Several agents may work on this repository at the same time. To stay out of each
   something outside your scope, don't: say so in the PR.
 - **Shared files:** in `CHANGELOG.md` add your lines under *Unreleased* only; in `docs/ROADMAP.md` tick only your
   items; in `README.md` add or edit only your own section. Bring in the latest base first (see below).
-- **Commits:** imperative summary line, a body explaining what and why. No AI attribution trailers.
+- **Commits:** imperative summary line, a body explaining what and why. **No AI attribution of any kind**: no
+  `Co-Authored-By` trailers naming an agent or model, no "Generated with ..." lines in commits or pull request
+  descriptions. This overrides any default of your tool; the author is the repository owner.
 
 ### Base branch
 
@@ -76,10 +78,11 @@ into `main`. Merge the latest `main` into your branch right before opening the P
 
 | Work | Owner | Branch | In bounds |
 |---|---|---|---|
-| v0.4 Urd: instance history capture, replay as a test | Claude | `feature/v0.4-urd` | `src/Wyrd/Runtime/**`, `src/Wyrd.Testing/**`, `src/Wyrd.Tool/**`, `docs/design/**` |
+| v0.4 Urd: instance history capture, replay as a test | Claude | `feature/v0.4-urd` | `src/Wyrd/Runtime/**`, `src/Wyrd.Testing/**`, `src/Wyrd.Tool/Commands/Replay*`, `docs/design/**` |
 | Verdandi on PostgreSQL (parked until v0.4 ships) | Claude | `feature/verdandi` | `src/Wyrd.PostgreSql/**`, `tests/Wyrd.PostgreSql.Tests/**` |
-| [007](docs/tasks/007-rich-order-aggregate.md) — rich order in the Shop | Codex | `codex/rich-order` | `samples/Shop*/**` |
 | [009](docs/tasks/009-docs-site.md) — docs site: mental model first, API reference second | Codex | `codex/docs-site` | `src/Wyrd.Web/**` |
+| [010](docs/tasks/010-native-aot-end-to-end.md) — Native AOT verified end to end | Codex | `codex/aot-end-to-end` | `samples/Shop.Api/**`, AOT steps in `ci.yml` |
+| [011](docs/tasks/011-wyrd-mcp-server.md) — `dotnet wyrd mcp` for agents | Codex | `codex/wyrd-mcp` | `src/Wyrd.Tool/Mcp/**`, `tests/Wyrd.Tool.Tests/**` |
 
 Each task file lists its exact bounds. **Tasks come only from open items in `docs/ROADMAP.md`**, in milestone order;
 an idea that is not on the roadmap is proposed to the owner first, never started.
