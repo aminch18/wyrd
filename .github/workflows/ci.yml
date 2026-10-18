@@ -31,7 +31,13 @@ jobs:
       - run: dotnet build --no-restore -c Release
       - run: dotnet test --no-build -c Release
       - name: Sample smoke test
-        run: dotnet run --no-build -c Release --project samples/Shop
+        run: dotnet run --no-build -c Release --project samples/Shop.Console
+
+      - name: Native AOT smoke test
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          dotnet publish samples/Shop.Console -c Release -o aot
+          ./aot/Shop.Console
 
       - name: Pack
         if: matrix.os == 'ubuntu-latest'

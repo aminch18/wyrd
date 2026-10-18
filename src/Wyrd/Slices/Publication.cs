@@ -13,12 +13,16 @@ public abstract class Publication<TDomainEvent, TIntegrationEvent> : IPublicatio
 
     Type IPublicationHandler.Source => typeof(TDomainEvent);
 
+    Type IPublicationHandler.Target => typeof(TIntegrationEvent);
+
     IIntegrationEvent IPublicationHandler.Map(IDomainEvent domainEvent) => Map((TDomainEvent)domainEvent);
 }
 
 internal interface IPublicationHandler
 {
     Type Source { get; }
+
+    Type Target { get; }
 
     IIntegrationEvent Map(IDomainEvent domainEvent);
 }

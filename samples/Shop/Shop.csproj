@@ -1,12 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- The shop's domain: slices, contracts, the fulfillment process and read models. Hosted by Shop.Console and Shop.Api. -->
+
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Wyrd\Wyrd.csproj" />
-    <!-- With the NuGet package this is automatic; in this repo the analyzer is referenced directly. -->
+    <!-- With the NuGet package this is automatic; in this repo the analyzers are referenced directly. -->
     <ProjectReference Include="..\..\src\Wyrd.Analyzers\Wyrd.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\Wyrd.Analyzers.CodeFixes\Wyrd.Analyzers.CodeFixes.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>

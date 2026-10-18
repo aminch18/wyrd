@@ -6,6 +6,7 @@ internal static class Diagnostics
 {
     private const string Messages = "Wyrd.Messages";
     private const string Contracts = "Wyrd.Contracts";
+    private const string Json = "Wyrd.Json";
     private const string HelpLink = "https://github.com/aminch18/wyrd/blob/main/docs/design/messages.md";
 
     public static readonly DiagnosticDescriptor CommandAndEvent = new(
@@ -43,6 +44,24 @@ internal static class Diagnostics
         "Integration events need a name, a version and IIntegrationEvent",
         "'{0}' {1}. An integration event implements IIntegrationEvent and is marked with [IntegrationEvent(\"context.event-name\", Version = n)].",
         Messages, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly DiagnosticDescriptor MissingFromJsonContext = new(
+        "WYRD0300",
+        "Wyrd serializes this type: declare it in the JSON context",
+        "'{0}' is serialized by Wyrd but is not declared in {1}. Without it, storing or sending it fails at runtime under AOT. Add [JsonSerializable(typeof({0}))] to {1}.",
+        Json, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink, customTags: WellKnownDiagnosticTags.CompilationEnd);
+
+    public static readonly DiagnosticDescriptor UnionCaseNotDerived = new(
+        "WYRD0301",
+        "Union cases must be declared as JSON derived types",
+        "Union '{0}' stores its case '{1}' polymorphically, but '{1}' is not declared. Add [JsonDerivedType(typeof({0}.{1}), \"{1}\")] to '{0}'.",
+        Json, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink, customTags: WellKnownDiagnosticTags.CompilationEnd);
+
+    public static readonly DiagnosticDescriptor JsonNameCollision = new(
+        "WYRD0302",
+        "Types in the JSON context need unique names",
+        "'{0}' and {1} share the name '{2}' in {3}, which makes the System.Text.Json generator fail (SYSLIB1031). Declare it with [JsonSerializable(typeof({0}), TypeInfoPropertyName = \"{4}\")].",
+        Json, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink, customTags: WellKnownDiagnosticTags.CompilationEnd);
 
     public static readonly DiagnosticDescriptor NotInSnapshot = new(
         "WYRD0200",

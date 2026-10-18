@@ -30,9 +30,12 @@ Publishing to nuget.org is prepared in `.github/workflows/ci.yml` and will be en
 
 ## Packages
 
+All packages are versioned in **lockstep**: one tag versions every package, so `Wyrd 0.2.0` always goes with
+`Wyrd.Testing 0.2.0`. No compatibility matrix.
+
 | Package | Contents |
 |---|---|
-| `Wyrd` | Messages, slices, processes, runtime, analyzers and code fixes |
-| `Wyrd.Testing` *(planned)* | In-memory runtime, Given/When/Then, Skuld simulation |
-| `Wyrd.Tool` *(planned)* | `dotnet wyrd` CLI: Urd replay, diagrams, AsyncAPI |
+| `Wyrd` | Messages, slices, processes, projections, the engine and its in-memory host, analyzers and code fixes |
+| `Wyrd.Testing` | Given/When/Then scenarios for slices and projections; Skuld simulation *(planned)* |
+| `Wyrd.Tool` | `dotnet wyrd` CLI: AsyncAPI and diagrams; Urd replay *(planned)* |
 | `Wyrd.PostgreSql`, `Wyrd.RabbitMq`, `Wyrd.AspNetCore` *(planned)* | Verdandi: production infrastructure |

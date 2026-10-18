@@ -15,42 +15,42 @@ public class MessageRulesTests
     }
 
     [Fact]
-    public void a_command_without_owner_cannot_be_sent()
+    public async Task a_command_without_owner_cannot_be_sent()
     {
         var runtime = new InMemoryRuntime();
 
-        var ex = Assert.Throws<InvalidOperationException>(() => runtime.Send(new ChargePayment("A-1", 50)));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.SendAsync(new ChargePayment("A-1", 50)));
 
         Assert.Contains("No slice owns ChargePayment", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void domain_events_stay_internal_unless_explicitly_published()
+    public async Task domain_events_stay_internal_unless_explicitly_published()
     {
         var runtime = TestSystem.Create();
 
-        runtime.Send(new ReserveStock("A-1", 1));
+        await runtime.SendAsync(new ReserveStock("A-1", 1));
 
         Assert.Equal([new StockReserved("A-1")], runtime.History);
         Assert.Empty(runtime.Published);
     }
 
     [Fact]
-    public void a_publication_turns_a_domain_event_into_an_integration_event()
+    public async Task a_publication_turns_a_domain_event_into_an_integration_event()
     {
         var runtime = TestSystem.Create();
 
-        runtime.Send(new ChargePayment("A-1", 50));
+        await runtime.SendAsync(new ChargePayment("A-1", 50));
 
         Assert.Equal([new PaymentChargedV1("A-1", 50)], runtime.Published);
     }
 
     [Fact]
-    public void two_contract_versions_can_be_published_during_a_migration()
+    public async Task two_contract_versions_can_be_published_during_a_migration()
     {
         var runtime = TestSystem.Create().AddPublication(new PaymentChargedV2Publication());
 
-        runtime.Send(new ChargePayment("A-1", 50));
+        await runtime.SendAsync(new ChargePayment("A-1", 50));
 
         Assert.Equal<IIntegrationEvent>(
             [new PaymentChargedV1("A-1", 50), new PaymentChargedV2("A-1", 50, "EUR")],
@@ -58,11 +58,11 @@ public class MessageRulesTests
     }
 
     [Fact]
-    public void rejected_commands_publish_nothing()
+    public async Task rejected_commands_publish_nothing()
     {
         var runtime = TestSystem.Create();
 
-        runtime.Send(new ChargePayment("A-1", 5_000));
+        await runtime.SendAsync(new ChargePayment("A-1", 5_000));
 
         Assert.Empty(runtime.History);
         Assert.Empty(runtime.Published);

@@ -13,6 +13,7 @@ public sealed record ReleaseStock(string OrderId) : ICommand;
 public sealed record ChargePayment(string OrderId, decimal Amount) : ICommand;
 public sealed record RefundPayment(string OrderId) : ICommand;
 public sealed record ShipOrder(string OrderId) : ICommand;
+public sealed record CancelOrder(string OrderId) : ICommand;
 
 // Domain events: internal facts.
 public sealed record OrderPlaced(string OrderId, int Quantity, decimal Amount) : IDomainEvent;
@@ -21,6 +22,7 @@ public sealed record StockReleased(string OrderId) : IDomainEvent;
 public sealed record PaymentCharged(string OrderId, decimal Amount) : IDomainEvent;
 public sealed record PaymentRefunded(string OrderId) : IDomainEvent;
 public sealed record OrderShipped(string OrderId) : IDomainEvent;
+public sealed record OrderCancelled(string OrderId) : IDomainEvent;
 
 // Integration events: public, versioned contracts.
 [IntegrationEvent("psp.payment-confirmed")]
@@ -58,13 +60,15 @@ public enum StockError
 public enum PaymentError
 {
     Declined,
+    NothingToRefund,
 }
 
-public sealed record EventLog(ImmutableList<IDomainEvent> Events) : IState<EventLog>
+// States are stored as JSON: they hold plain data (here, the names of what happened), never interfaces.
+public sealed record EventLog(ImmutableList<string> Events) : IState<EventLog>
 {
     public static EventLog Initial { get; } = new([]);
 
-    public EventLog Evolve(IDomainEvent domainEvent) => new(Events.Add(domainEvent));
+    public EventLog Evolve(IDomainEvent domainEvent) => new(Events.Add(domainEvent.GetType().Name));
 }
 
 public sealed class PlaceOrderSlice : Slice<PlaceOrder, EventLog, OrderPlaced, OrderError>
@@ -104,7 +108,7 @@ public sealed class RefundPaymentSlice : Slice<RefundPayment, EventLog, PaymentR
     public override object KeyOf(RefundPayment command) => command.OrderId;
 
     public override Result<PaymentRefunded, PaymentError> Decide(RefundPayment command, EventLog state) =>
-        new PaymentRefunded(command.OrderId);
+        state.Events.Contains(nameof(PaymentCharged)) ? new PaymentRefunded(command.OrderId) : PaymentError.NothingToRefund;
 }
 
 public sealed class ShipOrderSlice : Slice<ShipOrder, EventLog, OrderShipped, StockError>
@@ -115,6 +119,14 @@ public sealed class ShipOrderSlice : Slice<ShipOrder, EventLog, OrderShipped, St
         new OrderShipped(command.OrderId);
 }
 
+public sealed class CancelOrderSlice : Slice<CancelOrder, EventLog, OrderCancelled, OrderError>
+{
+    public override object KeyOf(CancelOrder command) => command.OrderId;
+
+    public override Result<OrderCancelled, OrderError> Decide(CancelOrder command, EventLog state) =>
+        state.Events.Contains(nameof(OrderCancelled)) ? OrderError.AlreadyExists : new OrderCancelled(command.OrderId);
+}
+
 public sealed class PaymentChargedV1Publication : Publication<PaymentCharged, PaymentChargedV1>
 {
     public override PaymentChargedV1 Map(PaymentCharged domainEvent) => new(domainEvent.OrderId, domainEvent.Amount);
@@ -123,6 +135,20 @@ public sealed class PaymentChargedV1Publication : Publication<PaymentCharged, Pa
 public sealed class PaymentChargedV2Publication : Publication<PaymentCharged, PaymentChargedV2>
 {
     public override PaymentChargedV2 Map(PaymentCharged domainEvent) => new(domainEvent.OrderId, domainEvent.Amount, "EUR");
+}
+
+// A read model for screens: one summary per order, kept up to date from events.
+public sealed record OrderSummary(string OrderId, decimal Amount, string Status, int Charges = 0);
+
+public sealed class OrderSummaries : Projection<OrderSummary>
+{
+    public OrderSummaries()
+    {
+        On<OrderPlaced>(e => e.OrderId, (_, e) => new OrderSummary(e.OrderId, e.Amount, "Placed"));
+        On<PaymentCharged>(e => e.OrderId, (view, e) => view is null ? null : view with { Status = "Paid", Charges = view.Charges + 1 });
+        On<OrderShipped>(e => e.OrderId, (view, e) => view! with { Status = "Shipped" });
+        On<StockReleased>(e => e.OrderId, (view, e) => null); // a cancelled order disappears from the list
+    }
 }
 
 public static class TestSystem
@@ -136,6 +162,7 @@ public static class TestSystem
             .AddSlice(new ChargePaymentSlice())
             .AddSlice(new RefundPaymentSlice())
             .AddSlice(new ShipOrderSlice())
+            .AddSlice(new CancelOrderSlice())
             .AddPublication(new PaymentChargedV1Publication());
 
         foreach (var process in processes)
@@ -161,6 +188,11 @@ public static class Payment
     public static ChargePayment Charge(OrderPlaced e) => new(e.OrderId, e.Amount);
 
     public static RefundPayment Refund(OrderPlaced e) => new(e.OrderId);
+}
+
+public static class Orders
+{
+    public static CancelOrder Cancel(OrderPlaced e) => new(e.OrderId);
 }
 
 public static class Shipping

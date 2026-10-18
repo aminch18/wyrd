@@ -1,0 +1,90 @@
+.card {
+    color-scheme: dark;
+    overflow: hidden;
+    border: 1px solid var(--code-line);
+    border-radius: 11px;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    box-shadow: 0 25px 70px rgb(0 0 0 / 16%);
+}
+
+.header {
+    min-height: 44px;
+    padding: 0 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--code-line);
+    background: var(--code-header);
+    color: #a5adb5;
+    font:
+        500 11px/1.4 'JetBrains Mono',
+        monospace;
+}
+
+.caption,
+.actions {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+.caption {
+    min-width: 0;
+}
+.caption span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.language {
+    font-size: 10px;
+}
+.copy {
+    padding: 8px 0 8px 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 10px;
+}
+.copy:hover {
+    color: #fff;
+}
+.syntax pre {
+    overflow: auto;
+    margin: 0;
+    padding: 24px;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    font:
+        400 12px/1.9 'JetBrains Mono',
+        monospace;
+    tab-size: 4;
+}
+.syntax pre:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: -2px;
+}
+
+:global([data-theme='dark']) .syntax :global(.shiki),
+:global([data-theme='dark']) .syntax :global(.shiki) span {
+    color: var(--shiki-dark) !important;
+    background-color: var(--shiki-dark-bg) !important;
+    font-style: var(--shiki-dark-font-style) !important;
+    font-weight: var(--shiki-dark-font-weight) !important;
+    text-decoration: var(--shiki-dark-text-decoration) !important;
+}
+
+@media (max-width: 560px) {
+    .syntax pre {
+        padding: 18px;
+        font-size: 11px;
+    }
+    .language {
+        display: none;
+    }
+}

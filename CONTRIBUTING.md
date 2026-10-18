@@ -14,7 +14,7 @@ Requires the .NET 10 SDK.
 ```bash
 dotnet build
 dotnet test
-dotnet run --project samples/Shop
+dotnet run --project samples/Shop.Console
 ```
 
 ## Principles
