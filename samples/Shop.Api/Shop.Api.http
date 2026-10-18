@@ -57,3 +57,75 @@ GET {{api}}/dev/journal
 
 ### Integration events other services would receive
 GET {{api}}/dev/published
+
+# Rich orders start as drafts. Amount is the total for the line, not a unit price.
+# Lines are editable until submission. The existing fulfillment supports one SKU in EUR;
+# a draft with several SKUs or another currency must be adjusted before submission.
+
+### Add the first line: creates draft D-1001
+POST {{api}}/orders/D-1001/lines
+Content-Type: application/json
+
+{ "lineId": "keyboard", "sku": "KEYBOARD", "quantity": 1, "amount": 89, "currency": "EUR" }
+
+### Add another line with the same SKU
+POST {{api}}/orders/D-1001/lines
+Content-Type: application/json
+
+{ "lineId": "extra", "sku": "KEYBOARD", "quantity": 2, "amount": 100, "currency": "EUR" }
+
+# Draft lines and total appear in details; order retains the existing fulfillment summary
+# and is null until the draft is submitted.
+### Inspect draft lines and their total
+GET {{api}}/orders/D-1001
+
+### A line in a different currency is rejected
+POST {{api}}/orders/D-1001/lines
+Content-Type: application/json
+
+{ "lineId": "mixed", "sku": "KEYBOARD", "quantity": 1, "amount": 50, "currency": "USD" }
+
+### Remove the extra line before submission
+DELETE {{api}}/orders/D-1001/lines/extra
+
+### Submit the draft: starts the same fulfillment as PlaceOrder
+POST {{api}}/orders/D-1001/submit
+
+### A placed order cannot have its lines changed
+DELETE {{api}}/orders/D-1001/lines/keyboard
+
+### Draft cancellation cannot cancel a placed order or bypass its compensation
+POST {{api}}/orders/D-1001/cancel
+
+### Confirm payment for the submitted draft
+POST {{api}}/webhooks/payments
+Content-Type: application/json
+
+{ "orderId": "D-1001" }
+
+### Create another draft with several SKUs
+POST {{api}}/orders/D-1002/lines
+Content-Type: application/json
+
+{ "lineId": "keyboard", "sku": "KEYBOARD", "quantity": 1, "amount": 89 }
+
+###
+POST {{api}}/orders/D-1002/lines
+Content-Type: application/json
+
+{ "lineId": "mouse", "sku": "MOUSE", "quantity": 1, "amount": 30 }
+
+### Submission is rejected: multi-SKU fulfillment is not supported
+POST {{api}}/orders/D-1002/submit
+
+### Cancel the draft without starting fulfillment
+POST {{api}}/orders/D-1002/cancel
+
+### Cancelled orders cannot have lines added
+POST {{api}}/orders/D-1002/lines
+Content-Type: application/json
+
+{ "lineId": "extra", "sku": "KEYBOARD", "quantity": 1, "amount": 50 }
+
+### All order details, including drafts and cancelled drafts
+GET {{api}}/order-details

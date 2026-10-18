@@ -14,6 +14,13 @@ namespace Shop;
 /// </summary>
 [WyrdJsonContext]
 // Orders
+[JsonSerializable(typeof(AddLine))]
+[JsonSerializable(typeof(LineAdded))]
+[JsonSerializable(typeof(CancelLine))]
+[JsonSerializable(typeof(LineCancelled))]
+[JsonSerializable(typeof(SubmitOrder))]
+[JsonSerializable(typeof(CancelDraftOrder))]
+[JsonSerializable(typeof(OrderDetail))]
 [JsonSerializable(typeof(PlaceOrder))]
 [JsonSerializable(typeof(OrderPlaced))]
 [JsonSerializable(typeof(CancelOrder))]
