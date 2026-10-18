@@ -16,8 +16,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   `options.Only(seed)` replays it exactly.
 - `.OnCompensated(command).Retry(...)`: the outcome command can retry.
 
+- `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) and launch material under `docs/launch/` (demo script, post drafts, checklist).
+- Symbol packages (`.snupkg`) are produced next to every package, and the release job pushes packages to nuget.org when the `NUGET_API_KEY` secret exists.
+
 ### Changed
 
+- CI builds and tests on Linux, Windows and macOS now that the repository is public.
+- README opens with what Wyrd is, an honest preview status and a two-minute way to try it.
 - Scope website styles with CSS Modules, enforce readable formatting, use Shiki for C# and shell highlighting, and document the Wyrd CLI's AsyncAPI and Mermaid commands.
 
 ### Fixed
