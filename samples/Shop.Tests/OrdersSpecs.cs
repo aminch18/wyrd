@@ -18,7 +18,7 @@ public class OrdersSpecs
             .Given(new OrderPlaced("A-1", "KEYBOARD", 1, 89m))
             .When(new CancelOrder("A-1"))
             .Then(new OrderCancelled("A-1"))
-            .ThenState(new Order.Cancelled());
+            .ThenState(new Order.Cancelled(Order.LinesOf(new OrderPlaced("A-1", "KEYBOARD", 1, 89m))));
 
     [Fact]
     public void an_order_is_cancelled_once() =>

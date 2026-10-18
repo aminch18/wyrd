@@ -7,6 +7,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Rich Shop order aggregate: immutable identified lines, decimal `Money`, shared state-owned rules, editable drafts,
+  line and draft cancellation, rich detail projection and HTTP examples. Submission freezes the draft for the
+  existing single-SKU EUR fulfillment; the original `PlaceOrder` shortcut remains supported.
+
 - IDE **Fix all** in document, project or solution for contract snapshots (WYRD0200/WYRD0202) and JSON
   declarations (WYRD0300/WYRD0301/WYRD0302): coordinated edits preserve existing attributes and snapshot comments,
   avoid duplicate declarations, and resolve JSON name collisions exposed by newly declared union cases.
