@@ -71,7 +71,8 @@ simulate and version.
 
 - A failure of a process command — the owner can't handle it — **reaches the process as a failure** and the step's
   policy decides. Hosts don't multiply attempts behind the process's back: a command that can't be delivered or
-  handled ends as a failure reply. **In memory: implemented. Durable hosts: planned (v0.5).**
+  handled ends as a failure reply; dead letters are only for messages no process decides on (events, replies,
+  timers). **Implemented** in memory and on the PostgreSQL host.
 - A business rejection is never retried: a pure decision would answer the same. **Implemented.**
 
 ### 3.4 Compensation is a guarantee

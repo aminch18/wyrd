@@ -346,18 +346,36 @@ public sealed partial class PostgresRuntime : IWyrdBuilder<PostgresRuntime>, IWy
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
-            await RedeliverLaterAsync(connection, id, attempts, ex, now).ConfigureAwait(false);
+            await RedeliverLaterAsync(connection, id, envelope, attempts, ex, now).ConfigureAwait(false);
         }
 
         return true;
     }
 
-    private async Task RedeliverLaterAsync(NpgsqlConnection connection, long id, int attempts, Exception error, DateTimeOffset now)
+    private async Task RedeliverLaterAsync(NpgsqlConnection connection, long id, Envelope envelope, int attempts, Exception error, DateTimeOffset now)
     {
         // A concurrency conflict is normal between workers: try again right away, without counting it as a failure.
         if (IsConflict(error))
         {
             LogConflict(id);
+            return;
+        }
+
+        // One retry layer: a process command that can't be handled goes back to its process as a failure, and the
+        // step's retry policy decides. The host never retries it on its own (semantics 3.3).
+        if (envelope is { Kind: MessageKind.Command, Process: not null })
+        {
+            LogProcessCommandFailed(id, envelope.Process.Process, envelope.Process.Key, error);
+            await using var fail = new NpgsqlCommand(
+                $"""
+                INSERT INTO {_sql.S}.queue (envelope, available_at) VALUES (@reply, @now);
+                DELETE FROM {_sql.S}.queue WHERE id = @id;
+                """,
+                connection);
+            fail.Parameters.AddWithValue("reply", JsonSerializer.Serialize(Wyrd.Runtime.Engine.Faulted(envelope, Guid.CreateVersion7()), WyrdJsonContext.Default.Envelope));
+            fail.Parameters.AddWithValue("now", now);
+            fail.Parameters.AddWithValue("id", id);
+            await fail.ExecuteNonQueryAsync(CancellationToken.None).ConfigureAwait(false);
             return;
         }
 
@@ -422,6 +440,9 @@ public sealed partial class PostgresRuntime : IWyrdBuilder<PostgresRuntime>, IWy
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Message {Id} failed (attempt {Attempt}), redelivery in {Delay}")]
     private partial void LogRedelivery(long id, int attempt, TimeSpan delay, Exception error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Command {Id} of {Process} {Key} failed: its process decides whether to retry")]
+    private partial void LogProcessCommandFailed(long id, string process, string key, Exception error);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Message {Id} moved to the dead letters after {Attempts} attempts")]
     private partial void LogDeadLetter(long id, int attempts, Exception error);
