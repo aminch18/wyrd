@@ -86,19 +86,26 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 
 ## v0.5 — Verdandi (run the present)
 
-- [x] Framework reply envelope (Accepted / Rejected / Faulted / fenced) and re-send with stable message ids
-- [x] Storage port (`IWyrdStore`) and host-agnostic wiring (`IWyrdBuilder<T>`, `IWyrdRuntime`)
-- [x] `Wyrd.PostgreSql`: one transaction per message (state, events, instances, inbox, outbox, timers, read models);
-      PostgreSQL as the queue with `FOR UPDATE SKIP LOCKED`; optimistic concurrency; redelivery with backoff;
-      dead letters; durable timers; survives restarts; any number of workers
-- [x] `samples/Shop.Api` runs on PostgreSQL with a connection string (in memory without one)
-- [ ] Skuld against the durable runtime (crash between commit and delivery, concurrent workers)
-- [ ] Hosting package: `services.AddWyrd(...)` and a worker, instead of wiring by hand
-- [ ] Cancel pending timers when a wait ends early (today they fire later and are ignored)
-- [ ] LISTEN/NOTIFY to wake workers instead of polling
-- [ ] Integrations (`IIntegration<...>`): the only I/O, with idempotency keys and recorded outcomes
-- [ ] Transport between services (RabbitMQ or Azure Service Bus) with routing by contract
+Work happens on `feature/verdandi` (PR #11), in this order:
+
+- [x] Framework reply envelope (Accepted / Rejected / Faulted) and re-send with stable message ids (since v0.2)
+- [x] One atomic storage port, `IWyrdStore`: state, events, instances, inbox, outbox, timers and read models commit
+      together. Supersedes the separate `IMessageTransport` / `IOutboxStore` / `IProcessStateStore` / `IScheduler`
+      ports first planned here: separate ports can't commit atomically
+- [x] Durable scheduler for timeouts and retries: queue rows with an availability time (PostgreSQL prototype)
+- [x] `IWyrdRuntime` and `IWyrdBuilder<T>`: application code and modules are the same on every host
+- [ ] **Integrations** (`IIntegration<...>`): the only I/O, with idempotency keys and recorded outcomes
+- [ ] **EF Core** host for state, inbox, outbox and queue (PostgreSQL, SQL Server), with migrations and an option to
+      share the application's `DbContext` transaction; only the queue's dequeue (`FOR UPDATE SKIP LOCKED` / `READPAST`)
+      is raw SQL. Replaces the hand-written Npgsql prototype
+- [ ] One retry layer on durable hosts: a process command that ends in dead letters reaches its process as a failure
+      ([semantics](design/semantics.md) 3.3)
+- [ ] Operators on durable hosts: resume and compensate suspended instances
+- [ ] A hardened queue: `LISTEN/NOTIFY` (or polling backoff) instead of busy polling, batched cleanup, metrics for
+      queue depth and the age of pending steps ([semantics](design/semantics.md) 3.5)
+- [ ] RabbitMQ transport between services (the outbox stays in the database; the broker carries what leaves it)
 - [ ] OpenTelemetry with process-level traces
+- [ ] Instance history retention and catching up a projection added to an existing store
 
 ## Documentation & adoption (continuous, required before going public)
 
@@ -119,7 +126,6 @@ mental model matters as much as the code.
 - [ ] **Process versioning**: snapshot of every process; breaking changes fail the build until in-flight instances are migrated
 - [ ] Native AOT verified end to end
 - [ ] `dotnet wyrd` CLI + MCP server for agents
-- [ ] Docs site
 
 ## Later
 

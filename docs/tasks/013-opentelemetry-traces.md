@@ -33,6 +33,13 @@ An operator opening a trace sees **one process instance as one story**: the trig
   in `CHANGELOG.md`, the roadmap item.
 - Out: public API changes beyond the source name, `src/Wyrd.Testing/**`, `docs/design/**`.
 
+## Coordination
+
+Verdandi (`feature/verdandi`) is changing the engine at the same time (Integrations, then the EF Core host). Keep the
+tracing changes small and additive (a field on `Envelope`, `Activity` calls around handling); don't restructure
+`Engine.cs` or `InMemoryRuntime.cs`. The durable host stores envelopes as JSON, so a trace-context field travels
+without extra work.
+
 ## Acceptance
 
 - [ ] `dotnet build`, `dotnet test` (including `SkuldSpecs`) and the Native AOT console green.

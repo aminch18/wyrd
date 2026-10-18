@@ -32,8 +32,10 @@ the whole path a user would ship: **an HTTP API on Wyrd, published as a native e
 - In: `samples/Shop.Api/**`, `samples/Shop.Console/**` (only if needed), `.github/workflows/ci.yml` (the AOT steps
   only), the roadmap item in `docs/ROADMAP.md`, your lines in `CHANGELOG.md`.
 - Out: `src/**`, `samples/Shop/**` (if the domain blocks AOT, say so in the PR instead of changing it).
-- Note: the parked Verdandi branch also touches `samples/Shop.Api/Program.cs`; keep the endpoint code where it is
-  (no reshuffling) so that merge stays small.
+- Note: Verdandi (`feature/verdandi`, active) rewrote the top of `samples/Shop.Api/Program.cs` to choose the host
+  (PostgreSQL or memory) and moved the endpoints to `IWyrdRuntime`. Keep the endpoint code where it is (no
+  reshuffling) so that merge stays small, and prove AOT for the in-memory host only: the durable host (EF Core) gets
+  its AOT story when it lands.
 
 ## Acceptance
 

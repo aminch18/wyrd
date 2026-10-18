@@ -80,7 +80,7 @@ into `main`. Merge the latest `main` into your branch right before opening the P
 
 | Work | Owner | Branch | In bounds |
 |---|---|---|---|
-| v0.5 Verdandi: the durable runtime on PostgreSQL | Claude | `feature/verdandi` | `src/Wyrd.PostgreSql/**`, `tests/Wyrd.PostgreSql.Tests/**`, `src/Wyrd/Runtime/**` (host ports), `docs/design/**` |
+| v0.5 Verdandi, in the roadmap's order: Integrations, then the EF Core host | Claude | `feature/verdandi` | `src/Wyrd/**`, `src/Wyrd.PostgreSql/**` (to be replaced by EF Core), new host packages and their tests, `samples/Shop.Api/Program.cs` (host setup), `docs/design/**` |
 | [009](docs/tasks/009-docs-site.md) — docs site: mental model first, API reference second | Codex | `codex/docs-site` | `src/Wyrd.Web/**` |
 | [010](docs/tasks/010-native-aot-end-to-end.md) — Native AOT verified end to end | Codex | `codex/aot-end-to-end` | `samples/Shop.Api/**`, AOT steps in `ci.yml` |
 | [011](docs/tasks/011-wyrd-mcp-server.md) — `dotnet wyrd mcp` for agents | Codex | `codex/wyrd-mcp` | `src/Wyrd.Tool/Mcp/**`, `tests/Wyrd.Tool.Tests/**` |
