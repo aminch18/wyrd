@@ -83,6 +83,9 @@ into `main`. Merge the latest `main` into your branch right before opening the P
 | [009](docs/tasks/009-docs-site.md) — docs site: mental model first, API reference second | Codex | `codex/docs-site` | `src/Wyrd.Web/**` |
 | [010](docs/tasks/010-native-aot-end-to-end.md) — Native AOT verified end to end | Codex | `codex/aot-end-to-end` | `samples/Shop.Api/**`, AOT steps in `ci.yml` |
 | [011](docs/tasks/011-wyrd-mcp-server.md) — `dotnet wyrd mcp` for agents | Codex | `codex/wyrd-mcp` | `src/Wyrd.Tool/Mcp/**`, `tests/Wyrd.Tool.Tests/**` |
+| [012](docs/tasks/012-process-snapshots.md) — process snapshots: a changed process fails CI | Codex | `codex/process-snapshots` | `src/Wyrd.Tool/Processes*`, `samples/Shop/processes.wyrd.txt` |
+| [013](docs/tasks/013-opentelemetry-traces.md) — OpenTelemetry process traces (**starts after v0.4 merges**) | Codex | `codex/opentelemetry` | `src/Wyrd/Runtime/**` (tracing only) |
+| Next for Claude after v0.4: migration of in-flight instances (completes process versioning), then Verdandi | Claude | — | — |
 
 Each task file lists its exact bounds. **Tasks come only from open items in `docs/ROADMAP.md`**, in milestone order;
 an idea that is not on the roadmap is proposed to the owner first, never started.
