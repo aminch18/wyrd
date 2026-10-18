@@ -8,6 +8,7 @@
   <Folder Name="/src/">
     <Project Path="src/Wyrd.Analyzers.CodeFixes/Wyrd.Analyzers.CodeFixes.csproj" />
     <Project Path="src/Wyrd.Analyzers/Wyrd.Analyzers.csproj" />
+    <Project Path="src/Wyrd.EntityFrameworkCore/Wyrd.EntityFrameworkCore.csproj" />
     <Project Path="src/Wyrd.PostgreSql/Wyrd.PostgreSql.csproj" />
     <Project Path="src/Wyrd.Testing/Wyrd.Testing.csproj" />
     <Project Path="src/Wyrd.Tool/Wyrd.Tool.csproj" />
