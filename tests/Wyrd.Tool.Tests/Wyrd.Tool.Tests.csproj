@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Spectre.Console.Cli.Testing" />
+    <ProjectReference Include="..\..\src\Wyrd.Tool\Wyrd.Tool.csproj" />
+    <None Include="..\..\samples\Shop\contracts.wyrd.txt" Link="Samples\contracts.wyrd.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\Shop\asyncapi.yaml" Link="Samples\asyncapi.yaml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

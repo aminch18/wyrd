@@ -19,6 +19,10 @@ public abstract class Slice<TCommand, TState, TEvent, TError> : ISliceHandler
 
     Type ISliceHandler.State => typeof(TState);
 
+    Type ISliceHandler.Event => typeof(TEvent);
+
+    Type ISliceHandler.Error => typeof(TError);
+
     object ISliceHandler.Initial => TState.Initial;
 
     object ISliceHandler.KeyOf(ICommand command) => KeyOf((TCommand)command);
@@ -34,6 +38,10 @@ internal interface ISliceHandler
     Type Command { get; }
 
     Type State { get; }
+
+    Type Event { get; }
+
+    Type Error { get; }
 
     object Initial { get; }
 

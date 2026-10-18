@@ -11,15 +11,23 @@ namespace Shop.Fulfillment;
 /// <summary>The business process, end to end. This is what a reviewer reads.</summary>
 public static class Processes
 {
+    // Every step that can be undone retries, because its undo uses the same policy: a compensation that gives up
+    // after one transient failure leaves stock reserved forever. Skuld found exactly that.
     public static Process OrderFulfillment => Process
         .StartOn<OrderPlaced>(e => e.OrderId)
-        .Then(Stock.Reserve).Undo(Stock.Release)
-        .Then(Payments.Charge).Retry(3.Times, Backoff.Exponential).Undo(Payments.Refund)
+        .Then(Stock.Reserve).Retry(5.Times).Undo(Stock.Release)
+        .Then(Payments.Charge).Retry(5.Times, Backoff.Exponential).Undo(Payments.Refund)
         .Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)
-        .Then(Shipping.Ship);
+        .Then(Shipping.Ship).Retry(5.Times)
+        .OnCompensated(Orders.Cancel).Retry(5.Times);
 }
 
 // Steps are pure functions: the order that started the process -> the next command.
+
+internal static class Orders
+{
+    public static CancelOrder Cancel(OrderPlaced order) => new(order.OrderId);
+}
 
 internal static class Stock
 {

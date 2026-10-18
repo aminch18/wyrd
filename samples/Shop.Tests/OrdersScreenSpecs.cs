@@ -19,11 +19,21 @@ public class OrdersScreenSpecs
             .Then("A-1", new OrderSummary("A-1", "KEYBOARD", 1, 89m, "Shipped"));
 
     [Fact]
-    public void an_order_whose_stock_was_released_shows_as_cancelled() =>
+    public void a_cancelled_order_shows_as_cancelled() =>
         Scenario.For(new OrderSummaries())
             .Given(
                 new OrderPlaced("A-1", "KEYBOARD", 1, 89m),
                 new StockReserved("KEYBOARD", 1, "A-1"),
-                new StockReleased("KEYBOARD", 1, "A-1"))
+                new StockReleased("KEYBOARD", 1, "A-1"),
+                new OrderCancelled("A-1"))
+            .Then("A-1", new OrderSummary("A-1", "KEYBOARD", 1, 89m, "Cancelled"));
+
+    [Fact]
+    public void a_late_event_never_moves_an_order_back() =>
+        Scenario.For(new OrderSummaries())
+            .Given(
+                new OrderPlaced("A-1", "KEYBOARD", 1, 89m),
+                new OrderCancelled("A-1"),
+                new StockReleased("KEYBOARD", 1, "A-1")) // arrives late
             .Then("A-1", new OrderSummary("A-1", "KEYBOARD", 1, 89m, "Cancelled"));
 }

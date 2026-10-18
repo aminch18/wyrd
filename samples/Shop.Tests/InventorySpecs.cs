@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Shop.Inventory;
 using Wyrd.Testing;
 
@@ -11,7 +12,7 @@ public class InventorySpecs
             .Given(new StockAdded("KEYBOARD", 5))
             .When(new ReserveStock("KEYBOARD", 2, "A-1"))
             .Then(new StockReserved("KEYBOARD", 2, "A-1"))
-            .ThenState(new StockItem(Available: 3));
+            .ThenState(new StockItem(3, ImmutableDictionary<string, int>.Empty.Add("A-1", 2)));
 
     [Fact]
     public void reserving_more_than_available_is_rejected() =>
@@ -25,5 +26,19 @@ public class InventorySpecs
         Scenario.For(new ReleaseStockSlice())
             .Given(new StockAdded("KEYBOARD", 5), new StockReserved("KEYBOARD", 2, "A-1"))
             .When(new ReleaseStock("KEYBOARD", 2, "A-1"))
-            .ThenState(new StockItem(Available: 5));
+            .ThenState(new StockItem(5, ImmutableDictionary<string, int>.Empty));
+
+    [Fact]
+    public void an_order_that_never_reserved_releases_nothing() =>
+        Scenario.For(new ReleaseStockSlice())
+            .Given(new StockAdded("KEYBOARD", 5))
+            .When(new ReleaseStock("KEYBOARD", 2, "A-1"))
+            .ThenRejected(InventoryError.NotReserved);
+
+    [Fact]
+    public void an_order_reserves_once() =>
+        Scenario.For(new ReserveStockSlice())
+            .Given(new StockAdded("KEYBOARD", 5), new StockReserved("KEYBOARD", 1, "A-1"))
+            .When(new ReserveStock("KEYBOARD", 1, "A-1"))
+            .ThenRejected(InventoryError.AlreadyReserved);
 }

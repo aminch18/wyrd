@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Wyrd;
 
 namespace Shop.Payments;
@@ -14,6 +15,9 @@ public enum PaymentError
 }
 
 [Union]
+[JsonDerivedType(typeof(None), "None")]
+[JsonDerivedType(typeof(Charged), "Charged")]
+[JsonDerivedType(typeof(Refunded), "Refunded")]
 public abstract record Payment : IState<Payment>
 {
     public static Payment Initial { get; } = new None();

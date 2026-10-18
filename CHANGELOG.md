@@ -5,9 +5,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- `Wyrd.Tool`: generate AsyncAPI 3.0 documentation from reviewed contract snapshots and Mermaid diagrams from compiled processes, with Spectre CLI help and validation, typed YAML serialization, and nullable/immutable collection mapping.
+- `Wyrd.Web`: responsive marketing and framework documentation site with light/dark themes, IDE-matched code palettes, and automated GitHub Pages deployment.
+- Shared Markdown guides for the Wyrd philosophy and the transition from classic DDD, with equivalent cancellation examples, a concept map, and adoption guidance.
+- **Skuld** (`Wyrd.Testing`): `Skuld.SimulateAsync(system, scenario, invariants, options)` runs a scenario in many
+  seeded futures — transient faults, redelivery, reordering, timers — checks invariants (`Invariant.ProcessesSettle`,
+  `Invariant.NothingNeedsAttention`, your own) and reports each broken future with its perturbations, journal and seed;
+  `options.Only(seed)` replays it exactly.
+- `.OnCompensated(command).Retry(...)`: the outcome command can retry.
+
+### Changed
+
+- Scope website styles with CSS Modules, enforce readable formatting, use Shiki for C# and shell highlighting, and document the Wyrd CLI's AsyncAPI and Mermaid commands.
+
+### Fixed
+
+- A redelivered failure reply no longer consumes an extra retry: replies carry their attempt; late successes are accepted.
+- A step given up on without knowing whether it ran is fenced by its undo: the owner atomically blocks the original
+  command if it never ran (late copies never execute) or undoes it if it did. A domain rejection of an undo is no
+  longer taken as proof that there was nothing to undo.
+- Skuld rejects misconfigured simulations (no runs, rates outside [0, 1]) instead of passing without exploring.
+- The message type registry is thread-safe (scenarios in parallel test classes could corrupt it).
+
+### Changed (samples)
+
+- The shop retries every step that can be undone, releases only what an order reserved, and its orders read model
+  only moves statuses forward. All found by Skuld.
+
+## [0.2.0-alpha.1] - 2026-10-16
+
+The in-memory runtime now behaves like the distributed one, with read models, business-readable tests,
+process outcomes, and source-generated JSON verified under Native AOT.
+
 ### Changed
 
 - **Breaking:** the runtime is asynchronous: `SendAsync`, `PublishAsync`, `AdvanceAsync`.
+- **Breaking:** states, events and views are serialized as their declared type; unions carry a `$type` case discriminator.
 - The in-memory runtime now behaves like the distributed one: a message-driven engine where process steps are
   command messages answered by replies, JSON envelopes, one transaction per message (state, events, instances,
   inbox, outbox, timers), retries scheduled with backoff and re-sent with the same message id, deterministic ids.
@@ -18,6 +53,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Storage port (`IWyrdStore`) with a deterministic in-memory implementation.
 - `Projection<TView>`: read models kept up to date from events with pure functions, stored in the same transaction;
   `View<TView>(key)` and `Views<TView>()` to query them. Redelivered messages are never applied twice.
+- Source-generated JSON: `new InMemoryRuntime(MyJson.Default)` with a `[WyrdJsonContext]` is reflection-free and
+  Native AOT ready; analyzers WYRD0300 (type missing from the context) and WYRD0301 (union case not declared as a
+  derived type) with code fixes. Types are resolved by registered name; unions are stored polymorphically.
+- Analyzer WYRD0302: two types with the same name in the JSON context (union cases like `Order.None`/`Payment.None`,
+  same-named types in different namespaces, or types nested in messages) are reported with a code fix that adds a
+  unique `TypeInfoPropertyName`, instead of the generator's generic SYSLIB1031.
+- `.OnCompensated(command)`: how a process ends when it is compensated (e.g. `CancelOrder`), so read models and
+  slices learn the outcome; runs even when there was nothing to undo.
 - `Wyrd.Testing` package: `Scenario.For(slice).Given(...).When(...).Then(...)/ThenRejected(...)/ThenState(...)` and
   `Scenario.For(projection).Given(...).Then(key, view)`; every expectation checks the JSON round trip.
 - `samples/Shop.Tests`: the shop's business specifications.
@@ -50,5 +93,6 @@ First preview: the core model, a deterministic in-memory runtime and versioned i
   timeouts, duplicate detection and correlation.
 - `samples/Shop`: an order fulfillment process across four vertical slices.
 
-[Unreleased]: https://github.com/aminch18/wyrd/compare/v0.1.0-alpha.1...HEAD
+[Unreleased]: https://github.com/aminch18/wyrd/compare/v0.2.0-alpha.1...HEAD
+[0.2.0-alpha.1]: https://github.com/aminch18/wyrd/compare/v0.1.0-alpha.1...v0.2.0-alpha.1
 [0.1.0-alpha.1]: https://github.com/aminch18/wyrd/releases/tag/v0.1.0-alpha.1

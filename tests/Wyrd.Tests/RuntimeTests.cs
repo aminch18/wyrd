@@ -67,6 +67,10 @@ public class RuntimeTests
 
         Assert.Equal(ProcessStatus.Compensated, _runtime.StatusOf(Fulfillment, "A-1"));
         Assert.Equal([new StockReserved("A-1"), new StockReleased("A-1")], Events());
+
+        // We gave up on the charge without knowing whether it ran, so its refund was attempted too: nothing to undo.
+        Assert.Contains(_runtime.Journal, e => e.Message == "outcome of Payment.Charge unknown: its undo will fence it");
+        Assert.Contains(_runtime.Journal, e => e.Message == "nothing to undo: Payment.Charge never ran");
     }
 
     [Fact]

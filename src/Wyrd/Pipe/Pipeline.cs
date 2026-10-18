@@ -12,6 +12,9 @@ public static class Pipeline
 {
     public static Fragment Step(Delegate action) => new(new StepNode(StepRef.Untyped(action)));
 
+    /// <summary>The command sent once compensation has finished.</summary>
+    public static Fragment OnCompensated(Delegate outcome) => new(new CompensatedNode(StepRef.Untyped(outcome)));
+
     public static Fragment Await<TEvent>(Func<TEvent, object> key)
         where TEvent : IEvent
     {

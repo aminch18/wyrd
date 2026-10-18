@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Wyrd;
 
 namespace Shop.Orders;
@@ -10,9 +11,14 @@ public enum OrderError
 {
     EmptyOrder,
     AlreadyPlaced,
+    AlreadyCancelled,
+    NotFound,
 }
 
 [Union]
+[JsonDerivedType(typeof(None), "None")]
+[JsonDerivedType(typeof(Placed), "Placed")]
+[JsonDerivedType(typeof(Cancelled), "Cancelled")]
 public abstract record Order : IState<Order>
 {
     public static Order Initial { get; } = new None();
@@ -20,12 +26,15 @@ public abstract record Order : IState<Order>
     public Order Evolve(IDomainEvent domainEvent) => (this, domainEvent) switch
     {
         (None, OrderPlaced placed) => new Placed(placed.Sku, placed.Quantity),
+        (Placed, OrderCancelled) => new Cancelled(),
         _ => this,
     };
 
     public sealed record None : Order;
 
     public sealed record Placed(string Sku, int Quantity) : Order;
+
+    public sealed record Cancelled : Order;
 }
 
 /// <summary>Slice: a customer places an order.</summary>

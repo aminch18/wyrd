@@ -2,6 +2,10 @@
 
   <!-- The shop's domain: slices, contracts, the fulfillment process and read models. Hosted by Shop.Console and Shop.Api. -->
 
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Wyrd\Wyrd.csproj" />
     <!-- With the NuGet package this is automatic; in this repo the analyzers are referenced directly. -->

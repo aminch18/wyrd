@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Shop.Contracts;
 using Wyrd;
 
@@ -13,6 +14,8 @@ public enum ShippingError
 }
 
 [Union]
+[JsonDerivedType(typeof(Pending), "Pending")]
+[JsonDerivedType(typeof(Shipped), "Shipped")]
 public abstract record Shipment : IState<Shipment>
 {
     public static Shipment Initial { get; } = new Pending();

@@ -3,6 +3,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>Shop.Console</RootNamespace>
+    <!-- The shop compiles to a native executable: proof that Wyrd runs under Native AOT with source-generated JSON. -->
+    <PublishAot>true</PublishAot>
   </PropertyGroup>
 
   <ItemGroup>

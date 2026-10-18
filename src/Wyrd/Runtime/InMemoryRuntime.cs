@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Serialization;
 using Wyrd.Processes;
 
 namespace Wyrd.Runtime;
@@ -14,8 +15,8 @@ public sealed class InMemoryRuntime : IDisposable
 
     private readonly Registry _registry = new();
     private readonly InMemoryStore _store = new();
-    private readonly MessageTypes _types = new();
-    private readonly Queue<Envelope> _queue = new();
+    private readonly MessageTypes _types;
+    private readonly List<Envelope> _queue = [];
     private readonly Dictionary<Type, int> _faults = [];
     private readonly List<JournalEntry> _journal = [];
     private readonly Engine _engine;
@@ -23,10 +24,25 @@ public sealed class InMemoryRuntime : IDisposable
     private DateTimeOffset _now = Epoch;
     private long _ids;
 
-    [RequiresUnreferencedCode("Messages and states are serialized with reflection-based System.Text.Json.")]
-    [RequiresDynamicCode("Messages and states are serialized with reflection-based System.Text.Json.")]
-    public InMemoryRuntime() =>
-        _engine = new Engine(_registry, _store, _types, () => _now, NextId, _faults, Log);
+    /// <summary>Reflection-based JSON: convenient for development and tests. Use a <c>[WyrdJsonContext]</c> for AOT.</summary>
+    [RequiresUnreferencedCode("Reflection-based System.Text.Json. Pass a [WyrdJsonContext] for AOT and trimming.")]
+    [RequiresDynamicCode("Reflection-based System.Text.Json. Pass a [WyrdJsonContext] for AOT and trimming.")]
+    public InMemoryRuntime()
+        : this(MessageTypes.Reflection())
+    {
+    }
+
+    /// <summary>Source-generated JSON from your <c>[WyrdJsonContext]</c>: no reflection, AOT-safe.</summary>
+    public InMemoryRuntime(JsonSerializerContext json)
+        : this(MessageTypes.FromContext(json ?? throw new ArgumentNullException(nameof(json))))
+    {
+    }
+
+    private InMemoryRuntime(MessageTypes types)
+    {
+        _types = types;
+        _engine = new Engine(_registry, _store, _types, () => _now, NextId, Fault, Log);
+    }
 
     /// <summary>Virtual time elapsed since the runtime started.</summary>
     public TimeSpan Now => _now - Epoch;
@@ -50,6 +66,7 @@ public sealed class InMemoryRuntime : IDisposable
     {
         ArgumentNullException.ThrowIfNull(slice);
         _registry.Add(slice);
+        Register(typeof(TCommand), typeof(TState), typeof(TEvent), typeof(TError));
         return this;
     }
 
@@ -59,8 +76,8 @@ public sealed class InMemoryRuntime : IDisposable
         where TIntegrationEvent : IIntegrationEvent
     {
         ArgumentNullException.ThrowIfNull(publication);
-        _types.NameOf(typeof(TIntegrationEvent));
         _registry.Add(publication);
+        Register(typeof(TDomainEvent), typeof(TIntegrationEvent));
         return this;
     }
 
@@ -70,9 +87,8 @@ public sealed class InMemoryRuntime : IDisposable
         where TTo : IIntegrationEvent
     {
         ArgumentNullException.ThrowIfNull(upcaster);
-        _types.NameOf(typeof(TFrom));
-        _types.NameOf(typeof(TTo));
         _registry.Add(upcaster);
+        Register(typeof(TFrom), typeof(TTo));
         return this;
     }
 
@@ -82,6 +98,7 @@ public sealed class InMemoryRuntime : IDisposable
     {
         ArgumentNullException.ThrowIfNull(projection);
         _registry.Add(projection);
+        Register([typeof(TView), .. ((IProjectionHandler)projection).Events]);
         return this;
     }
 
@@ -89,12 +106,20 @@ public sealed class InMemoryRuntime : IDisposable
     {
         ArgumentNullException.ThrowIfNull(process);
         _registry.Add(process);
-        _types.NameOf(process.Trigger);
-        foreach (var wait in process.Nodes.OfType<AwaitNode>())
+        Register(process.Trigger);
+        foreach (var node in process.Nodes)
         {
-            _types.NameOf(wait.Event);
+            if (node is AwaitNode wait)
+            {
+                Register(wait.Event);
+            }
+            else if (node is StepNode step)
+            {
+                Register(step.Action.Output, step.Compensation?.Output);
+            }
         }
 
+        Register(process.Outcome?.Action.Output);
         return this;
     }
 
@@ -121,7 +146,7 @@ public sealed class InMemoryRuntime : IDisposable
         var key = Keys.Of(_registry.OwnerOf(command.GetType()).KeyOf(command));
         Log(Engine.External, key, $"-> {command.GetType().Name}");
 
-        var (type, payload) = _types.Serialize(command);
+        var (type, payload) = _types.Serialize(command, command.GetType());
         var decision = (await _engine.HandleAsync(new Envelope(NextId(), MessageKind.Command, type, payload), cancellationToken).ConfigureAwait(false))!;
         Log(Engine.External, key, decision switch
         {
@@ -144,8 +169,8 @@ public sealed class InMemoryRuntime : IDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var (type, payload) = _types.Serialize(@event);
-            _queue.Enqueue(new Envelope(NextId(), MessageKind.Event, type, payload));
+            var (type, payload) = _types.Serialize(@event, @event.GetType());
+            _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload));
             await DrainAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -165,7 +190,7 @@ public sealed class InMemoryRuntime : IDisposable
             while (await _store.TakeNextDueAsync(until, cancellationToken).ConfigureAwait(false) is { } due)
             {
                 _now = due.At > _now ? due.At : _now;
-                _queue.Enqueue(due.Envelope);
+                _queue.Add(due.Envelope);
                 await DrainAsync(cancellationToken).ConfigureAwait(false);
             }
 
@@ -219,8 +244,16 @@ public sealed class InMemoryRuntime : IDisposable
     private async Task DrainAsync(CancellationToken cancellationToken)
     {
         await RelayAsync(cancellationToken).ConfigureAwait(false);
-        while (_queue.TryDequeue(out var envelope))
+        while (_queue.Count > 0)
         {
+            var index = Simulation?.PickNext(_queue) ?? 0;
+            var envelope = _queue[index];
+            _queue.RemoveAt(index);
+            if (Simulation?.Duplicate(envelope) == true)
+            {
+                _queue.Add(envelope); // the broker will deliver it again, later
+            }
+
             await _engine.HandleAsync(envelope, cancellationToken).ConfigureAwait(false);
             await RelayAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -231,11 +264,48 @@ public sealed class InMemoryRuntime : IDisposable
     {
         foreach (var envelope in await _store.TakeOutboxAsync(cancellationToken).ConfigureAwait(false))
         {
-            _queue.Enqueue(envelope);
+            _queue.Add(envelope);
         }
     }
 
     public void Dispose() => _gate.Dispose();
+
+    /// <summary>The simulator perturbing delivery (Skuld), if any.</summary>
+    internal ISimulation? Simulation { get; set; }
+
+    /// <summary>Adds a line to the journal on behalf of the simulator.</summary>
+    internal void Note(string message) => Log("skuld", null, message);
+
+    /// <summary>Every process instance and its status, in creation order.</summary>
+    internal IReadOnlyList<(string Process, string Key, ProcessStatus Status)> Instances() =>
+        Read(() => (IReadOnlyList<(string, string, ProcessStatus)>)[.. _store.Instances.Select(i => (i.Process, i.Key, i.Status))]);
+
+    /// <summary>Short, readable name of a message for journals and reports.</summary>
+    internal string Describe(Envelope envelope) => envelope.Kind switch
+    {
+        MessageKind.Reply => $"reply to {envelope.Process!.Process} {envelope.Process.Key}",
+        MessageKind.Timeout => $"timeout of {envelope.Process!.Process} {envelope.Process.Key}",
+        _ => $"{_types.TypeOf(envelope.Type).Name}{(envelope.Process is { } p ? $" ({p.Key})" : string.Empty)}",
+    };
+
+    private bool Fault(Envelope command, Type commandType)
+    {
+        if (_faults.GetValueOrDefault(commandType) > 0)
+        {
+            _faults[commandType]--;
+            return true;
+        }
+
+        return Simulation?.Fault(command, commandType) ?? false;
+    }
+
+    private void Register(params Type?[] types)
+    {
+        foreach (var type in types.OfType<Type>())
+        {
+            _types.Register(type);
+        }
+    }
 
     private T Read<T>(Func<T> read)
     {

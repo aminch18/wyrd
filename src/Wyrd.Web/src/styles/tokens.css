@@ -1,0 +1,73 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@500;600;700&display=swap');
+
+:root {
+    color: #cbd7d4;
+    background: #0c1413;
+    font-family: 'DM Sans', sans-serif;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+}
+
+.app {
+    --bg: #0c1413;
+    --surface: #111b19;
+    --surface-2: #16221f;
+    --line: rgba(137, 162, 156, 0.18);
+    --muted: #879995;
+    --copy: #cbd7d4;
+    --heading: #f3f8f7;
+    --subtle-heading: #859692;
+    --cyan: #4ed8b1;
+    --indigo: #6ca89d;
+    --purple: #9ce5d0;
+    --gold: #d5bd80;
+    --danger: #f4a0a8;
+
+    /* Rider Islands Dark — the user's Rider editor palette. */
+    --code-bg: #191a1c;
+    --code-header: #202424;
+    --code-line: #34383b;
+    --code-fg: #bdbdbd;
+    --code-muted: #808080;
+    --code-keyword: #6c95eb;
+    --code-control: #c191ff;
+    --code-type: #c191ff;
+    --code-function: #39cc9b;
+    --code-string: #c9a26d;
+    --code-number: #ed94c0;
+    --code-comment: #85c46c;
+    --code-attribute: #7df0c0;
+    --code-variable: #bdbdbd;
+}
+
+.app[data-theme='light'] {
+    --bg: #eef4f2;
+    --surface: #e3ece9;
+    --surface-2: #d9e5e1;
+    --line: rgba(30, 65, 58, 0.22);
+    --muted: #4f6661;
+    --copy: #344944;
+    --heading: #091411;
+    --subtle-heading: #405b55;
+    --cyan: #087b5e;
+    --indigo: #326f63;
+    --purple: #168b6c;
+    --gold: #74591e;
+    --danger: #8f3040;
+
+    /* VS Code Dark Modern — intentionally dark inside the light site theme. */
+    --code-bg: #1f1f1f;
+    --code-header: #181818;
+    --code-line: #2b2b2b;
+    --code-fg: #cccccc;
+    --code-muted: #8b949e;
+    --code-keyword: #569cd6;
+    --code-control: #c586c0;
+    --code-type: #4ec9b0;
+    --code-function: #dcdcaa;
+    --code-string: #ce9178;
+    --code-number: #b5cea8;
+    --code-comment: #6a9955;
+    --code-attribute: #4fc1ff;
+    --code-variable: #9cdcfe;
+}
