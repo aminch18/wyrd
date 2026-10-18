@@ -68,7 +68,10 @@ internal sealed class Changes
         Instances.TryGetValue((process, key), out var instance) ? instance : null;
 }
 
-/// <summary>The persistence port. In memory today; PostgreSQL and others implement the same contract.</summary>
+/// <summary>
+/// What the engine needs from persistence: read, and commit one message's changes atomically. In-memory and
+/// PostgreSQL implement it; how committed messages and timers are delivered is up to each host.
+/// </summary>
 internal interface IWyrdStore
 {
     ValueTask<StoredState?> LoadStateAsync(string stateType, string key, CancellationToken cancellationToken);
@@ -85,7 +88,4 @@ internal interface IWyrdStore
 
     ValueTask CommitAsync(Changes changes, CancellationToken cancellationToken);
 
-    ValueTask<IReadOnlyList<Envelope>> TakeOutboxAsync(CancellationToken cancellationToken);
-
-    ValueTask<Scheduled?> TakeNextDueAsync(DateTimeOffset until, CancellationToken cancellationToken);
 }

@@ -13,7 +13,7 @@ public sealed class InMemoryRuntime : IDisposable
 {
     private static readonly DateTimeOffset Epoch = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
-    private readonly Registry _registry = new();
+    private readonly Application _application;
     private readonly InMemoryStore _store = new();
     private readonly MessageTypes _types;
     private readonly List<Envelope> _queue = [];
@@ -40,8 +40,9 @@ public sealed class InMemoryRuntime : IDisposable
 
     private InMemoryRuntime(MessageTypes types)
     {
+        _application = new Application(types);
         _types = types;
-        _engine = new Engine(_registry, _store, _types, () => _now, NextId, Fault, Log);
+        _engine = new Engine(_application.Registry, _store, _types, () => _now, NextId, Fault, Log);
     }
 
     /// <summary>Virtual time elapsed since the runtime started.</summary>
@@ -65,8 +66,7 @@ public sealed class InMemoryRuntime : IDisposable
         where TError : notnull
     {
         ArgumentNullException.ThrowIfNull(slice);
-        _registry.Add(slice);
-        Register(typeof(TCommand), typeof(TState), typeof(TEvent), typeof(TError));
+        _application.Add(slice);
         return this;
     }
 
@@ -76,8 +76,7 @@ public sealed class InMemoryRuntime : IDisposable
         where TIntegrationEvent : IIntegrationEvent
     {
         ArgumentNullException.ThrowIfNull(publication);
-        _registry.Add(publication);
-        Register(typeof(TDomainEvent), typeof(TIntegrationEvent));
+        _application.Add(publication);
         return this;
     }
 
@@ -87,8 +86,7 @@ public sealed class InMemoryRuntime : IDisposable
         where TTo : IIntegrationEvent
     {
         ArgumentNullException.ThrowIfNull(upcaster);
-        _registry.Add(upcaster);
-        Register(typeof(TFrom), typeof(TTo));
+        _application.Add(upcaster);
         return this;
     }
 
@@ -97,29 +95,14 @@ public sealed class InMemoryRuntime : IDisposable
         where TView : class
     {
         ArgumentNullException.ThrowIfNull(projection);
-        _registry.Add(projection);
-        Register([typeof(TView), .. ((IProjectionHandler)projection).Events]);
+        _application.Add(projection);
         return this;
     }
 
     public InMemoryRuntime AddProcess(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
-        _registry.Add(process);
-        Register(process.Trigger);
-        foreach (var node in process.Nodes)
-        {
-            if (node is AwaitNode wait)
-            {
-                Register(wait.Event);
-            }
-            else if (node is StepNode step)
-            {
-                Register(step.Action.Output, step.Compensation?.Output);
-            }
-        }
-
-        Register(process.Outcome?.Action.Output);
+        _application.Add(process);
         return this;
     }
 
@@ -143,7 +126,7 @@ public sealed class InMemoryRuntime : IDisposable
 
     private async Task<Decision> SendCoreAsync(ICommand command, CancellationToken cancellationToken)
     {
-        var key = Keys.Of(_registry.OwnerOf(command.GetType()).KeyOf(command));
+        var key = Keys.Of(_application.Registry.OwnerOf(command.GetType()).KeyOf(command));
         Log(Engine.External, key, $"-> {command.GetType().Name}");
 
         var (type, payload) = _types.Serialize(command, command.GetType());
@@ -297,14 +280,6 @@ public sealed class InMemoryRuntime : IDisposable
         }
 
         return Simulation?.Fault(command, commandType) ?? false;
-    }
-
-    private void Register(params Type?[] types)
-    {
-        foreach (var type in types.OfType<Type>())
-        {
-            _types.Register(type);
-        }
     }
 
     private T Read<T>(Func<T> read)
