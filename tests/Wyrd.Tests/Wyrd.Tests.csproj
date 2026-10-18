@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Wyrd\Wyrd.csproj" />
+    <ProjectReference Include="..\..\src\Wyrd.Testing\Wyrd.Testing.csproj" />
   </ItemGroup>
 
 </Project>

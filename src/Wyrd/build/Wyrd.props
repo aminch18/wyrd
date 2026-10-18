@@ -1,0 +1,7 @@
+<Project>
+  <!-- Picks up the integration event contract snapshot for Wyrd's analyzers. -->
+  <ItemGroup>
+    <AdditionalFiles Include="$(MSBuildProjectDirectory)/contracts.wyrd.txt"
+                     Condition="Exists('$(MSBuildProjectDirectory)/contracts.wyrd.txt')" />
+  </ItemGroup>
+</Project>

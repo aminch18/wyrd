@@ -1,0 +1,59 @@
+# Run the API (dotnet run --project samples/Shop.Api) and send these one by one from Rider, VS or VS Code.
+@api = http://localhost:5080
+
+### 1. The warehouse receives 5 keyboards
+POST {{api}}/stock/KEYBOARD
+Content-Type: application/json
+
+{ "quantity": 5 }
+
+### 2. A customer places an order -> 202 Accepted
+POST {{api}}/orders
+Content-Type: application/json
+
+{ "orderId": "A-1001", "sku": "KEYBOARD", "quantity": 1, "amount": 89 }
+
+### 3. The orders screen: A-1001 is Paid, waiting for the payment provider
+GET {{api}}/orders
+
+### 4. The payment provider confirms -> the order ships
+POST {{api}}/webhooks/payments
+Content-Type: application/json
+
+{ "orderId": "A-1001" }
+
+### 5. The order, with its process status
+GET {{api}}/orders/A-1001
+
+### 6. Double click on "Buy" -> 409 AlreadyPlaced
+POST {{api}}/orders
+Content-Type: application/json
+
+{ "orderId": "A-1001", "sku": "KEYBOARD", "quantity": 1, "amount": 89 }
+
+### 7. Card declined (over 1000) -> stock released, order Cancelled
+POST {{api}}/orders
+Content-Type: application/json
+
+{ "orderId": "A-1002", "sku": "KEYBOARD", "quantity": 1, "amount": 2500 }
+
+### 8. Make the payment gateway flaky, then order: watch the retries in the journal (1s, 2s)
+POST {{api}}/dev/payment-gateway/fail?times=2
+
+###
+POST {{api}}/orders
+Content-Type: application/json
+
+{ "orderId": "A-1003", "sku": "KEYBOARD", "quantity": 1, "amount": 50 }
+
+### 9. Nobody confirms A-1003: jump 15 minutes ahead -> timeout, refund, release
+POST {{api}}/dev/clock/advance?minutes=15
+
+### 10. Stock is consistent: 5 received - 1 shipped = 4
+GET {{api}}/stock/KEYBOARD
+
+### What happened, step by step
+GET {{api}}/dev/journal
+
+### Integration events other services would receive
+GET {{api}}/dev/published

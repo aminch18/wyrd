@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Shop.Console</RootNamespace>
+    <!-- The shop compiles to a native executable: proof that Wyrd runs under Native AOT with source-generated JSON. -->
+    <PublishAot>true</PublishAot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Shop\Shop.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -2,14 +2,17 @@ using Wyrd;
 
 namespace Shop.Inventory;
 
-/// <summary>Slice: reserve units for an order.</summary>
-public sealed record ReserveStock(string Sku, int Quantity, string OrderId)
-    : ICommand<ReserveStock, StockItem, StockReserved, InventoryError>
-{
-    public object Key => Sku;
+public sealed record ReserveStock(string Sku, int Quantity, string OrderId) : ICommand;
 
-    public static Result<StockReserved, InventoryError> Decide(ReserveStock cmd, StockItem stock) =>
-        stock.Available < cmd.Quantity
-            ? InventoryError.OutOfStock
-            : new StockReserved(cmd.Sku, cmd.Quantity, cmd.OrderId);
+/// <summary>Slice: reserve units for an order.</summary>
+public sealed class ReserveStockSlice : Slice<ReserveStock, StockItem, StockReserved, InventoryError>
+{
+    public override object KeyOf(ReserveStock command) => command.Sku;
+
+    public override Result<StockReserved, InventoryError> Decide(ReserveStock command, StockItem stock) => stock switch
+    {
+        _ when stock.HasReserved(command.OrderId) => InventoryError.AlreadyReserved,
+        _ when stock.Available < command.Quantity => InventoryError.OutOfStock,
+        _ => new StockReserved(command.Sku, command.Quantity, command.OrderId),
+    };
 }
