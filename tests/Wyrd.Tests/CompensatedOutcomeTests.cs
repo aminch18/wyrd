@@ -77,4 +77,37 @@ public class CompensatedOutcomeTests
         Assert.Equal(ProcessStatus.Completed, runtime.StatusOf(Fluent, "A-1"));
         Assert.DoesNotContain(new OrderCancelled("A-1"), runtime.History);
     }
+
+    [Fact]
+    public async Task the_outcome_can_retry()
+    {
+        Process process = Process
+            .StartOn<OrderPlaced>(e => e.OrderId)
+            .Then(Stock.Reserve).Undo(Stock.Release)
+            .OnCompensated(Orders.Cancel).Retry(3.Times);
+        var runtime = TestSystem.Create(process);
+        runtime.FailNext<CancelOrder>(times: 2);
+
+        await runtime.SendAsync(new PlaceOrder("A-1", Quantity: 99, Amount: 50));
+        await runtime.AdvanceAsync(10.Seconds);
+
+        Assert.Equal(ProcessStatus.Compensated, runtime.StatusOf(process, "A-1"));
+        Assert.Contains(new OrderCancelled("A-1"), runtime.History);
+    }
+
+    [Fact]
+    public void the_outcome_retry_is_part_of_the_model()
+    {
+        Process fluent = Process.StartOn<OrderPlaced>(e => e.OrderId, "P").Then(Stock.Reserve).OnCompensated(Orders.Cancel).Retry(3.Times);
+        Process piped = Start.On<OrderPlaced>(e => e.OrderId, "P") >> Pipeline.Step(Stock.Reserve) >> Pipeline.OnCompensated(Orders.Cancel).Retry(3.Times);
+
+        Assert.Equal(fluent, piped);
+        Assert.Equal(new RetryPolicy(3.Times, Backoff.Exponential), fluent.Outcome!.Retry);
+        Assert.Contains("Orders.Cancel<br/>retry 3x exponential", fluent.ToMermaid(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void undo_still_cannot_follow_the_outcome() =>
+        Assert.Throws<InvalidOperationException>(() =>
+            Process.StartOn<OrderPlaced>(e => e.OrderId).Then(Stock.Reserve).OnCompensated(Orders.Cancel).Undo(Stock.Release));
 }

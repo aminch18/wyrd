@@ -9,8 +9,10 @@ public sealed class ReserveStockSlice : Slice<ReserveStock, StockItem, StockRese
 {
     public override object KeyOf(ReserveStock command) => command.Sku;
 
-    public override Result<StockReserved, InventoryError> Decide(ReserveStock command, StockItem stock) =>
-        stock.Available < command.Quantity
-            ? InventoryError.OutOfStock
-            : new StockReserved(command.Sku, command.Quantity, command.OrderId);
+    public override Result<StockReserved, InventoryError> Decide(ReserveStock command, StockItem stock) => stock switch
+    {
+        _ when stock.HasReserved(command.OrderId) => InventoryError.AlreadyReserved,
+        _ when stock.Available < command.Quantity => InventoryError.OutOfStock,
+        _ => new StockReserved(command.Sku, command.Quantity, command.OrderId),
+    };
 }

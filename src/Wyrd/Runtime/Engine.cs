@@ -13,7 +13,7 @@ internal sealed class Engine(
     MessageTypes types,
     Func<DateTimeOffset> now,
     Func<Guid> newId,
-    Dictionary<Type, int> faults,
+    Func<Envelope, Type, bool> fault,
     Action<string, string?, string> log)
 {
     public const string External = "-";
@@ -51,15 +51,23 @@ internal sealed class Engine(
 
         if (await store.FindReplyAsync(envelope.MessageId, cancellationToken).ConfigureAwait(false) is { } stored)
         {
-            log(External, key, $"duplicate {command.GetType().Name} ignored, stored outcome replayed");
+            log(External, key, stored.Outcome == ReplyOutcome.Fenced
+                ? $"late {command.GetType().Name} arrived after being fenced: never executed"
+                : $"duplicate {command.GetType().Name} ignored, stored outcome replayed");
             Reply(envelope, stored, changes);
             await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
             return null;
         }
 
-        if (envelope.Process is not null && TryInjectFault(command.GetType()))
+        if (envelope.Process is not null && fault(envelope, command.GetType()))
         {
             Reply(envelope, new ReplyMessage(ReplyOutcome.Faulted), changes);
+            await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+            return null;
+        }
+
+        if (envelope.Fences is { } original && await FenceAsync(envelope, original, command, key, changes, cancellationToken).ConfigureAwait(false))
+        {
             await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
             return null;
         }
@@ -102,6 +110,32 @@ internal sealed class Engine(
         return decision;
     }
 
+    /// <summary>
+    /// The undo of a step with an unknown outcome. In the same transaction as the inbox: if the original command never
+    /// ran, it is fenced (a late copy will find the fence and never execute) and there is nothing to undo; if it ran
+    /// and was accepted, the undo runs normally. Returns true when the undo is answered without running.
+    /// </summary>
+    private async ValueTask<bool> FenceAsync(
+        Envelope undo, Guid original, ICommand command, string key, Changes changes, CancellationToken cancellationToken)
+    {
+        var outcome = await store.FindReplyAsync(original, cancellationToken).ConfigureAwait(false);
+        if (outcome is { Outcome: ReplyOutcome.Accepted })
+        {
+            return false;
+        }
+
+        if (outcome is null)
+        {
+            changes.Replies[original] = new ReplyMessage(ReplyOutcome.Fenced);
+            log(External, key, $"{command.GetType().Name}: the original command never ran, fenced");
+        }
+
+        var reply = new ReplyMessage(ReplyOutcome.NothingToUndo);
+        changes.Replies[undo.MessageId] = reply;
+        Reply(undo, reply, changes);
+        return true;
+    }
+
     private void Reply(Envelope command, ReplyMessage reply, Changes changes)
     {
         if (command.Process is not null)
@@ -109,17 +143,6 @@ internal sealed class Engine(
             changes.Outbox.Add(new Envelope(
                 newId(), MessageKind.Reply, ReplyType, MessageTypes.SerializeReply(reply), command.Process, command.MessageId));
         }
-    }
-
-    private bool TryInjectFault(Type command)
-    {
-        if (faults.GetValueOrDefault(command) == 0)
-        {
-            return false;
-        }
-
-        faults[command]--;
-        return true;
     }
 
     // ── Events: start processes, resume waits, park early arrivals ─────────────────────────────
@@ -197,7 +220,7 @@ internal sealed class Engine(
 
         var (triggerType, triggerPayload) = types.Serialize(trigger, process.Trigger);
         var instance = new StoredInstance(
-            process.Name, key, triggerType, triggerPayload, 0, ProcessStatus.Running, [], 0, null, false, null, 0);
+            process.Name, key, triggerType, triggerPayload, 0, ProcessStatus.Running, [], ImmutableDictionary<int, Guid>.Empty, 0, null, false, null, 0);
         log(process.Name, key, $"started by {trigger.GetType().Name}");
         changes.Save(await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false));
     }
@@ -304,7 +327,8 @@ internal sealed class Engine(
         var command = step.Invoke!(trigger);
         var (type, payload) = types.Serialize(command, step.Output ?? command.GetType());
         var id = newId();
-        changes.Outbox.Add(new Envelope(id, MessageKind.Command, type, payload, new ProcessRef(instance.Process, instance.Key, index, compensating)));
+        var fences = compensating && instance.Uncertain.TryGetValue(index, out var original) ? original : (Guid?)null;
+        changes.Outbox.Add(new Envelope(id, MessageKind.Command, type, payload, new ProcessRef(instance.Process, instance.Key, index, compensating), Fences: fences));
         log(instance.Process, instance.Key, $"-> {command.GetType().Name}");
         return instance with { Status = ProcessStatus.Running, Pending = id, Attempt = 1 };
     }
@@ -314,21 +338,25 @@ internal sealed class Engine(
     private async ValueTask HandleReplyAsync(Envelope envelope, CancellationToken cancellationToken)
     {
         var target = envelope.Process!;
+        var reply = MessageTypes.DeserializeReply(envelope.Payload);
         var instance = await store.LoadInstanceAsync(target.Process, target.Key, cancellationToken).ConfigureAwait(false);
-        if (instance is null || instance.Pending != envelope.ReplyTo)
+
+        // A reply belongs to the pending command. A fault must also belong to the current attempt: a redelivered
+        // fault of an earlier attempt must not consume another retry. A success is welcome whenever it arrives.
+        if (instance is null || instance.Pending != envelope.ReplyTo
+            || (reply.Outcome == ReplyOutcome.Faulted && target.Attempt != instance.Attempt))
         {
             log(target.Process, target.Key, "stale reply ignored");
             return;
         }
 
         var process = registry.ProcessNamed(target.Process);
-        var reply = MessageTypes.DeserializeReply(envelope.Payload);
         var trigger = Trigger(instance);
         var changes = new Changes();
 
         if (target.Step == process.Nodes.Length)
         {
-            changes.Save(Conclude(instance, process.OnCompensated!, reply));
+            changes.Save(Conclude(instance, process.Outcome!, target, trigger, reply, changes));
             await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
             return;
         }
@@ -342,6 +370,12 @@ internal sealed class Engine(
                 instance = target.Compensating
                     ? ContinueCompensation(process, instance with { Completed = instance.Completed.RemoveAt(instance.Completed.Count - 1) }, trigger, changes)
                     : await AdvanceAsync(process, instance with { Completed = instance.Completed.Add(target.Step), Position = target.Step + 1, Pending = null }, trigger, changes, cancellationToken).ConfigureAwait(false);
+                break;
+
+            case ReplyOutcome.NothingToUndo:
+                // The owner fenced the original command: it never ran and never will. Proof, not a guess.
+                log(instance.Process, instance.Key, $"nothing to undo: {step.Action} never ran");
+                instance = ContinueCompensation(process, instance with { Completed = instance.Completed.RemoveAt(instance.Completed.Count - 1) }, trigger, changes);
                 break;
 
             case ReplyOutcome.Rejected:
@@ -363,22 +397,52 @@ internal sealed class Engine(
     private StoredInstance RetryOrGiveUp(
         Process process, StoredInstance instance, StepNode step, ProcessRef target, IEvent trigger, Changes changes)
     {
-        var retries = step.Retry?.Attempts.Count ?? 0;
-        if (instance.Attempt <= retries)
+        var retried = target.Compensating ? step.Compensation! : step.Action;
+        if (Retry(instance, retried, step.Retry, target, trigger, changes) is { } retrying)
         {
-            var delay = step.Retry!.DelayBefore(instance.Attempt);
-            log(instance.Process, instance.Key, $"transient failure, retry {instance.Attempt}/{retries} after {Durations.Format(delay)}");
-
-            // Same message id: if the first attempt did go through, the owner's inbox replays its outcome.
-            var retried = target.Compensating ? step.Compensation! : step.Action;
-            var command = retried.Invoke!(trigger);
-            var (type, payload) = types.Serialize(command, retried.Output ?? command.GetType());
-            changes.Schedule.Add(new Scheduled(now() + delay, new Envelope(instance.Pending!.Value, MessageKind.Command, type, payload, target)));
-            return instance with { Attempt = instance.Attempt + 1 };
+            return retrying;
         }
 
-        log(instance.Process, instance.Key, retries == 0 ? "transient failure, no retry policy" : "transient failure, retries exhausted");
-        return target.Compensating ? Fail(instance, step.Compensation!) : StartCompensation(process, instance, trigger, changes);
+        if (target.Compensating)
+        {
+            return Fail(instance, retried);
+        }
+
+        // We give up without knowing whether the command ran: a delayed copy may still execute. Its undo fences it.
+        if (step.Compensation is not null)
+        {
+            log(instance.Process, instance.Key, $"outcome of {step.Action} unknown: its undo will fence it");
+            instance = instance with
+            {
+                Completed = instance.Completed.Add(target.Step),
+                Uncertain = instance.Uncertain.SetItem(target.Step, instance.Pending!.Value),
+            };
+        }
+
+        return StartCompensation(process, instance, trigger, changes);
+    }
+
+    /// <summary>Schedules the same command again after the backoff, or returns null when no retry is left.</summary>
+    private StoredInstance? Retry(StoredInstance instance, StepRef retried, RetryPolicy? policy, ProcessRef target, IEvent trigger, Changes changes)
+    {
+        var retries = policy?.Attempts.Count ?? 0;
+        if (instance.Attempt > retries)
+        {
+            log(instance.Process, instance.Key, retries == 0 ? "transient failure, no retry policy" : "transient failure, retries exhausted");
+            return null;
+        }
+
+        var delay = policy!.DelayBefore(instance.Attempt);
+        log(instance.Process, instance.Key, $"transient failure, retry {instance.Attempt}/{retries} after {Durations.Format(delay)}");
+
+        // Same message id: if an earlier attempt did go through, the owner's inbox replays its outcome.
+        var command = retried.Invoke!(trigger);
+        var (type, payload) = types.Serialize(command, retried.Output ?? command.GetType());
+        var next = instance.Attempt + 1;
+        var fences = target.Compensating && instance.Uncertain.TryGetValue(target.Step, out var original) ? original : (Guid?)null;
+        changes.Schedule.Add(new Scheduled(now() + delay, new Envelope(
+            instance.Pending!.Value, MessageKind.Command, type, payload, target with { Attempt = next }, Fences: fences)));
+        return instance with { Attempt = next };
     }
 
     private StoredInstance StartCompensation(Process process, StoredInstance instance, IEvent trigger, Changes changes)
@@ -401,9 +465,9 @@ internal sealed class Engine(
             completed = completed.RemoveAt(completed.Count - 1);
         }
 
-        if (process.OnCompensated is { } outcome)
+        if (process.Outcome is { } outcome)
         {
-            return SendStep(instance with { Completed = completed }, trigger, outcome, process.Nodes.Length, compensating: true, changes);
+            return SendStep(instance with { Completed = completed }, trigger, outcome.Action, process.Nodes.Length, compensating: true, changes);
         }
 
         log(instance.Process, instance.Key, "compensated");
@@ -411,7 +475,8 @@ internal sealed class Engine(
     }
 
     /// <summary>The reply to the OnCompensated outcome command: the end of the compensation.</summary>
-    private StoredInstance Conclude(StoredInstance instance, StepRef outcome, ReplyMessage reply)
+    private StoredInstance Conclude(
+        StoredInstance instance, CompensatedNode outcome, ProcessRef target, IEvent trigger, ReplyMessage reply, Changes changes)
     {
         switch (reply.Outcome)
         {
@@ -421,10 +486,9 @@ internal sealed class Engine(
                 return instance with { Status = ProcessStatus.Compensated, Pending = null };
             case ReplyOutcome.Rejected:
                 log(instance.Process, instance.Key, $"rejected {types.Deserialize(reply.Type!, reply.Payload!)}");
-                return Fail(instance, outcome);
+                return Fail(instance, outcome.Action);
             default:
-                log(instance.Process, instance.Key, "transient failure, no retry policy");
-                return Fail(instance, outcome);
+                return Retry(instance, outcome.Action, outcome.Retry, target, trigger, changes) ?? Fail(instance, outcome.Action);
         }
     }
 

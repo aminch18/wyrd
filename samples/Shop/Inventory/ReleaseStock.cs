@@ -4,11 +4,13 @@ namespace Shop.Inventory;
 
 public sealed record ReleaseStock(string Sku, int Quantity, string OrderId) : ICommand;
 
-/// <summary>Slice: give reserved units back.</summary>
+/// <summary>Slice: give an order's reserved units back. Only what was actually reserved.</summary>
 public sealed class ReleaseStockSlice : Slice<ReleaseStock, StockItem, StockReleased, InventoryError>
 {
     public override object KeyOf(ReleaseStock command) => command.Sku;
 
     public override Result<StockReleased, InventoryError> Decide(ReleaseStock command, StockItem stock) =>
-        new StockReleased(command.Sku, command.Quantity, command.OrderId);
+        stock.Reservations.TryGetValue(command.OrderId, out var reserved)
+            ? new StockReleased(command.Sku, reserved, command.OrderId)
+            : InventoryError.NotReserved;
 }

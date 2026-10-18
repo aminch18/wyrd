@@ -11,13 +11,13 @@ namespace Wyrd.Processes;
 /// </summary>
 public sealed class Process : IEquatable<Process>
 {
-    internal Process(string name, Type trigger, Func<object, object> keyOf, ImmutableArray<ProcessNode> nodes, StepRef? onCompensated)
+    internal Process(string name, Type trigger, Func<object, object> keyOf, ImmutableArray<ProcessNode> nodes, CompensatedNode? outcome)
     {
         Name = name;
         Trigger = trigger;
         KeyOf = keyOf;
         Nodes = nodes;
-        OnCompensated = onCompensated;
+        Outcome = outcome;
     }
 
     public string Name { get; }
@@ -28,8 +28,11 @@ public sealed class Process : IEquatable<Process>
 
     public ImmutableArray<ProcessNode> Nodes { get; }
 
+    /// <summary>The command sent once compensation has finished, and its retry policy, if any.</summary>
+    public CompensatedNode? Outcome { get; }
+
     /// <summary>The command sent once compensation has finished, if any.</summary>
-    public StepRef? OnCompensated { get; }
+    public StepRef? OnCompensated => Outcome?.Action;
 
     /// <summary>Starts a process on an event. <paramref name="key"/> correlates the instance, e.g. <c>e => e.OrderId</c>.</summary>
     public static ProcessBuilder<TEvent> StartOn<TEvent>(Func<TEvent, object> key, [CallerMemberName] string name = "")
@@ -42,7 +45,7 @@ public sealed class Process : IEquatable<Process>
     /// <summary>Two processes are equal when they have the same trigger and the same nodes, in order.</summary>
     public bool Equals(Process? other) =>
         other is not null && Name == other.Name && Trigger == other.Trigger && Nodes.SequenceEqual(other.Nodes)
-        && Equals(OnCompensated, other.OnCompensated);
+        && Equals(Outcome, other.Outcome);
 
     public override bool Equals(object? obj) => Equals(obj as Process);
 
@@ -51,7 +54,7 @@ public sealed class Process : IEquatable<Process>
         var hash = new HashCode();
         hash.Add(Name);
         hash.Add(Trigger);
-        hash.Add(OnCompensated);
+        hash.Add(Outcome);
         foreach (var node in Nodes)
         {
             hash.Add(node);
@@ -92,9 +95,10 @@ public sealed class Process : IEquatable<Process>
         }
 
         sb.AppendLine(CultureInfo.InvariantCulture, $"    {previous} --> done([\"completed\"])");
-        if (OnCompensated is { } outcome)
+        if (Outcome is { } outcome)
         {
-            sb.AppendLine(CultureInfo.InvariantCulture, $"    compensated([\"compensated\"]) --> outcome[\"{outcome}\"]");
+            var retry = outcome.Retry is { } r ? $"<br/>retry {r.Attempts} {r.Backoff.ToString().ToLowerInvariant()}" : "";
+            sb.AppendLine(CultureInfo.InvariantCulture, $"    compensated([\"compensated\"]) --> outcome[\"{outcome.Action}{retry}\"]");
         }
         return sb.ToString();
     }

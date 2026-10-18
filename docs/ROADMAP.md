@@ -57,7 +57,13 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 
 - [ ] Steps that read the process state, not only the trigger
 - [ ] Typed invokers via source generator (drop `DynamicInvoke` in the pipe syntax)
-- [ ] **Exhaustive failure simulation**: failures, retries, duplicates, reordering, timeouts
+- [x] **Failure simulation** (`Skuld.SimulateAsync`): seeded futures with transient faults, redelivery and reordering,
+      timers on the clock, invariants (`Invariant.Defaults` + your own), replay by seed, actionable reports
+- [x] Engine fixes found by Skuld: attempt-aware replies (stale faults ignored), unknown-outcome steps compensated,
+      `.OnCompensated(...).Retry(...)`, thread-safe type registry
+- [ ] Analyzer: a step with `.Undo(...)` but no `.Retry(...)` (its undo can't retry either) — Skuld's first finding
+- [ ] Ordered projections per stream (events carry their stream version), so read models don't fight reordering by hand
+- [ ] Shrinking: reduce a failing future to the fewest perturbations that still break the invariant
 - [ ] First analyzers: exhaustive `[Union]` switch, missing compensation, `Await` without timeout
 - [ ] Analyzer: `wyrd_process_style` enforcement with code fix fluent ⇄ pipe
 
@@ -83,12 +89,12 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 Wyrd is a paradigm shift for most .NET teams: functional DDD instead of mutable aggregates. Teaching the
 mental model matters as much as the code.
 
-- [ ] Guide: **From classic DDD to Wyrd** — aggregate root, entities, value objects, invariants, repositories
+- [x] Guide: **[From classic DDD to Wyrd](guides/from-ddd-to-wyrd.md)** — aggregate root, entities, value objects, invariants, repositories
       and domain events mapped one by one, with the same example written both ways
 - [ ] Rich aggregate in `samples/Shop`: `Order` with `OrderLine` entities and a `Money` value object;
       `AddLine`, `CancelLine` and `CancelOrder` slices sharing invariants defined on the state; API endpoints
-- [ ] Guidance: shared invariants live as methods on the state record, never duplicated across slices
-      (possible analyzer: all slices of one state live in one module)
+- [x] Guidance: shared invariants live on the state or in pure domain policies, never duplicated across slices
+      (covered in the DDD guide; an analyzer for state-module cohesion is still a possible future addition)
 - [ ] Guide: modelling read models (projections) for screens and reports
 - [ ] Docs site with the mental model first, API reference second
 
