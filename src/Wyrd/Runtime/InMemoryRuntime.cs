@@ -102,10 +102,23 @@ public sealed class InMemoryRuntime : IDisposable
         return this;
     }
 
+    /// <summary>Replaces a process with a new definition of the same name, keeping its instances: a redeploy.</summary>
+    internal void Redeploy(Process process)
+    {
+        _registry.Redeploy(process);
+        AddTypesOf(process);
+    }
+
     public InMemoryRuntime AddProcess(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
         _registry.Add(process);
+        AddTypesOf(process);
+        return this;
+    }
+
+    private void AddTypesOf(Process process)
+    {
         Register(process.Trigger);
         foreach (var node in process.Nodes)
         {
@@ -120,7 +133,6 @@ public sealed class InMemoryRuntime : IDisposable
         }
 
         Register(process.Outcome?.Action.Output);
-        return this;
     }
 
     /// <summary>
@@ -195,6 +207,41 @@ public sealed class InMemoryRuntime : IDisposable
             }
 
             _now = until;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Resumes a suspended instance (after fixing what made it stop): what it was doing is sent again with the same
+    /// message id, so a command that did run in the meantime is not run twice.
+    /// </summary>
+    public Task ResumeAsync(Process process, object key, CancellationToken cancellationToken = default) =>
+        OperateAsync(process, key, (name, k, ct) => _engine.ResumeAsync(name, k, ct), cancellationToken);
+
+    /// <summary>Compensates a suspended instance that was going forward: what it completed is undone, and the step it gave up on is fenced.</summary>
+    public Task CompensateAsync(Process process, object key, CancellationToken cancellationToken = default) =>
+        OperateAsync(process, key, (name, k, ct) => _engine.CompensateAsync(name, k, ct), cancellationToken);
+
+    /// <summary>The reason an instance is suspended, or null.</summary>
+    public string? ReasonOf(Process process, object key)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(key);
+        return Read(() => _store.Instance(process.Name, Keys.Of(key))?.Reason);
+    }
+
+    private async Task OperateAsync(Process process, object key, Func<string, string, CancellationToken, ValueTask> operation, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(key);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await operation(process.Name, Keys.Of(key), cancellationToken).ConfigureAwait(false);
+            await DrainAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {

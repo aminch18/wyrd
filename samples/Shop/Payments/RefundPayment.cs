@@ -12,6 +12,6 @@ public sealed class RefundPaymentSlice : Slice<RefundPayment, Payment, PaymentRe
     public override Result<PaymentRefunded, PaymentError> Decide(RefundPayment command, Payment payment) => payment switch
     {
         Payment.Charged charged => new PaymentRefunded(command.OrderId, charged.Amount),
-        _ => PaymentError.NothingToRefund,
+        Payment.None or Payment.Refunded => PaymentError.NothingToRefund,
     };
 }

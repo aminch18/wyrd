@@ -15,6 +15,6 @@ public sealed class ChargePaymentSlice : Slice<ChargePayment, Payment, PaymentCh
     {
         Payment.None when command.Amount > CardLimit => PaymentError.CardDeclined,
         Payment.None => new PaymentCharged(command.OrderId, command.Amount),
-        _ => PaymentError.AlreadyCharged,
+        Payment.Charged or Payment.Refunded => PaymentError.AlreadyCharged,
     };
 }

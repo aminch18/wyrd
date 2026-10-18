@@ -6,11 +6,16 @@ internal sealed record StoredState(string StateType, string Key, string Type, st
 
 internal sealed record StoredMessage(string Type, string Payload);
 
-internal sealed record StoredParked(string Process, string Key, int Step, string Type, string Payload);
+internal sealed record StoredParked(string Process, string Key, int Step, string Type, string Payload)
+{
+    public StoredMessage AsFact() => new(Type, Payload);
+}
 
 /// <summary>
 /// Where a process instance is. In a database this is one row. <c>Uncertain</c> maps the steps the process gave up on
-/// without knowing whether they ran to their original command id: their undo fences that command.
+/// without knowing whether they ran to their original command id: their undo fences that command. <c>Fingerprint</c> is
+/// the structure of the process the instance started with (see <see cref="Processes.Process.Fingerprint"/>). <c>Facts</c>
+/// are the events its steps produced and the events it awaited, in order: later steps can read them.
 /// </summary>
 internal sealed record StoredInstance(
     string Process,
@@ -21,13 +26,19 @@ internal sealed record StoredInstance(
     ProcessStatus Status,
     ImmutableList<int> Completed,
     ImmutableDictionary<int, Guid> Uncertain,
+    ImmutableList<StoredMessage> Facts,
     int Attempt,
     Guid? Pending,
     bool Compensating,
     DateTimeOffset? Deadline,
-    long Version);
+    string Fingerprint,
+    long Version,
+    string? Reason = null);
 
 internal sealed record Scheduled(DateTimeOffset At, Envelope Envelope);
+
+/// <summary>A domain event that arrived before an earlier event of its stream: read models get it once the gap is filled.</summary>
+internal sealed record StoredHeld(string StateType, string Key, long Version, string Type, string Payload);
 
 /// <summary>A read-model document. A null payload deletes it.</summary>
 internal sealed record StoredView(string ViewType, string Key, string? Type, string? Payload);
@@ -58,6 +69,15 @@ internal sealed class Changes
 
     public Dictionary<(string ViewType, string Key), StoredView> Views { get; } = [];
 
+    /// <summary>
+    /// The last version of each stream projected into read models, with the version read (checked on commit).
+    /// </summary>
+    public Dictionary<(string StateType, string Key), (long Read, long Version)> Projected { get; } = [];
+
+    public List<StoredHeld> Hold { get; } = [];
+
+    public List<StoredHeld> Release { get; } = [];
+
     /// <summary>Events handled by this transaction: a redelivery of the same message id is skipped.</summary>
     public List<Guid> Handled { get; } = [];
 
@@ -80,6 +100,11 @@ internal interface IWyrdStore
     ValueTask<StoredParked?> FindParkedAsync(string process, string key, int step, CancellationToken cancellationToken);
 
     ValueTask<StoredView?> LoadViewAsync(string viewType, string key, CancellationToken cancellationToken);
+
+    /// <summary>The last version of a stream projected into read models (0 when none).</summary>
+    ValueTask<long> LoadProjectedAsync(string stateType, string key, CancellationToken cancellationToken);
+
+    ValueTask<StoredHeld?> FindHeldAsync(string stateType, string key, long version, CancellationToken cancellationToken);
 
     ValueTask<bool> WasHandledAsync(Guid messageId, CancellationToken cancellationToken);
 

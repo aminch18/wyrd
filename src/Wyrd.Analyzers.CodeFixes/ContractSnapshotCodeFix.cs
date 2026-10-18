@@ -24,7 +24,7 @@ public sealed class ContractSnapshotCodeFix : CodeFixProvider
 
     public override ImmutableArray<string> FixableDiagnosticIds { get; } = ImmutableArray.Create("WYRD0200", "WYRD0202");
 
-    public override FixAllProvider? GetFixAllProvider() => null;
+    public override FixAllProvider GetFixAllProvider() => new SnapshotFixAllProvider();
 
     public override Task RegisterCodeFixesAsync(CodeFixContext context)
     {
@@ -79,6 +79,73 @@ public sealed class ContractSnapshotCodeFix : CodeFixProvider
 
         var updated = string.Join("\n", lines) + "\n";
         return project.Solution.WithAdditionalDocumentText(snapshot.Id, SourceText.From(updated, text.Encoding));
+    }
+
+    private sealed class SnapshotFixAllProvider() : ProjectFixAllProvider("Write all contracts to contracts.wyrd.txt")
+    {
+        protected override async Task<Solution> FixProjectAsync(
+            FixAllContext context, Project project, ImmutableArray<Diagnostic> diagnostics, CancellationToken cancellationToken)
+        {
+            var replacements = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            foreach (var diagnostic in diagnostics)
+            {
+                if (diagnostic.Properties.TryGetValue(SnapshotFix.IdProperty, out var id) && id is not null
+                    && diagnostic.Properties.TryGetValue(SnapshotFix.LineProperty, out var line) && line is not null)
+                {
+                    // Conflicting declarations are diagnosed separately. Pick deterministically here.
+                    if (!replacements.TryGetValue(id, out var previous) || string.CompareOrdinal(line, previous) < 0)
+                    {
+                        replacements[id] = line;
+                    }
+                }
+            }
+
+            if (replacements.Count == 0)
+            {
+                return project.Solution;
+            }
+
+            var snapshot = project.AdditionalDocuments.FirstOrDefault(d =>
+                string.Equals(d.Name, FileName, StringComparison.OrdinalIgnoreCase));
+            var text = snapshot is null ? SourceText.From(Header)
+                : await snapshot.GetTextAsync(cancellationToken).ConfigureAwait(false);
+            var lines = text.Lines.Select(l => l.ToString()).ToList();
+            if (lines.Count > 0 && lines[lines.Count - 1].Length == 0)
+            {
+                lines.RemoveAt(lines.Count - 1);
+            }
+
+            foreach (var replacement in replacements)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var existing = lines.FindIndex(line => IsLineFor(line, replacement.Key));
+                if (existing >= 0)
+                {
+                    lines[existing] = replacement.Value;
+                    for (var index = lines.Count - 1; index > existing; index--)
+                    {
+                        if (IsLineFor(lines[index], replacement.Key))
+                        {
+                            lines.RemoveAt(index);
+                        }
+                    }
+                }
+                else
+                {
+                    lines.Add(replacement.Value);
+                }
+            }
+
+            var updated = SourceText.From(string.Join("\n", lines) + "\n", text.Encoding);
+            if (snapshot is not null)
+            {
+                return project.Solution.WithAdditionalDocumentText(snapshot.Id, updated);
+            }
+
+            var directory = project.FilePath is null ? null : System.IO.Path.GetDirectoryName(project.FilePath);
+            var path = directory is null ? null : System.IO.Path.Combine(directory, FileName);
+            return project.AddAdditionalDocument(FileName, updated, filePath: path).Project.Solution;
+        }
     }
 
     private static bool IsLineFor(string line, string id)

@@ -28,19 +28,22 @@ Before 1.0, minor versions may contain breaking changes; they are always called 
 
 ## Publishing to nuget.org
 
-The release job pushes every `.nupkg` and `.snupkg` with `--skip-duplicate` when the repository secret
-`NUGET_API_KEY` exists, and skips the step (with a notice in the log) when it does not. One-time setup by the owner:
+Packages are pushed with [Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing): nuget.org
+trusts the release job of this repository, and each run gets a short-lived API key. No key is stored anywhere.
+The job skips the push (with a notice in the log) while the repository variable `NUGET_USER` is not set.
+One-time setup by the owner:
 
-1. Sign in at [nuget.org](https://www.nuget.org/) (create an account if needed) and reserve the `Wyrd` prefix:
-   *Account > Manage Prefixes* (`Wyrd*`). Prefix reservation is optional but shows the packages as verified.
-2. Create an API key: *Account > API Keys > Create*. Key name `wyrd-github-actions`, scope **Push new packages and
-   package versions**, glob pattern `Wyrd*`, and a limited expiry (renew it when it lapses).
-3. In GitHub, open *Settings > Secrets and variables > Actions > New repository secret* on `aminch18/wyrd`.
-   Name it `NUGET_API_KEY` and paste the key.
+1. Sign in at [nuget.org](https://www.nuget.org/) and open *your user > Trusted Publishing > Create*:
+   repository owner `aminch18`, repository `wyrd`, workflow file `ci.yml`, environment empty.
+2. In GitHub, *Settings > Secrets and variables > Actions > Variables > New repository variable*: name `NUGET_USER`,
+   value your nuget.org **username** (not your email).
+   If Trusted Publishing can't be set up, a classic API key works too: create one scoped to `Wyrd*` with push
+   rights (*your user > API Keys*) and store it as the repository **secret** `NUGET_API_KEY`.
+3. Later, optional: ask for the `Wyrd` prefix reservation by email to account@nuget.org (prefix, nuget.org username,
+   repository URL). Reserved packages show as verified and nobody else can publish `Wyrd.*`; nuget.org reviews
+   requests by hand and expects some adoption first.
 4. Push a version tag as in the steps above. Packages appear on nuget.org after validation (a few minutes).
-
-Pushing is irreversible: a published version can only be unlisted, never replaced. Check the GitHub Release
-assets first, and keep previews on `-alpha.n` tags.
+   A published version can't be deleted, only unlisted.
 
 ## Packages
 

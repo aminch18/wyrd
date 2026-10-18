@@ -15,6 +15,6 @@ public sealed class CancelOrderSlice : Slice<CancelOrder, Order, OrderCancelled,
     {
         Order.Placed => new OrderCancelled(command.OrderId),
         Order.Cancelled => OrderError.AlreadyCancelled,
-        _ => OrderError.NotFound,
+        Order.None => OrderError.NotFound,
     };
 }

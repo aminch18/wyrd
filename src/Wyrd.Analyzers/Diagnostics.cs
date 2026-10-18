@@ -7,6 +7,7 @@ internal static class Diagnostics
     private const string Messages = "Wyrd.Messages";
     private const string Contracts = "Wyrd.Contracts";
     private const string Json = "Wyrd.Json";
+    private const string Processes = "Wyrd.Processes";
     private const string HelpLink = "https://github.com/aminch18/wyrd/blob/main/docs/design/messages.md";
 
     public static readonly DiagnosticDescriptor CommandAndEvent = new(
@@ -32,6 +33,41 @@ internal static class Diagnostics
         "Name commands in the imperative",
         "Command '{0}' reads like an event ('{1}'). Name it as an intention in the imperative (e.g. 'ChargePayment', 'ShipOrder').",
         Messages, DiagnosticSeverity.Info, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly DiagnosticDescriptor RetryUnsaid = new(
+        "WYRD0014",
+        "Say how a step retries",
+        "Step '{0}' doesn't say how it retries. Wyrd has no default: add .Retry(...) with the policy you want, or .NoRetry(\"why\") if it must not be retried.",
+        Processes, DiagnosticSeverity.Warning, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly DiagnosticDescriptor CompensationUnsaid = new(
+        "WYRD0011",
+        "Say how a step is undone",
+        "Step '{0}' has no .Undo(...), so it will not be reverted if a later step fails. Add .Undo(...), or .NoCompensation(\"why\") if nothing needs undoing.",
+        Processes, DiagnosticSeverity.Warning, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly DiagnosticDescriptor AwaitWithoutTimeout = new(
+        "WYRD0012",
+        "A wait needs a timeout",
+        "Await<{0}> has no .Within(...): if the event never arrives, the process waits forever. Add .Within(...).",
+        Processes, DiagnosticSeverity.Warning, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly DiagnosticDescriptor UnionCaseNotHandled = new(
+        "WYRD0020",
+        "A switch over a union handles every case",
+        "The switch over union '{0}' does not handle: {1}. Handle every case explicitly, without '_', so a new case breaks the build instead of being swallowed.",
+        Messages, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly SuppressionDescriptor ExhaustiveUnionSwitch = new(
+        "WYRDSPR0001",
+        "CS8509",
+        "The switch handles every case of a [Union]: it is exhaustive, no '_' needed.");
+
+    public static readonly DiagnosticDescriptor ProcessStyle = new(
+        "WYRD0013",
+        "Write processes in the repository's style",
+        "This process uses the {0} syntax, but this repository writes processes with the {1} syntax (wyrd_process_style in .editorconfig). Convert it with the code fix.",
+        Processes, DiagnosticSeverity.Warning, isEnabledByDefault: true, helpLinkUri: HelpLink);
 
     public static readonly DiagnosticDescriptor LeaksDomainType = new(
         "WYRD0101",

@@ -34,6 +34,7 @@ internal sealed class Registry
         }
 
         _slices.Add(slice.Command, slice);
+        _validated = false;
     }
 
     public void Add(IPublicationHandler publication) => _publications.Add(publication);
@@ -60,6 +61,7 @@ internal sealed class Registry
         }
 
         _processes.Add(process);
+        _validated = false;
     }
 
     public ISliceHandler? FindOwner(Type command) => _slices.GetValueOrDefault(command);
@@ -75,6 +77,69 @@ internal sealed class Registry
         _publications.Select(p => Contract.Of(p.Target)).Where(c => c.Name == contract).Select(c => c.Version);
 
     public IUpcasterHandler? Upcaster(string contract, int fromVersion) => _upcasters.GetValueOrDefault((contract, fromVersion));
+
+    /// <summary>Swaps a process for a new definition with the same name, as a redeploy does (tests, replay).</summary>
+    public void Redeploy(Process process)
+    {
+        var index = _processes.FindIndex(p => p.Name == process.Name);
+        _processes[index >= 0 ? index : throw new InvalidOperationException($"Process '{process.Name}' is not registered.")] = process;
+        _validated = false;
+    }
+
+    private bool _validated;
+
+    /// <summary>
+    /// Checks what can only be checked once everything is registered: every event a step reads is produced by an
+    /// earlier step's owner or awaited before it (an undo, before its own step). Runs once, before the first message.
+    /// </summary>
+    public void Validate()
+    {
+        if (_validated)
+        {
+            return;
+        }
+
+        foreach (var process in _processes)
+        {
+            List<Type> produced = [];
+            foreach (var node in process.Nodes)
+            {
+                if (node is StepNode step)
+                {
+                    Check(process, step.Action, produced);
+                    if (step.Compensation is { } undo)
+                    {
+                        Check(process, undo, produced);
+                    }
+
+                    if (step.Action.Output is { } command && FindOwner(command) is { } owner)
+                    {
+                        produced.Add(owner.Event);
+                    }
+                }
+                else if (node is AwaitNode wait)
+                {
+                    produced.Add(wait.Event);
+                }
+            }
+        }
+
+        _validated = true;
+    }
+
+    private static void Check(Process process, StepRef step, List<Type> produced)
+    {
+        foreach (var read in step.Reads)
+        {
+            if (!produced.Any(read.IsAssignableFrom))
+            {
+                throw new InvalidOperationException(
+                    $"Process '{process.Name}': step '{step}' reads {read.Name}, but no earlier step produces it"
+                    + (produced.Count == 0 ? "." : $" (earlier steps produce {string.Join(", ", produced.Select(t => t.Name))}).")
+                    + " A step can read the events of the steps before it, and an undo those before its own step.");
+            }
+        }
+    }
 
     public Process ProcessNamed(string name) => _processes.Single(p => p.Name == name);
 }

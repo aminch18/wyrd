@@ -7,37 +7,76 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
-- `Wyrd.Tool`: generate AsyncAPI 3.0 documentation from reviewed contract snapshots and Mermaid diagrams from compiled processes, with Spectre CLI help and validation, typed YAML serialization, and nullable/immutable collection mapping.
-- `Wyrd.Web`: responsive marketing and framework documentation site with light/dark themes, IDE-matched code palettes, and automated GitHub Pages deployment.
-- Shared Markdown guides for the Wyrd philosophy and the transition from classic DDD, with equivalent cancellation examples, a concept map, and adoption guidance.
+- IDE **Fix all** in document, project or solution for contract snapshots (WYRD0200/WYRD0202) and JSON
+  declarations (WYRD0300/WYRD0301/WYRD0302): coordinated edits preserve existing attributes and snapshot comments,
+  avoid duplicate declarations, and resolve JSON name collisions exposed by newly declared union cases.
+
+## [0.3.0] - 2026-10-18
+
+### Added
+
+- **Skuld shrinking**: broken futures replay with fewer perturbations while preserving the violated invariant.
+  `Violation.Shrunk` contains the reduced perturbations, detail and journal; reports show it first and retain the
+  original seed. Shrinking defaults on with at most 200 replays per broken future (`Shrink`, `ShrinkBudget`).
+
 - **Skuld** (`Wyrd.Testing`): `Skuld.SimulateAsync(system, scenario, invariants, options)` runs a scenario in many
   seeded futures — transient faults, redelivery, reordering, timers — checks invariants (`Invariant.ProcessesSettle`,
-  `Invariant.NothingNeedsAttention`, your own) and reports each broken future with its perturbations, journal and seed;
-  `options.Only(seed)` replays it exactly.
-- `.OnCompensated(command).Retry(...)`: the outcome command can retry.
-
-- `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) and launch material under `docs/launch/` (demo script, post drafts, checklist).
-- Symbol packages (`.snupkg`) are produced next to every package, and the release job pushes packages to nuget.org when the `NUGET_API_KEY` secret exists.
+  `Invariant.NothingNeedsAttention`, your own) and reports each broken future with its perturbations, journal and
+  seed; `options.Only(seed)` replays it exactly. Misconfigured simulations are rejected.
+- Process analyzers, in fluent and pipe syntax: WYRD0014 (a step must say how it retries: `.Retry(...)` or
+  `.NoRetry("why")`, there is no default), WYRD0011 (a step followed by others must say how it is undone:
+  `.Undo(...)` or `.NoCompensation("why")`) and WYRD0012 (`Await` without `.Within(...)`).
+- WYRD0013: `wyrd_process_style = fluent | pipe | any` in `.editorconfig` picks a repository's process syntax; a
+  code fix converts a process from one syntax to the other.
+- Exhaustive switches over `[Union]` states: WYRD0020 names the cases a switch misses, and a diagnostic suppressor
+  removes CS8509 when every case is handled, so `_` is no longer needed and a new case breaks the build.
+- `.NoRetry("why")`, `.NoCompensation("why")`, `.Undo(command, 20.Times)` and `.OnCompensated(command).Retry(...)`.
+- **Suspension**: when Wyrd can't resolve something — a step's retries exhausted, an undo or the outcome that never
+  succeeds — the instance is `Suspended` with a reason (`ReasonOf`) instead of guessing. `ResumeAsync` re-sends what it
+  was doing with the same message id; `CompensateAsync` undoes it and fences the step it gave up on; a late success
+  resumes it on its own. `.Retry(3.Times).OrCompensate()` opts into compensating automatically.
+- **Process fingerprint**: each instance remembers the structure of the process it started with
+  (`Process.Fingerprint`: steps, undos, waits, outcome — not retries or time limits). If a redeploy changes it, the
+  instance is suspended ("definition changed") instead of continuing at the wrong step; nothing it receives meanwhile
+  is lost, and it resumes once its definition is back.
+- A suspended instance keeps events it awaits (parked) instead of dropping them.
+- **Steps read earlier events**: a step (or an undo) may take, after the trigger, events earlier steps produced or the
+  process awaited: `.Then(Shipping.Ship)` with `ShipOrder Ship(OrderPlaced order, PaymentCharged charged)`. A step
+  reading an event no earlier step produces fails before the first message; an undo reads only events from before
+  its own step.
+- **Ordered read models per stream**: domain events carry their stream (state and key) and version; a projection
+  gets the events of one stream in the order they happened, holding an early one until the gap is filled. Processes
+  don't wait. Across streams, and for integration events from outside, there is still no order.
+- `Wyrd.Tool` (`dotnet wyrd`): AsyncAPI 3.0 documentation from contract snapshots and Mermaid diagrams of processes.
+- `Wyrd.Web`: the documentation site, with the philosophy and the classic-DDD-to-Wyrd guides.
+- `docs/design/semantics.md`: the specification of how Wyrd behaves.
+- `CODE_OF_CONDUCT.md`, launch material under `docs/launch/`, and symbol packages (`.snupkg`) next to every package.
 
 ### Changed
 
-- CI builds and tests on Linux, Windows and macOS now that the repository is public.
+- **Breaking:** `ProcessStatus.Failed` is now `ProcessStatus.Suspended`, and exhausted retries suspend instead of
+  compensating (opt back in per step with `.OrCompensate()`).
+- **Undos always insist.** An undo no longer borrows its step's retry policy: undoing, and the outcome command,
+  retry 10 times with exponential backoff by default (waits capped at a minute), adjustable, never off. Whether a
+  step retries is its own explicit decision.
+- Pipe-syntax steps no longer use reflection to run: they are bound to typed calls (delegate variance) when the stage
+  is added, so a step may also take a more general type than the trigger.
+- CI builds and tests on Linux, Windows and macOS; the release job can push packages to nuget.org.
 - README opens with what Wyrd is, an honest preview status and a two-minute way to try it.
-- Scope website styles with CSS Modules, enforce readable formatting, use Shiki for C# and shell highlighting, and document the Wyrd CLI's AsyncAPI and Mermaid commands.
 
 ### Fixed
 
-- A redelivered failure reply no longer consumes an extra retry: replies carry their attempt; late successes are accepted.
+- A redelivered failure reply no longer consumes an extra retry: replies carry their attempt; late successes are
+  accepted.
 - A step given up on without knowing whether it ran is fenced by its undo: the owner atomically blocks the original
   command if it never ran (late copies never execute) or undoes it if it did. A domain rejection of an undo is no
   longer taken as proof that there was nothing to undo.
-- Skuld rejects misconfigured simulations (no runs, rates outside [0, 1]) instead of passing without exploring.
 - The message type registry is thread-safe (scenarios in parallel test classes could corrupt it).
 
-### Changed (samples)
+### Samples
 
-- The shop retries every step that can be undone, releases only what an order reserved, and its orders read model
-  only moves statuses forward. All found by Skuld.
+- The shop states how every step retries, releases only what an order reserved, handles every union case without
+  `_`, and its orders read model only moves statuses forward — all found by Skuld or the new analyzers.
 
 ## [0.2.0-alpha.1] - 2026-10-16
 
@@ -98,6 +137,7 @@ First preview: the core model, a deterministic in-memory runtime and versioned i
   timeouts, duplicate detection and correlation.
 - `samples/Shop`: an order fulfillment process across four vertical slices.
 
-[Unreleased]: https://github.com/aminch18/wyrd/compare/v0.2.0-alpha.1...HEAD
+[Unreleased]: https://github.com/aminch18/wyrd/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/aminch18/wyrd/compare/v0.2.0-alpha.1...v0.3.0
 [0.2.0-alpha.1]: https://github.com/aminch18/wyrd/compare/v0.1.0-alpha.1...v0.2.0-alpha.1
 [0.1.0-alpha.1]: https://github.com/aminch18/wyrd/releases/tag/v0.1.0-alpha.1

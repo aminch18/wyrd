@@ -13,8 +13,8 @@ export function QuickStartDoc() {
         >
             <h2>Install the package</h2>
             <p>
-                Wyrd currently targets .NET 10 and C# 14. During alpha, install
-                the latest prerelease package.
+                Wyrd targets .NET 10 and C# 14. The package includes the
+                analyzers; add <code>Wyrd.Testing</code> to your test project.
             </p>
             <TerminalInstall />
             <h2>Describe the messages</h2>

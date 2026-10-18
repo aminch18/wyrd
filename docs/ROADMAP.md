@@ -55,17 +55,26 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 
 ## v0.3 — Skuld (simulate the future)
 
-- [ ] Steps that read the process state, not only the trigger
-- [ ] Typed invokers via source generator (drop `DynamicInvoke` in the pipe syntax)
+- [x] Retry semantics ([design](design/semantics.md) 3.2–3.4): every step declares `.Retry(...)` or `.NoRetry("why")`
+      (WYRD0014, no default); undos and the outcome always insist with their own adjustable policy; WYRD0010 removed
+- [x] Suspend instead of guessing ([design](design/semantics.md) 3.6): exhausted retries, exhausted undos and a
+      failed outcome suspend the instance with a reason; `ResumeAsync` / `CompensateAsync`; opt-in `.OrCompensate()`
+- [x] Process structure fingerprint per instance ([design](design/semantics.md) 3.1): a changed definition suspends in-flight instances
+- [x] Steps that read the events of earlier steps (and awaited events), not only the trigger; checked before the first message
+- [x] Typed invokers in the pipe syntax: plain delegates are bound to typed calls through delegate variance when the
+      stage is added; only steps that read earlier events are invoked dynamically (Native AOT-compatible)
 - [x] **Failure simulation** (`Skuld.SimulateAsync`): seeded futures with transient faults, redelivery and reordering,
       timers on the clock, invariants (`Invariant.Defaults` + your own), replay by seed, actionable reports
 - [x] Engine fixes found by Skuld: attempt-aware replies (stale faults ignored), unknown-outcome steps compensated,
       `.OnCompensated(...).Retry(...)`, thread-safe type registry
-- [ ] Analyzer: a step with `.Undo(...)` but no `.Retry(...)` (its undo can't retry either) — Skuld's first finding
-- [ ] Ordered projections per stream (events carry their stream version), so read models don't fight reordering by hand
-- [ ] Shrinking: reduce a failing future to the fewest perturbations that still break the invariant
-- [ ] First analyzers: exhaustive `[Union]` switch, missing compensation, `Await` without timeout
-- [ ] Analyzer: `wyrd_process_style` enforcement with code fix fluent ⇄ pipe
+- [x] Ordered projections per stream (events carry their stream version), so read models don't fight reordering by hand
+- [x] Shrinking: reduce a failing future to the fewest perturbations that still break the invariant
+- [x] Analyzers WYRD0011 (a step must say how it is undone: `.Undo(...)` or `.NoCompensation("why")`) and
+      WYRD0012 (`Await` without `.Within(...)`), in fluent and pipe syntax
+- [x] Exhaustive `switch` over a `[Union]`: WYRD0020 names missing cases; a suppressor removes CS8509 when every case
+      is handled, so no `_` is needed and new cases break the build
+- [x] Analyzer WYRD0013: `wyrd_process_style` (fluent | pipe | any) in `.editorconfig`, with a code fix that converts
+      a process between fluent and pipe syntax, keeping every argument as written
 
 ## v0.4 — Urd (replay the past) and the `dotnet wyrd` tool
 
@@ -95,7 +104,7 @@ mental model matters as much as the code.
       `AddLine`, `CancelLine` and `CancelOrder` slices sharing invariants defined on the state; API endpoints
 - [x] Guidance: shared invariants live on the state or in pure domain policies, never duplicated across slices
       (covered in the DDD guide; an analyzer for state-module cohesion is still a possible future addition)
-- [ ] Guide: modelling read models (projections) for screens and reports
+- [x] Guide: modelling read models (projections) for screens and reports
 - [ ] Docs site with the mental model first, API reference second
 
 ## v1.0 — Production ready

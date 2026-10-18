@@ -12,8 +12,10 @@ namespace Shop.Tests;
 /// </summary>
 public class FencingSpecs
 {
+    // No retries, and compensate (rather than suspend) when the reserve gives up: that is the path where the outcome
+    // of ReserveStock is unknown and its undo must fence it.
     private static readonly Process ReserveOnly = Process.StartOn<OrderPlaced>(e => e.OrderId, "ReserveOnly")
-        .Then(e => new ReserveStock(e.Sku, e.Quantity, e.OrderId))
+        .Then(e => new ReserveStock(e.Sku, e.Quantity, e.OrderId)).OrCompensate()
         .Undo(e => new ReleaseStock(e.Sku, e.Quantity, e.OrderId));
 
     private static readonly SimulationOptions Hostile = new()

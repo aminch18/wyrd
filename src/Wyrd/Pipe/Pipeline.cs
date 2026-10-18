@@ -10,6 +10,7 @@ namespace Wyrd.Pipe;
 /// </summary>
 public static class Pipeline
 {
+    /// <summary>A step: the trigger, then optionally events earlier steps produced, to a command.</summary>
     public static Fragment Step(Delegate action) => new(new StepNode(StepRef.Untyped(action)));
 
     /// <summary>The command sent once compensation has finished.</summary>
@@ -48,7 +49,18 @@ public sealed class Fragment
 
     internal ProcessNode Node { get; }
 
-    public Fragment Undo(Delegate compensation) => new(NodeModifiers.Undo(Node, StepRef.Untyped(compensation)));
+    /// <summary>How this step is undone; undoing always insists (10 retries by default, adjustable).</summary>
+    public Fragment Undo(Delegate compensation, Attempts? insist = null, Backoff backoff = Backoff.Exponential) =>
+        new(NodeModifiers.Undo(Node, StepRef.Untyped(compensation), insist is { } a ? new RetryPolicy(a, backoff) : null));
+
+    /// <summary>When this step's retries run out, compensate automatically instead of suspending.</summary>
+    public Fragment OrCompensate() => new(NodeModifiers.OrCompensate(Node));
+
+    /// <summary>Declares that this step is not retried, and why.</summary>
+    public Fragment NoRetry(string reason) => new(NodeModifiers.NoRetry(Node, reason));
+
+    /// <summary>Declares that this step needs no undo if a later step fails, and why.</summary>
+    public Fragment NoCompensation(string reason) => new(NodeModifiers.NoCompensation(Node, reason));
 
     public Fragment Retry(Attempts attempts, Backoff backoff = Backoff.Exponential) =>
         new(NodeModifiers.Retry(Node, attempts, backoff));

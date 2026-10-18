@@ -11,8 +11,8 @@ namespace Shop.Fulfillment;
 /// <summary>The business process, end to end. This is what a reviewer reads.</summary>
 public static class Processes
 {
-    // Every step that can be undone retries, because its undo uses the same policy: a compensation that gives up
-    // after one transient failure leaves stock reserved forever. Skuld found exactly that.
+    // Every step says how it retries (WYRD0014): that is a business decision, there is no default.
+    // Undos always insist on their own: a compensation that gives up would leave stock reserved forever.
     public static Process OrderFulfillment => Process
         .StartOn<OrderPlaced>(e => e.OrderId)
         .Then(Stock.Reserve).Retry(5.Times).Undo(Stock.Release)

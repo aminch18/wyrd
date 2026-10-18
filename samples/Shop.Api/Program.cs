@@ -57,6 +57,18 @@ app.MapPost("/dev/payment-gateway/fail", (int times, InMemoryRuntime wyrd) =>
     return Results.NoContent();
 });
 
+app.MapPost("/dev/orders/{orderId}/resume", async (string orderId, InMemoryRuntime wyrd) =>
+{
+    await wyrd.ResumeAsync(Processes.OrderFulfillment, orderId);
+    return Results.NoContent();
+});
+
+app.MapPost("/dev/orders/{orderId}/compensate", async (string orderId, InMemoryRuntime wyrd) =>
+{
+    await wyrd.CompensateAsync(Processes.OrderFulfillment, orderId);
+    return Results.NoContent();
+});
+
 app.MapPost("/dev/clock/advance", async (int minutes, InMemoryRuntime wyrd) =>
 {
     await wyrd.AdvanceAsync(TimeSpan.FromMinutes(minutes));

@@ -10,6 +10,7 @@ interface MarkdownArticleProps {
     title: string
     lead: string
     eyebrow: string
+    after?: ReactNode
 }
 
 function FencedCode({ children }: { children?: ReactNode }) {
@@ -39,6 +40,7 @@ export function MarkdownArticle({
     title,
     lead,
     eyebrow,
+    after,
 }: MarkdownArticleProps) {
     return (
         <DocArticle title={title} lead={lead} eyebrow={eyebrow}>
@@ -58,6 +60,7 @@ export function MarkdownArticle({
             >
                 {source.replace(/^# .+\r?\n/, '')}
             </Markdown>
+            {after}
         </DocArticle>
     )
 }
