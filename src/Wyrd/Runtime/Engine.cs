@@ -398,7 +398,8 @@ internal sealed class Engine(
         Process process, StoredInstance instance, StepNode step, ProcessRef target, IEvent trigger, Changes changes)
     {
         var retried = target.Compensating ? step.Compensation! : step.Action;
-        if (Retry(instance, retried, step.Retry, target, trigger, changes) is { } retrying)
+        var policy = target.Compensating ? step.UndoPolicy : step.Retry;
+        if (Retry(instance, retried, policy, target, trigger, changes) is { } retrying)
         {
             return retrying;
         }
@@ -488,7 +489,7 @@ internal sealed class Engine(
                 log(instance.Process, instance.Key, $"rejected {types.Deserialize(reply.Type!, reply.Payload!)}");
                 return Fail(instance, outcome.Action);
             default:
-                return Retry(instance, outcome.Action, outcome.Retry, target, trigger, changes) ?? Fail(instance, outcome.Action);
+                return Retry(instance, outcome.Action, outcome.Policy, target, trigger, changes) ?? Fail(instance, outcome.Action);
         }
     }
 

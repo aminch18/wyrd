@@ -56,8 +56,8 @@ simulate and version.
 - A step sends one command and waits for its reply: **accepted** (next step), **rejected** (compensate) or
   **failed** (retry policy). **Implemented.**
 - **A step declares its retry policy**: `.Retry(attempts, backoff)` or `.NoRetry("why")`. There is no default;
-  an undeclared policy is reported by an analyzer (WYRD0014). Retries re-send the same message id, so the owner's
-  inbox makes them safe. **Planned (v0.3).** *Today: no declaration means no retries.*
+  an undeclared policy is reported by an analyzer (WYRD0014); without a declaration the step is not retried.
+  Retries re-send the same message id, so the owner's inbox makes them safe. **Implemented.**
 - **A step says how it is undone**: `.Undo(command)` or `.NoCompensation("why")`; the last step is exempt
   (WYRD0011). **Implemented.**
 - A step may read the events produced by earlier steps by asking for them as extra parameters
@@ -75,9 +75,9 @@ simulate and version.
 
 - When a step is **rejected**, the completed steps are undone in reverse order, then the outcome command
   (`.OnCompensated(...)`) runs. **Implemented.** (Exhausted retries suspend instead: see 3.6.)
-- **Undos always insist.** Their retries are a guarantee, not an option: a bounded, generous default with backoff,
-  adjustable with `.Undo(command, retry: ...)`, and impossible to disable. The diagram shows it. **Planned (v0.3).**
-  *Today: an undo uses its step's policy.*
+- **Undos always insist.** Their retries are a guarantee, not an option: 10 retries with exponential backoff (waits
+  capped at a minute) by default, adjustable with `.Undo(command, 20.Times)`, impossible to disable. The outcome
+  command insists the same way. **Implemented.**
 - A step given up on without knowing whether it ran is **fenced** by its undo: the owner, atomically with its
   inbox, undoes the original command if it ran, or blocks it forever if it didn't. A domain rejection of an undo is
   never taken as proof that there was nothing to undo. **Implemented.** *Requirement:* an undo is handled by the same

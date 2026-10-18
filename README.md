@@ -179,10 +179,10 @@ error WYRD0020: The switch over union 'Payment' does not handle: Disputed.
 ```csharp
 public static Process OrderFulfillment => Process
     .StartOn<OrderPlaced>(e => e.OrderId)
-    .Then(Stock.Reserve).Undo(Stock.Release)
+    .Then(Stock.Reserve).Retry(3.Times).Undo(Stock.Release)
     .Then(Payments.Charge).Retry(3.Times, Backoff.Exponential).Undo(Payments.Refund)
     .Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)
-    .Then(Shipping.Ship)
+    .Then(Shipping.Ship).NoRetry("the carrier retries on its side")
     .OnCompensated(Orders.Cancel);   // how it ends when it can't complete
 ```
 
@@ -202,10 +202,10 @@ using static Wyrd.Pipe.Pipeline;
 
 public static Process OrderFulfillment =>
     Start.On<OrderPlaced>(e => e.OrderId)
-      >> Step(Stock.Reserve).Undo(Stock.Release)
+      >> Step(Stock.Reserve).Retry(3.Times).Undo(Stock.Release)
       >> Step(Payments.Charge).Retry(3.Times, Backoff.Exponential).Undo(Payments.Refund)
       >> Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)
-      >> Step(Shipping.Ship);
+      >> Step(Shipping.Ship).NoRetry("the carrier retries on its side");
 ```
 
 ### 5. Publish contracts deliberately ✅
@@ -301,7 +301,7 @@ through an `Upcaster<PaymentChargedV1, PaymentChargedV2>` — each subscriber re
 |---|---|
 | A command decided by two slices | `WYRD0002` — **build error** |
 | A `switch` over a `[Union]` that misses a case (and no `_` needed when none is missed) | `WYRD0020` — **build error** |
-| A step that can be undone but never retries | `WYRD0010` — warning |
+| A step that doesn't say how it retries: `.Retry(...)` or `.NoRetry("why")` (Wyrd has no default) | `WYRD0014` — warning |
 | A step followed by others with no `.Undo(...)` or `.NoCompensation("why")` | `WYRD0011` — warning |
 | An `Await` with no `.Within(...)` timeout | `WYRD0012` — warning |
 | A process in the syntax the repository didn't pick (`wyrd_process_style`) | `WYRD0013` — warning, one-click conversion |
@@ -383,7 +383,7 @@ What it taught us — and what Wyrd now does about it:
 
 | Skuld found | The fix |
 |---|---|
-| An undo that can't retry loses stock after one network blip | Steps that can be undone retry; `.OnCompensated(...)` can `.Retry(...)` too |
+| An undo that can't retry loses stock after one network blip | Undos always insist: their retries are a guarantee (adjustable, never off), not something the step lends them |
 | A redelivered failure reply consumed an extra retry | Replies carry their attempt: stale faults are ignored, a late success is always accepted |
 | A command we gave up on still ran later, and its stock was never released | Its undo **fences** the original command: if it never ran, it never will; if it ran, it is undone |
 | An event arriving late moved an order from *Cancelled* back to *Released* | Read models must tolerate reordering: statuses only move forward |

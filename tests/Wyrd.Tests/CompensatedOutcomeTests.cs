@@ -56,12 +56,13 @@ public class CompensatedOutcomeTests
     }
 
     [Fact]
-    public async Task a_failed_outcome_needs_attention()
+    public async Task an_outcome_that_never_succeeds_needs_attention()
     {
         var runtime = TestSystem.Create(Fluent);
-        runtime.FailNext<CancelOrder>();
+        runtime.FailNext<CancelOrder>(times: 11); // the outcome insists like an undo: one attempt + 10 retries
 
         await runtime.SendAsync(new PlaceOrder("A-1", Quantity: 99, Amount: 50));
+        await runtime.AdvanceAsync(10.Minutes);
 
         Assert.Equal(ProcessStatus.Failed, runtime.StatusOf(Fluent, "A-1"));
         Assert.Contains(runtime.Journal, e => e.Message == "FAILED: Orders.Cancel could not run, needs attention");

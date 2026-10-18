@@ -48,7 +48,12 @@ public sealed class Fragment
 
     internal ProcessNode Node { get; }
 
-    public Fragment Undo(Delegate compensation) => new(NodeModifiers.Undo(Node, StepRef.Untyped(compensation)));
+    /// <summary>How this step is undone; undoing always insists (10 retries by default, adjustable).</summary>
+    public Fragment Undo(Delegate compensation, Attempts? insist = null, Backoff backoff = Backoff.Exponential) =>
+        new(NodeModifiers.Undo(Node, StepRef.Untyped(compensation), insist is { } a ? new RetryPolicy(a, backoff) : null));
+
+    /// <summary>Declares that this step is not retried, and why.</summary>
+    public Fragment NoRetry(string reason) => new(NodeModifiers.NoRetry(Node, reason));
 
     /// <summary>Declares that this step needs no undo if a later step fails, and why.</summary>
     public Fragment NoCompensation(string reason) => new(NodeModifiers.NoCompensation(Node, reason));

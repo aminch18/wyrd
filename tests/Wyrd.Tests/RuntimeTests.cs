@@ -160,11 +160,24 @@ public class RuntimeTests
     }
 
     [Fact]
-    public async Task a_failed_compensation_needs_attention()
+    public async Task an_undo_insists_through_transient_failures()
     {
-        _runtime.FailNext<ReleaseStock>();
+        _runtime.FailNext<ReleaseStock>(times: 3);
 
         await _runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 5_000));
+        await _runtime.AdvanceAsync(1.Minutes);
+
+        Assert.Equal(ProcessStatus.Compensated, _runtime.StatusOf(Fulfillment, "A-1"));
+        Assert.Contains(new StockReleased("A-1"), Events());
+    }
+
+    [Fact]
+    public async Task an_undo_that_never_succeeds_needs_attention()
+    {
+        _runtime.FailNext<ReleaseStock>(times: 11); // one attempt + the 10 retries every undo gets
+
+        await _runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 5_000));
+        await _runtime.AdvanceAsync(10.Minutes);
 
         Assert.Equal(ProcessStatus.Failed, _runtime.StatusOf(Fulfillment, "A-1"));
     }

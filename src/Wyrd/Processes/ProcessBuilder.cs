@@ -45,9 +45,16 @@ public sealed class ProcessBuilder<TTrigger>
         where TCommand : ICommand =>
         Append(new CompensatedNode(StepRef.Typed(outcome)));
 
-    public ProcessBuilder<TTrigger> Undo<TCommand>(Func<TTrigger, TCommand> compensation)
+    /// <summary>
+    /// How the last step is undone if a later step fails. Undoing always insists — 10 retries by default —
+    /// because a compensation that gives up leaves the world inconsistent; adjust it with <paramref name="insist"/>.
+    /// </summary>
+    public ProcessBuilder<TTrigger> Undo<TCommand>(Func<TTrigger, TCommand> compensation, Attempts? insist = null, Backoff backoff = Backoff.Exponential)
         where TCommand : ICommand =>
-        ModifyLast(n => NodeModifiers.Undo(n, StepRef.Typed(compensation)));
+        ModifyLast(n => NodeModifiers.Undo(n, StepRef.Typed(compensation), insist is { } a ? new RetryPolicy(a, backoff) : null));
+
+    /// <summary>Declares that the last step is not retried, and why (e.g. "the carrier retries on its side").</summary>
+    public ProcessBuilder<TTrigger> NoRetry(string reason) => ModifyLast(n => NodeModifiers.NoRetry(n, reason));
 
     /// <summary>
     /// Declares that the last step needs no undo if a later step fails, and why (e.g. "only sends an email").

@@ -76,10 +76,10 @@ public sealed class StripeCharge(StripeClient stripe) : IIntegration<ChargeCard,
 ```csharp
 public static Process OrderFulfillment => Process
     .StartOn<OrderPlaced>(e => e.OrderId)
-    .Then(Stock.Reserve).Undo(Stock.Release)
+    .Then(Stock.Reserve).Retry(3.Times).Undo(Stock.Release)
     .Then(Payments.Charge).Retry(3.Times).Undo(Payments.Refund)
     .Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)
-    .Then(Shipping.Ship);
+    .Then(Shipping.Ship).NoRetry("the carrier retries on its side");
 ```
 
 ### 5. Hosting
@@ -152,8 +152,10 @@ Timeouts are a `deadline` column polled with `FOR UPDATE SKIP LOCKED`, so they s
 
 Simulating the sample shop in thousands of hostile futures taught four rules every Wyrd application should follow:
 
-1. **Every step that can be undone retries.** Its undo uses the same policy; an undo that gives up after one
-   transient failure leaves the world inconsistent.
+1. **Undos always insist.** A compensation that gives up after one transient failure leaves the world inconsistent,
+   so undoing retries by default (10 times, exponential), adjustable but never off. Whether a *step* retries is a
+   separate business decision that every step states explicitly. *(First found by Skuld as "an undo that inherits
+   its step's missing retries"; see [semantics](semantics.md) 3.2 and 3.4.)*
 2. **A step given up on is fenced, never guessed.** When a process gives up on a step it can't know whether the
    step ran: a delayed copy may still execute. Its undo carries the original command id and the owner decides, in
    the same transaction as its inbox: if the original ran, the undo runs; if it never ran, the original is

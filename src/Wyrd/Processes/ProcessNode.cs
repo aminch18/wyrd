@@ -9,13 +9,25 @@ public enum Backoff
 
 public sealed record RetryPolicy(Attempts Attempts, Backoff Backoff)
 {
-    /// <summary>Delay before the given retry (1-based).</summary>
-    public TimeSpan DelayBefore(int retry) => Backoff switch
+    private static readonly TimeSpan MaxDelay = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// How undos and the outcome insist unless told otherwise: undoing is a guarantee, not an option.
+    /// 10 retries, exponential, waits capped at a minute: about five minutes before Wyrd asks a human.
+    /// </summary>
+    public static RetryPolicy Undo { get; } = new(new Attempts(10), Backoff.Exponential);
+
+    /// <summary>Delay before the given retry (1-based), capped at one minute.</summary>
+    public TimeSpan DelayBefore(int retry)
     {
-        Backoff.Immediate => TimeSpan.Zero,
-        Backoff.Linear => TimeSpan.FromSeconds(retry),
-        _ => TimeSpan.FromSeconds(Math.Pow(2, retry - 1)),
-    };
+        var delay = Backoff switch
+        {
+            Backoff.Immediate => TimeSpan.Zero,
+            Backoff.Linear => TimeSpan.FromSeconds(retry),
+            _ => TimeSpan.FromSeconds(Math.Pow(2, Math.Min(retry - 1, 30))),
+        };
+        return delay < MaxDelay ? delay : MaxDelay;
+    }
 }
 
 /// <summary>
@@ -87,17 +99,34 @@ public sealed record StepRef(string Name)
 
 public abstract record ProcessNode;
 
+/// <summary>
+/// A step: a command, how it retries, and how it is undone. <c>Retry</c> is the step's own decision (none unless declared);
+/// the undo always insists, with <c>CompensationRetry</c> or, when null, <see cref="RetryPolicy.Undo"/>.
+/// </summary>
 public sealed record StepNode(StepRef Action, StepRef? Compensation = null, RetryPolicy? Retry = null) : ProcessNode
 {
     /// <summary>Why this step needs no undo, when that was decided explicitly with <c>.NoCompensation("why")</c>.</summary>
     public string? NoCompensationReason { get; init; }
+
+    /// <summary>Why this step is not retried, when that was decided explicitly with <c>.NoRetry("why")</c>.</summary>
+    public string? NoRetryReason { get; init; }
+
+    /// <summary>How the undo insists, when adjusted; null means <see cref="RetryPolicy.Undo"/>.</summary>
+    public RetryPolicy? CompensationRetry { get; init; }
+
+    /// <summary>The policy the undo actually uses.</summary>
+    public RetryPolicy UndoPolicy => CompensationRetry ?? RetryPolicy.Undo;
 }
 
 /// <summary>
 /// How the process ends when it is compensated: a command that tells the business (e.g. <c>CancelOrder</c>),
 /// so read models and other slices learn the outcome. Not a position in the flow.
 /// </summary>
-public sealed record CompensatedNode(StepRef Action, RetryPolicy? Retry = null) : ProcessNode;
+public sealed record CompensatedNode(StepRef Action, RetryPolicy? Retry = null) : ProcessNode
+{
+    /// <summary>The outcome is part of undoing: it insists like an undo unless adjusted.</summary>
+    public RetryPolicy Policy => Retry ?? RetryPolicy.Undo;
+}
 
 /// <summary>Waits for an external event correlated to the process instance.</summary>
 public sealed record AwaitNode(Type Event, TimeSpan? Timeout = null) : ProcessNode
@@ -112,11 +141,11 @@ public sealed record AwaitNode(Type Event, TimeSpan? Timeout = null) : ProcessNo
 /// <summary>Modifiers shared by the fluent and the pipe syntax, so both build the exact same model.</summary>
 internal static class NodeModifiers
 {
-    public static ProcessNode Undo(ProcessNode node, StepRef compensation) => node switch
+    public static ProcessNode Undo(ProcessNode node, StepRef compensation, RetryPolicy? insist) => node switch
     {
         StepNode { NoCompensationReason: not null } => throw new InvalidOperationException(
             "A step is either undone with Undo() or explicitly not with NoCompensation(), never both."),
-        StepNode step => step with { Compensation = compensation },
+        StepNode step => step with { Compensation = compensation, CompensationRetry = insist },
         _ => throw Misplaced(nameof(Undo), "a step", node),
     };
 
@@ -132,8 +161,22 @@ internal static class NodeModifiers
         };
     }
 
+    public static ProcessNode NoRetry(ProcessNode node, string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        return node switch
+        {
+            StepNode { Retry: not null } => throw new InvalidOperationException(
+                "A step either retries with Retry() or explicitly not with NoRetry(), never both."),
+            StepNode step => step with { NoRetryReason = reason },
+            _ => throw Misplaced(nameof(NoRetry), "a step", node),
+        };
+    }
+
     public static ProcessNode Retry(ProcessNode node, Attempts attempts, Backoff backoff) => node switch
     {
+        StepNode { NoRetryReason: not null } => throw new InvalidOperationException(
+            "A step either retries with Retry() or explicitly not with NoRetry(), never both."),
         StepNode step => step with { Retry = new RetryPolicy(attempts, backoff) },
         CompensatedNode outcome => outcome with { Retry = new RetryPolicy(attempts, backoff) },
         _ => throw Misplaced(nameof(Retry), "a step or OnCompensated", node),

@@ -9,15 +9,14 @@ using Microsoft.CodeAnalysis.Diagnostics;
 namespace Wyrd.Analyzers;
 
 /// <summary>
-/// Checks process definitions, in fluent and pipe syntax, for what Skuld keeps finding in hostile futures:
-/// undos that can't retry (WYRD0010), steps with no word on how they are undone (WYRD0011) and waits without
-/// a timeout (WYRD0012).
+/// Checks that process definitions, in fluent and pipe syntax, say what Wyrd won't assume: how each step retries
+/// (WYRD0014, no default), how each step is undone (WYRD0011), and how long a wait lasts (WYRD0012).
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class ProcessAnalyzer : DiagnosticAnalyzer
 {
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
-        ImmutableArray.Create(Diagnostics.UndoWithoutRetry, Diagnostics.CompensationUnsaid, Diagnostics.AwaitWithoutTimeout);
+        ImmutableArray.Create(Diagnostics.RetryUnsaid, Diagnostics.CompensationUnsaid, Diagnostics.AwaitWithoutTimeout);
 
     public override void Initialize(AnalysisContext context)
     {
@@ -73,9 +72,9 @@ public sealed class ProcessAnalyzer : DiagnosticAnalyzer
         var step = invocation.ArgumentList.Arguments.FirstOrDefault()?.Expression.ToString() ?? method.Name;
         var undone = modifiers.Contains("Undo");
 
-        if (undone && !modifiers.Contains("Retry"))
+        if (!modifiers.Contains("Retry") && !modifiers.Contains("NoRetry"))
         {
-            context.ReportDiagnostic(Diagnostic.Create(Diagnostics.UndoWithoutRetry, location, step));
+            context.ReportDiagnostic(Diagnostic.Create(Diagnostics.RetryUnsaid, location, step));
         }
 
         // The last step needs no undo: nothing after it can fail and trigger compensation.

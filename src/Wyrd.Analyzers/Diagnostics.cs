@@ -34,10 +34,10 @@ internal static class Diagnostics
         "Command '{0}' reads like an event ('{1}'). Name it as an intention in the imperative (e.g. 'ChargePayment', 'ShipOrder').",
         Messages, DiagnosticSeverity.Info, isEnabledByDefault: true, helpLinkUri: HelpLink);
 
-    public static readonly DiagnosticDescriptor UndoWithoutRetry = new(
-        "WYRD0010",
-        "A step that can be undone needs retries",
-        "Step '{0}' can be undone but has no .Retry(...). Its undo uses the same retry policy, so one transient failure would leave it undone. Add .Retry(...).",
+    public static readonly DiagnosticDescriptor RetryUnsaid = new(
+        "WYRD0014",
+        "Say how a step retries",
+        "Step '{0}' doesn't say how it retries. Wyrd has no default: add .Retry(...) with the policy you want, or .NoRetry(\"why\") if it must not be retried.",
         Processes, DiagnosticSeverity.Warning, isEnabledByDefault: true, helpLinkUri: HelpLink);
 
     public static readonly DiagnosticDescriptor CompensationUnsaid = new(

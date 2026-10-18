@@ -6,11 +6,17 @@ namespace Wyrd.Tests;
 
 public class SkuldTests
 {
-    // Reserve can be undone but never retries: one transient failure of its undo leaves the order needing a human.
+    // No step retries: one transient failure cancels an order that should have gone through.
     private static Process Fragile => Process
         .StartOn<OrderPlaced>(e => e.OrderId)
         .Then(Stock.Reserve).Undo(Stock.Release)
         .Then(Payment.Charge).Undo(Payment.Refund);
+
+    // A-1 is a valid order: whatever the network does, it must go through.
+    private static readonly Invariant ValidOrdersGoThrough = new("valid orders go through", runtime =>
+        runtime.History.Contains(new PaymentCharged("A-1", 50)) && !runtime.History.Contains(new PaymentRefunded("A-1"))
+            ? null
+            : "A-1 was cancelled by a transient failure");
 
     private static Process Robust => Process
         .StartOn<OrderPlaced>(e => e.OrderId)
@@ -26,26 +32,27 @@ public class SkuldTests
     }
 
     [Fact]
-    public async Task skuld_finds_a_compensation_that_cannot_retry()
+    public async Task skuld_finds_that_a_step_without_retries_cancels_valid_orders()
     {
-        var report = await Skuld.SimulateAsync(System(Fragile), TwoOrders, Invariant.Defaults);
+        var report = await Skuld.SimulateAsync(System(Fragile), TwoOrders, [.. Invariant.Defaults, ValidOrdersGoThrough]);
 
-        var violation = Assert.Single(report.Violations.Where(v => v.Invariant == "nothing needs attention").Take(1));
+        var violation = report.Violations.First(v => v.Invariant == "valid orders go through");
         Assert.Contains(violation.Journal, e => e.Process == "skuld" && e.Message.EndsWith("failed transiently", StringComparison.Ordinal));
-        Assert.Contains(violation.Journal, e => e.Message.StartsWith("FAILED:", StringComparison.Ordinal));
+        Assert.Contains(violation.Journal, e => e.Message == "transient failure, no retry policy");
+        Assert.DoesNotContain(report.Violations, v => v.Invariant == "nothing needs attention"); // undos insist
     }
 
     [Fact]
     public async Task a_robust_process_survives_every_future() =>
-        (await Skuld.SimulateAsync(System(Robust), TwoOrders, Invariant.Defaults)).ThrowIfViolated();
+        (await Skuld.SimulateAsync(System(Robust), TwoOrders, [.. Invariant.Defaults, ValidOrdersGoThrough])).ThrowIfViolated();
 
     [Fact]
     public async Task a_failing_future_is_replayed_exactly_from_its_seed()
     {
         var options = new SimulationOptions();
-        var first = (await Skuld.SimulateAsync(System(Fragile), TwoOrders, Invariant.Defaults, options)).Violations[0];
+        var first = (await Skuld.SimulateAsync(System(Fragile), TwoOrders, [ValidOrdersGoThrough], options)).Violations[0];
 
-        var replay = (await Skuld.SimulateAsync(System(Fragile), TwoOrders, Invariant.Defaults, options.Only(first.Seed))).Violations[0];
+        var replay = (await Skuld.SimulateAsync(System(Fragile), TwoOrders, [ValidOrdersGoThrough], options.Only(first.Seed))).Violations[0];
 
         Assert.Equal(first.Seed, replay.Seed);
         Assert.Equal(first.Invariant, replay.Invariant);
@@ -71,10 +78,10 @@ public class SkuldTests
     [Fact]
     public async Task the_report_explains_what_broke_and_how_to_replay_it()
     {
-        var report = await Skuld.SimulateAsync(System(Fragile), TwoOrders, Invariant.Defaults);
+        var report = await Skuld.SimulateAsync(System(Fragile), TwoOrders, [ValidOrdersGoThrough]);
 
         var ex = Assert.Throws<WyrdAssertionException>(report.ThrowIfViolated);
-        Assert.Contains("✗ \"nothing needs attention\"", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("✗ \"valid orders go through\"", ex.Message, StringComparison.Ordinal);
         Assert.Contains("Perturbations:", ex.Message, StringComparison.Ordinal);
         Assert.Contains($"options.Only({report.Violations[0].Seed})", ex.Message, StringComparison.Ordinal);
     }

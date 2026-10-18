@@ -55,8 +55,8 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 
 ## v0.3 — Skuld (simulate the future)
 
-- [ ] Retry semantics ([design](design/semantics.md) 3.2–3.4): every step declares `.Retry(...)` or `.NoRetry("why")`
-      (WYRD0014, no default); undos always insist with their own adjustable policy; WYRD0010 removed
+- [x] Retry semantics ([design](design/semantics.md) 3.2–3.4): every step declares `.Retry(...)` or `.NoRetry("why")`
+      (WYRD0014, no default); undos and the outcome always insist with their own adjustable policy; WYRD0010 removed
 - [ ] Suspend instead of failing silently ([design](design/semantics.md) 3.6): exhausted retries, exhausted undos and a
       changed definition suspend the instance with a reason; operations to resume or compensate it
 - [ ] Process structure fingerprint per instance ([design](design/semantics.md) 3.1)
@@ -67,7 +67,6 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
       timers on the clock, invariants (`Invariant.Defaults` + your own), replay by seed, actionable reports
 - [x] Engine fixes found by Skuld: attempt-aware replies (stale faults ignored), unknown-outcome steps compensated,
       `.OnCompensated(...).Retry(...)`, thread-safe type registry
-- [x] Analyzer WYRD0010: a step with `.Undo(...)` but no `.Retry(...)` (its undo can't retry either) — Skuld's first finding
 - [ ] Ordered projections per stream (events carry their stream version), so read models don't fight reordering by hand
 - [ ] Shrinking: reduce a failing future to the fewest perturbations that still break the invariant
 - [x] Analyzers WYRD0011 (a step must say how it is undone: `.Undo(...)` or `.NoCompensation("why")`) and
