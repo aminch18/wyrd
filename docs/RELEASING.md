@@ -37,6 +37,8 @@ One-time setup by the owner:
    repository owner `aminch18`, repository `wyrd`, workflow file `ci.yml`, environment empty.
 2. In GitHub, *Settings > Secrets and variables > Actions > Variables > New repository variable*: name `NUGET_USER`,
    value your nuget.org **username** (not your email).
+   If Trusted Publishing can't be set up, a classic API key works too: create one scoped to `Wyrd*` with push
+   rights (*your user > API Keys*) and store it as the repository **secret** `NUGET_API_KEY`.
 3. Later, optional: ask for the `Wyrd` prefix reservation by email to account@nuget.org (prefix, nuget.org username,
    repository URL). Reserved packages show as verified and nobody else can publish `Wyrd.*`; nuget.org reviews
    requests by hand and expects some adoption first.
