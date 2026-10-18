@@ -502,12 +502,12 @@ internal sealed class Engine(
 
         if (target.Compensating)
         {
-            return Suspend(instance, $"undo {retried} failed after {instance.Attempt} attempts");
+            return Suspend(instance, $"undo {retried} failed after {Attempts(instance.Attempt)}");
         }
 
         if (!step.CompensateWhenExhausted)
         {
-            return Suspend(instance, $"{retried} failed after {instance.Attempt} attempts");
+            return Suspend(instance, $"{retried} failed after {Attempts(instance.Attempt)}");
         }
 
         return CompensateUncertain(process, instance, step, target.Step, trigger, changes);
@@ -599,7 +599,7 @@ internal sealed class Engine(
                 return Suspend(instance, $"outcome {outcome.Action} was rejected: {types.Deserialize(reply.Type!, reply.Payload!)}");
             default:
                 return Retry(instance, outcome.Action, outcome.Policy, target, trigger, changes)
-                    ?? Suspend(instance, $"outcome {outcome.Action} failed after {instance.Attempt} attempts");
+                    ?? Suspend(instance, $"outcome {outcome.Action} failed after {Attempts(instance.Attempt)}");
         }
     }
 
@@ -737,6 +737,8 @@ internal sealed class Engine(
 
             throw new InvalidOperationException($"Step '{step}' reads {wanted.Name}, but {instance.Process} '{instance.Key}' has no such event.");
         });
+
+    private static string Attempts(int count) => count == 1 ? "1 attempt" : $"{count} attempts";
 
     private IEvent Trigger(StoredInstance instance) => (IEvent)types.Deserialize(instance.TriggerType, instance.TriggerPayload);
 }
