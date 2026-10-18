@@ -78,17 +78,11 @@ yourself (`CHANGELOG.md`, `README.md` and the solution file are the usual ones).
 |---|---|---|---|
 | v0.4 Urd: instance history capture, replay as a test | Claude | `feature/v0.4-urd` | `src/Wyrd/Runtime/**`, `src/Wyrd.Testing/**`, `src/Wyrd.Tool/**`, `docs/design/**` |
 | Verdandi on PostgreSQL (parked until v0.4 ships) | Claude | `feature/verdandi` | `src/Wyrd.PostgreSql/**`, `tests/Wyrd.PostgreSql.Tests/**` |
-| [005](docs/tasks/005-process-analyzers-round-2.md) — analyzers for what a step reads | Codex | `codex/process-analyzers-2` | `src/Wyrd.Analyzers/**` |
-| [006](docs/tasks/006-richer-diagrams.md) — diagrams that show the decisions | Codex | `codex/richer-diagrams` | `ToMermaid` only |
 | [007](docs/tasks/007-rich-order-aggregate.md) — rich order in the Shop | Codex | `codex/rich-order` | `samples/Shop*/**` |
-| [008](docs/tasks/008-operations-guide.md) — operations guide | Codex | `codex/operations-guide` | `docs/guides/operations.md` |
-| [009](docs/tasks/009-site-guides.md) — site: guides and analyzers | Codex | `codex/site-guides` | `src/Wyrd.Web/**` |
-| [010](docs/tasks/010-benchmarks.md) — benchmarks | Codex | `codex/benchmarks` | `benchmarks/**` |
-| [011](docs/tasks/011-community-templates.md) — community templates | Codex | `codex/community` | `.github/ISSUE_TEMPLATE/**`, `CONTRIBUTING.md` |
-| [012](docs/tasks/012-booking-sample.md) — booking sample | Codex | `codex/booking-sample` | `samples/Booking*/**` |
+| [009](docs/tasks/009-docs-site.md) — docs site: mental model first, API reference second | Codex | `codex/docs-site` | `src/Wyrd.Web/**` |
 
-Each task file lists its exact bounds. Tasks 007 and 012 both touch the solution file, and 005, 008 and 012 each
-add a line to `README.md`: expect small conflicts and resolve them.
+Each task file lists its exact bounds. **Tasks come only from open items in `docs/ROADMAP.md`**, in milestone order;
+an idea that is not on the roadmap is proposed to the owner first, never started.
 
 ## Review checklist (learned from earlier pull requests)
 
