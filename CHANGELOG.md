@@ -5,6 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- IDE **Fix all** in document, project or solution for contract snapshots (WYRD0200/WYRD0202) and JSON
+  declarations (WYRD0300/WYRD0301/WYRD0302): coordinated edits preserve existing attributes and snapshot comments,
+  avoid duplicate declarations, and resolve JSON name collisions exposed by newly declared union cases.
+
 ## [0.3.0] - 2026-10-18
 
 ### Added

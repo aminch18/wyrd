@@ -26,7 +26,7 @@ public sealed class JsonContextCodeFix : CodeFixProvider
 
     public override ImmutableArray<string> FixableDiagnosticIds { get; } = ImmutableArray.Create("WYRD0300", "WYRD0301", "WYRD0302");
 
-    public override FixAllProvider? GetFixAllProvider() => null;
+    public override FixAllProvider GetFixAllProvider() => new JsonContextFixAllProvider();
 
     public override Task RegisterCodeFixesAsync(CodeFixContext context)
     {
