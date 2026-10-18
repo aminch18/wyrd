@@ -7,7 +7,7 @@ import { DocArticle } from './DocArticle'
 const FINDINGS = [
     [
         'An undo without retries leaves stock reserved after a single transient failure.',
-        'A step with an undo needs a retry policy, and .OnCompensated(...) can .Retry(...) too. Planned in v0.3: every step declares its policy, and undos always insist.',
+        'A step with an undo needs a retry policy, and .OnCompensated(...) can .Retry(...) too. Every step now declares .Retry(...) or .NoRetry("why"), and undos always insist.',
     ],
     [
         'A redelivered failure reply consumed an extra retry.',
@@ -26,7 +26,7 @@ const FINDINGS = [
 const LESSONS = [
     [
         'Retries are decided, never assumed, and undos insist.',
-        'An undo that gives up after one transient failure leaves the world inconsistent. Today an undo uses its step\'s retry policy; planned in v0.3: every step declares .Retry(...) or .NoRetry("why"), and undos always retry with their own adjustable policy.',
+        'An undo that gives up after one transient failure leaves the world inconsistent. Every step declares .Retry(...) or .NoRetry("why") (WYRD0014), and undos always retry with their own adjustable policy.',
     ],
     [
         'A step given up on is fenced, never guessed.',

@@ -35,7 +35,7 @@ const STATUSES = [
     ['Compensated', 'Undone, and the outcome command ran.'],
     [
         'Suspended',
-        'Needs attention, with a reason; it can be resumed or compensated. Planned in v0.3: until then an exhausted undo ends as Failed.',
+        'Needs attention, with a reason (ReasonOf); it can be resumed or compensated. It replaced the earlier Failed.',
     ],
 ] as const
 
@@ -68,6 +68,7 @@ const PROCESS_SHAPE = `trigger event (correlated by key)
  step 1: send a command ──► Accepted ──► next step
         │                └─► Rejected ──► compensate (never retried)
         │                └─► Failed   ──► the step's retry policy decides
+        │                                (exhausted: suspend, or .OrCompensate())
         ▼
  wait:  Await<Event>(key) ──► fact arrives ──► next step
         │                 └─► .Within(...) expires ──► compensate on purpose
@@ -102,7 +103,7 @@ const LIFECYCLE = `            ┌───────────── fact a
 
  retries exhausted, undo exhausted,
  outcome failed, definition changed ──► Suspended
- (planned in v0.3)                        │ resume or compensate`
+ (a late success also resumes it)         │ ResumeAsync or CompensateAsync`
 
 export function SemanticsDoc() {
     return (
@@ -327,14 +328,7 @@ export function SemanticsDoc() {
                                 them safe.
                             </>
                         ),
-                        status: 'planned',
-                        version: 'v0.3',
-                        today: (
-                            <>
-                                <code>.Retry(...)</code> works, and a step
-                                without it simply has no retries.
-                            </>
-                        ),
+                        status: 'implemented',
                     },
                     {
                         rule: (
@@ -419,27 +413,20 @@ export function SemanticsDoc() {
                             </>
                         ),
                         status: 'implemented',
-                        today: (
-                            <>
-                                exhausted forward retries also compensate.
-                                Version 0.3 changes that: they suspend instead.
-                            </>
-                        ),
                     },
                     {
                         rule: (
                             <>
                                 <strong>Undos always insist.</strong> Their
-                                retries are a guarantee, not an option: a
-                                bounded, generous default with backoff,
-                                adjustable with{' '}
-                                <code>.Undo(command, retry: ...)</code> and
-                                impossible to disable. The diagram shows it.
+                                retries are a guarantee, not an option: 10
+                                retries with exponential backoff (waits capped
+                                at one minute) by default, adjustable with{' '}
+                                <code>.Undo(command, 20.Times)</code> and
+                                impossible to disable. The outcome command
+                                insists the same way.
                             </>
                         ),
-                        status: 'planned',
-                        version: 'v0.3',
-                        today: <>an undo uses its step&apos;s policy.</>,
+                        status: 'implemented',
                     },
                     {
                         rule: (
@@ -527,11 +514,15 @@ export function SemanticsDoc() {
                     a step&apos;s retries are exhausted (a failure Wyrd cannot
                     classify: an outage or a bug; suspending never cancels an
                     order because of a bug, and a process may opt into
-                    compensating automatically instead),
+                    compensating automatically instead with{' '}
+                    <code>.Retry(3.Times).OrCompensate()</code>),
                 </li>
                 <li>an undo&apos;s retries are exhausted,</li>
                 <li>the outcome command fails after its retries,</li>
-                <li>its definition&apos;s structure changed.</li>
+                <li>
+                    its definition&apos;s structure changed (needs the
+                    fingerprint, planned in v0.3).
+                </li>
             </ul>
             <p>
                 Suspending does not make the world consistent: the instance
@@ -539,11 +530,15 @@ export function SemanticsDoc() {
                 (status, reason, alert) and <strong>recoverable</strong>: an
                 operator <strong>resumes</strong> it after a fix, or{' '}
                 <strong>compensates</strong> it. Nothing is lost and nothing
-                stays stuck in silence. <Status kind="planned" version="v0.3" />
-            </p>
-            <p>
-                Today an exhausted undo ends as <code>Failed</code>, and
-                exhausted forward retries compensate.
+                stays stuck in silence. <code>ResumeAsync</code> re-sends what
+                the instance was doing with the same message id, so a command
+                that did run is not run twice. <code>CompensateAsync</code>{' '}
+                undoes a forward-suspended instance and fences the step it gave
+                up on. A late success of the pending command resumes the
+                instance on its own. <Status kind="implemented" /> The
+                structure-changed reason depends on the fingerprint, which is{' '}
+                <Status kind="planned" version="v0.3" />. Durable hosts come
+                with v0.5.
             </p>
 
             <h3>Statuses</h3>
@@ -568,8 +563,8 @@ export function SemanticsDoc() {
                 </table>
             </div>
             <p>
-                <code>Failed</code> becomes <code>Suspended</code> when the
-                suspension rules above are implemented.
+                <code>Suspended</code> carries its reason (<code>ReasonOf</code>
+                ) and replaced the earlier <code>Failed</code> status.
             </p>
             <CodeBlock
                 code={LIFECYCLE}

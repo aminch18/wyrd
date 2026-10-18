@@ -55,7 +55,7 @@ function Decision({
 }
 
 const RETRY_POLICY = `.Then(Stock.Reserve).Retry(3.Times).Undo(Stock.Release)
-.Then(Payments.Charge).Retry(3.Times, Backoff.Exponential).Undo(Payments.Refund, 10.Times)
+.Then(Payments.Charge).Retry(3.Times, Backoff.Exponential).Undo(Payments.Refund, 20.Times)
 .Then(Shipping.Ship).NoRetry("a human books the carrier; a second attempt would double-book")`
 
 export function DecisionsDoc() {
@@ -104,27 +104,23 @@ export function DecisionsDoc() {
 
             <Decision
                 title="Retries are explicit, per step, with no default"
-                status="planned"
-                version="v0.3"
-                note="today, a step without .Retry(...) has no retries"
+                status="implemented"
                 problem="A default retry count is a hidden business decision. Retrying a payment is safe only if the owner deduplicates; retrying a booking may not be. Skuld also showed that a step that can be undone but cannot retry leaves stock reserved after a single transient failure."
                 decision='Every step declares its policy: .Retry(attempts, backoff) or .NoRetry("why"). There is no default, and an analyzer (WYRD0014) reports a step that declares neither. Retries re-send the same message id, so the owner&apos;s inbox makes them safe.'
                 gives="Reviewers see the retry decision for every step, and a missing one is a build warning instead of a surprise in production."
                 costs="One more line per step, and you have to be able to say why a step is safe to retry (or not)."
             >
-                <CodeBlock
-                    code={RETRY_POLICY}
-                    title="A policy on every step (planned syntax)"
-                />
+                <CodeBlock code={RETRY_POLICY} title="A policy on every step" />
                 <p>
                     <strong>Why undos always insist.</strong> An undo is the
                     last thing between a half-done process and an inconsistent
-                    world, so its retries are a guarantee, not an option: a
-                    bounded, generous default with backoff, adjustable with{' '}
-                    <code>.Undo(command, 10.Times)</code> and impossible to
-                    disable. It does not inherit the step&apos;s policy; a step
-                    that must not be retried can still have an undo that
-                    persists. Today an undo uses its step&apos;s policy.
+                    world, so its retries are a guarantee, not an option: 10
+                    retries with exponential backoff (waits capped at one
+                    minute) by default, adjustable with{' '}
+                    <code>.Undo(command, 20.Times)</code> and impossible to
+                    disable. The outcome command insists the same way. An undo
+                    does not inherit the step&apos;s policy; a step that must
+                    not be retried can still have an undo that persists.
                 </p>
             </Decision>
 
@@ -140,11 +136,10 @@ export function DecisionsDoc() {
 
             <Decision
                 title="Suspend instead of failing silently"
-                status="planned"
-                version="v0.3"
-                note="today an exhausted undo ends as Failed, and exhausted forward retries compensate"
+                status="implemented"
+                note="in the in-memory host; the definition-changed reason needs the fingerprint, planned in v0.3"
                 problem="When retries run out, there are two bad options: cancel the order (even though the cause may be an outage or a bug in your code) or leave the instance stuck where nobody looks."
-                decision="An instance whose step retries are exhausted, whose undo retries are exhausted, whose outcome command fails, or whose definition changed becomes Suspended with a reason. An operator resumes it after a fix or compensates it. A process may opt into compensating automatically instead."
+                decision="An instance whose step retries are exhausted, whose undo retries are exhausted, whose outcome command fails, or whose definition changed becomes Suspended with a reason. Operators use ResumeAsync or CompensateAsync, a late success resumes the instance on its own, and .Retry(3.Times).OrCompensate() opts a step into compensating automatically instead."
                 gives="Nothing is lost and nothing stays stuck in silence: the situation is visible (status, reason, alert) and recoverable."
                 costs="Suspending does not make the world consistent; the instance stays half-way until someone acts. Someone has to watch for suspended instances."
             />

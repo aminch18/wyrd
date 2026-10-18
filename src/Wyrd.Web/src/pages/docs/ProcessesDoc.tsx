@@ -24,8 +24,9 @@ export function ProcessesDoc() {
                 </li>
                 <li>
                     Completed steps compensate in reverse order after a
-                    rejection. Today exhausted forward retries compensate too;
-                    in v0.3 they suspend the instance instead.
+                    rejection. Exhausted step retries suspend the instance with
+                    a reason instead; <code>.OrCompensate()</code> opts into
+                    compensating.
                 </li>
                 <li>
                     A step given up on with an unknown outcome is fenced by its
@@ -40,22 +41,30 @@ export function ProcessesDoc() {
                     sleeping.
                 </li>
             </ul>
-            <h2>Retries and undos</h2>
+            <h2>Retries, undos and suspension</h2>
             <p>
-                Every step in the example above states its own retry policy.
-                That is the convention to follow, because a step&apos;s retry is
-                a business decision. <Status kind="planned" version="v0.3" />{' '}
-                The compiler will ask for it: each step will declare{' '}
-                <code>.Retry(...)</code> or{' '}
-                <code>.NoRetry(&quot;why&quot;)</code>. Today a step without{' '}
-                <code>.Retry(...)</code> simply has no retries.
+                Every step states its own retry policy:{' '}
+                <code>.Retry(attempts, backoff)</code> or{' '}
+                <code>.NoRetry(&quot;why&quot;)</code>. There is no default, and
+                analyzer WYRD0014 reports a step that declares neither.{' '}
+                <Status kind="implemented" />
             </p>
             <p>
-                An undo does not inherit its step&apos;s retries. Undos always
-                insist, with a bounded, generous default that you can adjust
-                with <code>.Undo(command, 10.Times)</code> but never disable.{' '}
-                <Status kind="planned" version="v0.3" /> Until then, an undo
-                uses the policy of its step. The rules and the reasons are in{' '}
+                An undo does not inherit its step&apos;s retries. Undos and the
+                outcome command always insist: 10 retries with exponential
+                backoff (waits capped at one minute) by default, adjustable with{' '}
+                <code>.Undo(command, 20.Times)</code> and impossible to disable.{' '}
+                <Status kind="implemented" />
+            </p>
+            <p>
+                When a step&apos;s retries are exhausted, or an undo or the
+                outcome gives up, the instance becomes <code>Suspended</code>{' '}
+                with a reason (<code>ReasonOf</code>). An operator calls{' '}
+                <code>ResumeAsync</code> or <code>CompensateAsync</code>, and a
+                late success resumes it on its own.{' '}
+                <code>.Retry(3.Times).OrCompensate()</code> opts a step into
+                compensating instead. <Status kind="implemented" /> The rules
+                and the reasons are in{' '}
                 <a href="#/docs/semantics">How Wyrd behaves</a> and{' '}
                 <a href="#/docs/decisions">Design decisions</a>.
             </p>

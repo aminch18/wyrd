@@ -248,16 +248,16 @@ export const ANALYZER_RULES = [
             'Events should be past tense; commands should be imperative.',
     },
     {
-        code: 'WYRD0010 / 0011 / 0012',
+        code: 'WYRD0011 / 0012',
         severity: 'Warning',
         description:
-            'Process rules: a step with an undo but no retries (WYRD0010, to be replaced by WYRD0014 in v0.3), every step says how it is undone or .NoCompensation("why") (WYRD0011), every wait has .Within (WYRD0012).',
+            'Process rules: every step says how it is undone or .NoCompensation("why") (WYRD0011), every wait has .Within (WYRD0012).',
     },
     {
         code: 'WYRD0014',
         severity: 'Warning',
         description:
-            'Planned in v0.3, not available yet: every step declares its retry policy, .Retry(...) or .NoRetry("why").',
+            'Every step declares its retry policy, .Retry(...) or .NoRetry("why"). There is no default. Replaces the removed WYRD0010.',
     },
     {
         code: 'WYRD0013',

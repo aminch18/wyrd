@@ -102,7 +102,7 @@ const ROADMAP: readonly Milestone[] = [
         version: 'v0.3',
         title: 'Skuld — simulate the future',
         status: 'In progress',
-        copy: 'Failure simulation is available. The retry semantics and suspension described in How Wyrd behaves are still open.',
+        copy: 'Failure simulation, explicit retry semantics and suspension are available. The structure fingerprint, steps that read earlier events, ordered projections and shrinking are still open.',
         items: [
             [
                 true,
@@ -115,15 +115,15 @@ const ROADMAP: readonly Milestone[] = [
             [true, 'Typed invokers in the pipe syntax, no reflection'],
             [
                 true,
-                'Analyzers WYRD0010 (undo without retries), WYRD0011 (how a step is undone), WYRD0012 (await without .Within), WYRD0013 (process style), WYRD0020 (exhaustive union switch)',
+                'Analyzers WYRD0011 (how a step is undone), WYRD0012 (await without .Within), WYRD0013 (process style), WYRD0020 (exhaustive union switch)',
             ],
             [
-                false,
-                'Retry semantics: every step declares .Retry(...) or .NoRetry("why") (WYRD0014); undos always insist; WYRD0010 removed',
+                true,
+                'Retry semantics: every step declares .Retry(...) or .NoRetry("why") (WYRD0014); undos and the outcome always insist; WYRD0010 removed',
             ],
             [
-                false,
-                'Suspend instead of failing silently, with operations to resume or compensate',
+                true,
+                'Suspend instead of guessing, with ResumeAsync / CompensateAsync and opt-in .OrCompensate()',
             ],
             [false, 'Process structure fingerprint per instance'],
             [false, 'Steps that read the events of earlier steps'],
