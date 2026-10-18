@@ -23,6 +23,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   succeeds — the instance is `Suspended` with a reason (`ReasonOf`) instead of guessing. `ResumeAsync` re-sends what it
   was doing with the same message id; `CompensateAsync` undoes it and fences the step it gave up on; a late success
   resumes it on its own. `.Retry(3.Times).OrCompensate()` opts into compensating automatically.
+- **Process fingerprint**: each instance remembers the structure of the process it started with
+  (`Process.Fingerprint`: steps, undos, waits, outcome — not retries or time limits). If a redeploy changes it, the
+  instance is suspended ("definition changed") instead of continuing at the wrong step; nothing it receives meanwhile
+  is lost, and it resumes once its definition is back.
+- A suspended instance keeps events it awaits (parked) instead of dropping them.
 - `Wyrd.Tool` (`dotnet wyrd`): AsyncAPI 3.0 documentation from contract snapshots and Mermaid diagrams of processes.
 - `Wyrd.Web`: the documentation site, with the philosophy and the classic-DDD-to-Wyrd guides.
 - `docs/design/semantics.md`: the specification of how Wyrd behaves.

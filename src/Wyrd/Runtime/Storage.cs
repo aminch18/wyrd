@@ -10,7 +10,8 @@ internal sealed record StoredParked(string Process, string Key, int Step, string
 
 /// <summary>
 /// Where a process instance is. In a database this is one row. <c>Uncertain</c> maps the steps the process gave up on
-/// without knowing whether they ran to their original command id: their undo fences that command.
+/// without knowing whether they ran to their original command id: their undo fences that command. <c>Fingerprint</c> is
+/// the structure of the process the instance started with (see <see cref="Processes.Process.Fingerprint"/>).
 /// </summary>
 internal sealed record StoredInstance(
     string Process,
@@ -25,6 +26,7 @@ internal sealed record StoredInstance(
     Guid? Pending,
     bool Compensating,
     DateTimeOffset? Deadline,
+    string Fingerprint,
     long Version,
     string? Reason = null);
 

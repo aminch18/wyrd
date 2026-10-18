@@ -1,3 +1,4 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Wyrd.Testing")]
+[assembly: InternalsVisibleTo("Wyrd.Tests")]

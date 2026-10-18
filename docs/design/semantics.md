@@ -48,8 +48,10 @@ simulate and version.
   duplicate. **Implemented.**
 - Each instance records a **fingerprint of the process structure** it started with: the steps, their order and the
   waits — not configuration such as retries. If the deployed definition's structure differs, the instance is
-  **suspended** ("definition changed") instead of continuing at the wrong step. Migrating in-flight instances comes
-  with process versioning. **Planned (v0.3); migration planned (v1.0).**
+  **suspended** ("definition changed") instead of continuing at the wrong step: nothing it receives meanwhile is lost
+  (replies stay in the owner's inbox, awaited events are parked), and it can be resumed once the definition it started
+  with is deployed again. `Process.Fingerprint` is a 12-character hash. **Implemented. Migration of in-flight
+  instances planned (v1.0)** with process versioning.
 
 ### 3.2 Steps
 
@@ -104,6 +106,8 @@ An instance is **suspended — needs attention** when:
 - an undo's retries are exhausted,
 - the outcome command fails after its retries,
 - its definition's structure changed (3.1).
+
+A resumed wait starts its time limit again.
 
 Suspending doesn't make the world consistent: the instance stays half-way. It makes the situation **visible**
 (status, reason, alert) and **recoverable**: an operator **resumes** it (after a fix) or **compensates** it.

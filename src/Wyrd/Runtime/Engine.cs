@@ -220,7 +220,8 @@ internal sealed class Engine(
 
         var (triggerType, triggerPayload) = types.Serialize(trigger, process.Trigger);
         var instance = new StoredInstance(
-            process.Name, key, triggerType, triggerPayload, 0, ProcessStatus.Running, [], ImmutableDictionary<int, Guid>.Empty, 0, null, false, null, 0);
+            process.Name, key, triggerType, triggerPayload, 0, ProcessStatus.Running, [], ImmutableDictionary<int, Guid>.Empty, 0, null, false, null,
+            process.Fingerprint, 0);
         log(process.Name, key, $"started by {trigger.GetType().Name}");
         changes.Save(await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false));
     }
@@ -232,21 +233,44 @@ internal sealed class Engine(
         var instance = changes.Find(process.Name, key)
             ?? await store.LoadInstanceAsync(process.Name, key, cancellationToken).ConfigureAwait(false);
 
-        if (instance is { Status: ProcessStatus.Awaiting } && instance.Position == step)
+        if (instance is { Status: ProcessStatus.Awaiting } && DefinitionChanged(process, instance) is { } changed)
+        {
+            // Kept at the step the instance waits at, in case it is what it waits for once its definition is back.
+            changes.Park.Add(Parked(process, key, instance.Position, wait, awaited));
+            changes.Save(changed);
+        }
+        else if (instance is { Status: ProcessStatus.Awaiting } && instance.Position == step)
         {
             log(process.Name, key, $"<- {awaited.GetType().Name}");
             var trigger = Trigger(instance);
             instance = instance with { Position = step + 1, Status = ProcessStatus.Running, Deadline = null };
             changes.Save(await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false));
         }
-        else if (instance is null || (instance is { Status: ProcessStatus.Running, Compensating: false } && instance.Position < step))
+        else if (instance is null
+            || (instance is { Status: ProcessStatus.Running, Compensating: false } && instance.Position < step)
+            || (instance is { Status: ProcessStatus.Suspended, Compensating: false } && instance.Position <= step))
         {
-            // Arrived before the process was waiting for it (common in distributed systems): keep it.
+            // Arrived before the process was waiting for it (common in distributed systems), or while it is
+            // suspended: keep it for when the process gets there.
             log(process.Name, key, $"{awaited.GetType().Name} arrived early, parked");
-            var (type, payload) = types.Serialize(awaited, wait.Event);
-            changes.Park.Add(new StoredParked(process.Name, key, step, type, payload));
+            changes.Park.Add(Parked(process, key, step, wait, awaited));
         }
     }
+
+    private StoredParked Parked(Process process, string key, int step, AwaitNode wait, IEvent awaited)
+    {
+        var (type, payload) = types.Serialize(awaited, wait.Event);
+        return new StoredParked(process.Name, key, step, type, payload);
+    }
+
+    /// <summary>
+    /// The instance suspended, when the deployed definition's structure is not the one it started with: continuing
+    /// would run the wrong step. Null when it is the same.
+    /// </summary>
+    private StoredInstance? DefinitionChanged(Process process, StoredInstance instance) =>
+        instance.Fingerprint == process.Fingerprint
+            ? null
+            : Suspend(instance, $"definition changed (started as {instance.Fingerprint}, deployed {process.Fingerprint})");
 
     /// <summary>
     /// The form of a fact a subscriber understands: the exact type or, for integration events, the same contract
@@ -295,7 +319,7 @@ internal sealed class Engine(
                 case AwaitNode wait:
                     var parked = changes.Park.FirstOrDefault(p => p.Process == instance.Process && p.Key == instance.Key && p.Step == instance.Position)
                         ?? await store.FindParkedAsync(instance.Process, instance.Key, instance.Position, cancellationToken).ConfigureAwait(false);
-                    if (parked is not null)
+                    if (parked is not null && types.TypeOf(parked.Type) == wait.Event)
                     {
                         changes.Park.Remove(parked);
                         changes.Unpark.Add(parked);
@@ -353,6 +377,20 @@ internal sealed class Engine(
         var process = registry.ProcessNamed(target.Process);
         var trigger = Trigger(instance);
         var changes = new Changes();
+
+        // The reply stays in the owner's inbox: resuming re-sends the command with the same id and gets it again.
+        if (instance.Status != ProcessStatus.Suspended && DefinitionChanged(process, instance) is { } changed)
+        {
+            changes.Save(changed);
+            await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (instance.Fingerprint != process.Fingerprint)
+        {
+            log(target.Process, target.Key, "reply kept for later: the definition changed");
+            return;
+        }
 
         if (target.Step == process.Nodes.Length)
         {
@@ -528,7 +566,12 @@ internal sealed class Engine(
         log(instance.Process, instance.Key, "resumed by an operator");
 
         instance = instance with { Status = ProcessStatus.Running, Reason = null };
-        if (!instance.Compensating)
+        if (!instance.Compensating && process.Nodes[instance.Position] is AwaitNode)
+        {
+            // Waits again, with a fresh time limit; an event that arrived meanwhile was parked and is taken now.
+            instance = await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false);
+        }
+        else if (!instance.Compensating)
         {
             var step = (StepNode)process.Nodes[instance.Position];
             instance = Resend(instance, trigger, step.Action, instance.Position, compensating: false, changes);
@@ -559,18 +602,27 @@ internal sealed class Engine(
 
         var changes = new Changes();
         log(instance.Process, instance.Key, "compensation requested by an operator");
-        var step = (StepNode)process.Nodes[instance.Position];
-        instance = instance with { Status = ProcessStatus.Running, Reason = null };
-        changes.Save(CompensateUncertain(process, instance, step, instance.Position, Trigger(instance), changes));
+        instance = instance with { Status = ProcessStatus.Running, Reason = null, Deadline = null };
+        changes.Save(process.Nodes[instance.Position] is StepNode step
+            ? CompensateUncertain(process, instance, step, instance.Position, Trigger(instance), changes)
+            : StartCompensation(process, instance, Trigger(instance), changes));
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask<(Process Process, StoredInstance Instance)> SuspendedAsync(string processName, string key, CancellationToken cancellationToken)
     {
         var instance = await store.LoadInstanceAsync(processName, key, cancellationToken).ConfigureAwait(false);
-        return instance is { Status: ProcessStatus.Suspended }
-            ? (registry.ProcessNamed(processName), instance)
-            : throw new InvalidOperationException($"{processName} '{key}' is not suspended (it is {instance?.Status.ToString() ?? "unknown"}).");
+        if (instance is not { Status: ProcessStatus.Suspended })
+        {
+            throw new InvalidOperationException($"{processName} '{key}' is not suspended (it is {instance?.Status.ToString() ?? "unknown"}).");
+        }
+
+        var process = registry.ProcessNamed(processName);
+        return instance.Fingerprint == process.Fingerprint
+            ? (process, instance)
+            : throw new InvalidOperationException(
+                $"{processName} '{key}' started with another definition ({instance.Fingerprint}; deployed: {process.Fingerprint}). "
+                + "Deploy the definition it started with to resume or compensate it; migrating instances comes with process versioning.");
     }
 
     private StoredInstance Resend(StoredInstance instance, IEvent trigger, StepRef step, int index, bool compensating, Changes changes)
@@ -596,8 +648,15 @@ internal sealed class Engine(
         }
 
         var process = registry.ProcessNamed(target.Process);
-        var wait = (AwaitNode)process.Nodes[target.Step];
         var changes = new Changes();
+        if (DefinitionChanged(process, instance) is { } changed)
+        {
+            changes.Save(changed);
+            await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var wait = (AwaitNode)process.Nodes[target.Step];
         log(instance.Process, instance.Key, $"timeout: {wait.Event.Name} not received in time");
         changes.Save(StartCompensation(process, instance with { Deadline = null }, Trigger(instance), changes));
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);

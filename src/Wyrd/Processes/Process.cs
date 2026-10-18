@@ -42,6 +42,37 @@ public sealed class Process : IEquatable<Process>
         return new(name, e => key((TEvent)e), []);
     }
 
+    /// <summary>
+    /// The process's structure — its steps, undos, waits and outcome, in order — as a short hash. Configuration such
+    /// as retries or time limits is not part of it. Each instance remembers the fingerprint it started with: if the
+    /// deployed definition's structure differs, the instance is suspended instead of continuing at the wrong step.
+    /// </summary>
+    public string Fingerprint => _fingerprint ??= ComputeFingerprint();
+
+    private string? _fingerprint;
+
+    private string ComputeFingerprint()
+    {
+        var shape = new StringBuilder(Trigger.Name);
+        foreach (var node in Nodes)
+        {
+            shape.Append(node switch
+            {
+                StepNode step => $" > {step.Action}" + (step.Compensation is { } undo ? $" ~ {undo}" : ""),
+                AwaitNode wait => $" > await {wait.Event.Name}",
+                _ => throw new InvalidOperationException($"Unknown node {node.GetType().Name}."),
+            });
+        }
+
+        if (Outcome is { } outcome)
+        {
+            shape.Append(CultureInfo.InvariantCulture, $" ! {outcome.Action}");
+        }
+
+        var hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(shape.ToString()));
+        return Convert.ToHexStringLower(hash)[..12];
+    }
+
     /// <summary>Two processes are equal when they have the same trigger and the same nodes, in order.</summary>
     public bool Equals(Process? other) =>
         other is not null && Name == other.Name && Trigger == other.Trigger && Nodes.SequenceEqual(other.Nodes)

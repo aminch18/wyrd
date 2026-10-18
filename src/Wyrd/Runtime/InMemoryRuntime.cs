@@ -102,10 +102,23 @@ public sealed class InMemoryRuntime : IDisposable
         return this;
     }
 
+    /// <summary>Replaces a process with a new definition of the same name, keeping its instances: a redeploy.</summary>
+    internal void Redeploy(Process process)
+    {
+        _registry.Redeploy(process);
+        AddTypesOf(process);
+    }
+
     public InMemoryRuntime AddProcess(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
         _registry.Add(process);
+        AddTypesOf(process);
+        return this;
+    }
+
+    private void AddTypesOf(Process process)
+    {
         Register(process.Trigger);
         foreach (var node in process.Nodes)
         {
@@ -120,7 +133,6 @@ public sealed class InMemoryRuntime : IDisposable
         }
 
         Register(process.Outcome?.Action.Output);
-        return this;
     }
 
     /// <summary>

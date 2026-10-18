@@ -76,5 +76,12 @@ internal sealed class Registry
 
     public IUpcasterHandler? Upcaster(string contract, int fromVersion) => _upcasters.GetValueOrDefault((contract, fromVersion));
 
+    /// <summary>Swaps a process for a new definition with the same name, as a redeploy does (tests, replay).</summary>
+    public void Redeploy(Process process)
+    {
+        var index = _processes.FindIndex(p => p.Name == process.Name);
+        _processes[index >= 0 ? index : throw new InvalidOperationException($"Process '{process.Name}' is not registered.")] = process;
+    }
+
     public Process ProcessNamed(string name) => _processes.Single(p => p.Name == name);
 }
