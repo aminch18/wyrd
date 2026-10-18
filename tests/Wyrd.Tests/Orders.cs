@@ -153,13 +153,19 @@ public sealed class OrderSummaries : Projection<OrderSummary>
 
 public static class TestSystem
 {
-    public static InMemoryRuntime Create(params Wyrd.Processes.Process[] processes)
+    public static InMemoryRuntime Create(params Wyrd.Processes.Process[] processes) =>
+        Create(new InMemoryRuntime().AddSlice(new ChargePaymentSlice()), processes);
+
+    /// <summary>The test system with the payment carried out by an integration instead of a slice.</summary>
+    public static InMemoryRuntime WithGateway(Integration<ChargePayment, PaymentCharged, PaymentError> gateway, params Wyrd.Processes.Process[] processes) =>
+        Create(new InMemoryRuntime().AddIntegration(gateway), processes);
+
+    private static InMemoryRuntime Create(InMemoryRuntime payments, Wyrd.Processes.Process[] processes)
     {
-        var runtime = new InMemoryRuntime()
+        var runtime = payments
             .AddSlice(new PlaceOrderSlice())
             .AddSlice(new ReserveStockSlice())
             .AddSlice(new ReleaseStockSlice())
-            .AddSlice(new ChargePaymentSlice())
             .AddSlice(new RefundPaymentSlice())
             .AddSlice(new ShipOrderSlice())
             .AddSlice(new CancelOrderSlice())

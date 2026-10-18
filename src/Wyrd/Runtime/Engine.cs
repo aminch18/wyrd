@@ -46,8 +46,8 @@ internal sealed class Engine(
     private async ValueTask<Decision?> HandleCommandAsync(Envelope envelope, CancellationToken cancellationToken)
     {
         var command = (ICommand)types.Deserialize(envelope.Type, envelope.Payload);
-        var slice = registry.OwnerOf(command.GetType());
-        var key = Keys.Of(slice.KeyOf(command));
+        var owner = registry.OwnerOf(command.GetType());
+        var key = Keys.Of(owner.KeyOf(command));
         var changes = new Changes();
 
         if (await store.FindReplyAsync(envelope.MessageId, cancellationToken).ConfigureAwait(false) is { } stored)
@@ -73,36 +73,53 @@ internal sealed class Engine(
             return null;
         }
 
-        var stateType = slice.State.FullName!;
-        var current = await store.LoadStateAsync(stateType, key, cancellationToken).ConfigureAwait(false);
-        var state = current is null ? slice.Initial : types.Deserialize(current.Type, current.Payload);
-        var decision = slice.Decide(command, state);
-
-        ReplyMessage reply;
-        if (decision is Decision.Accepted accepted)
+        Decision decision;
+        if (owner is IIntegrationHandler integration)
         {
-            var version = (current?.Version ?? 0) + 1;
-            var (nextType, nextPayload) = types.Serialize(((IState)state).Apply(accepted.Event), slice.State);
-            changes.States.Add(new StoredState(stateType, key, nextType, nextPayload, version));
-
-            var (eventType, eventPayload) = types.Serialize(accepted.Event, slice.Event);
-            changes.Events.Add(new StoredMessage(eventType, eventPayload));
-            changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, eventType, eventPayload, Stream: new StreamRef(stateType, key, version)));
-
-            foreach (var publication in registry.PublicationsOf(accepted.Event.GetType()))
+            // The only I/O: outside world first, then the outcome is recorded like any decision. A crash in between
+            // redelivers the command with the same id — the idempotency key — so the other system doesn't repeat it.
+            try
             {
-                var published = publication.Map(accepted.Event);
-                var (publishedType, publishedPayload) = types.Serialize(published, published.GetType());
-                changes.Published.Add(new StoredMessage(publishedType, publishedPayload));
-                changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, publishedType, publishedPayload));
-                log(External, key, $"published {types.TypeOf(publishedType).Name}");
+                decision = await integration.ExecuteAsync(command, new IntegrationContext(envelope.MessageId, envelope.Process?.Attempt ?? 1), cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (envelope.Process is not null && ex is not OperationCanceledException)
+            {
+                log(External, key, $"{command.GetType().Name} failed: {ex.GetType().Name}: {ex.Message}");
+                Reply(envelope, new ReplyMessage(ReplyOutcome.Faulted), changes);
+                await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+                return null;
             }
 
+            if (decision is Decision.Accepted done)
+            {
+                Accept(done.Event, owner, key, stream: null, changes);
+            }
+        }
+        else
+        {
+            var slice = (ISliceHandler)owner;
+            var stateType = slice.State.FullName!;
+            var current = await store.LoadStateAsync(stateType, key, cancellationToken).ConfigureAwait(false);
+            var state = current is null ? slice.Initial : types.Deserialize(current.Type, current.Payload);
+            decision = slice.Decide(command, state);
+            if (decision is Decision.Accepted accepted)
+            {
+                var version = (current?.Version ?? 0) + 1;
+                var (nextType, nextPayload) = types.Serialize(((IState)state).Apply(accepted.Event), slice.State);
+                changes.States.Add(new StoredState(stateType, key, nextType, nextPayload, version));
+                Accept(accepted.Event, owner, key, new StreamRef(stateType, key, version), changes);
+            }
+        }
+
+        ReplyMessage reply;
+        if (decision is Decision.Accepted { Event: var @event })
+        {
+            var (eventType, eventPayload) = types.Serialize(@event, owner.Event);
             reply = new ReplyMessage(ReplyOutcome.Accepted, eventType, eventPayload);
         }
         else
         {
-            var (errorType, errorPayload) = types.Serialize(((Decision.Rejected)decision).Error, slice.Error);
+            var (errorType, errorPayload) = types.Serialize(((Decision.Rejected)decision).Error, owner.Error);
             reply = new ReplyMessage(ReplyOutcome.Rejected, errorType, errorPayload);
         }
 
@@ -117,6 +134,23 @@ internal sealed class Engine(
     /// ran, it is fenced (a late copy will find the fence and never execute) and there is nothing to undo; if it ran
     /// and was accepted, the undo runs normally. Returns true when the undo is answered without running.
     /// </summary>
+    /// <summary>Records an accepted event: stored, delivered to whoever reacts to it, and mapped to its publications.</summary>
+    private void Accept(IDomainEvent @event, ICommandOwner owner, string key, StreamRef? stream, Changes changes)
+    {
+        var (eventType, eventPayload) = types.Serialize(@event, owner.Event);
+        changes.Events.Add(new StoredMessage(eventType, eventPayload));
+        changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, eventType, eventPayload, Stream: stream));
+
+        foreach (var publication in registry.PublicationsOf(@event.GetType()))
+        {
+            var published = publication.Map(@event);
+            var (publishedType, publishedPayload) = types.Serialize(published, published.GetType());
+            changes.Published.Add(new StoredMessage(publishedType, publishedPayload));
+            changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, publishedType, publishedPayload));
+            log(External, key, $"published {types.TypeOf(publishedType).Name}");
+        }
+    }
+
     private async ValueTask<bool> FenceAsync(
         Envelope undo, Guid original, ICommand command, string key, Changes changes, CancellationToken cancellationToken)
     {

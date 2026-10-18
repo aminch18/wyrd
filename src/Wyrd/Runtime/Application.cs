@@ -18,6 +18,12 @@ internal sealed class Application(MessageTypes types)
         Register(slice.Command, slice.State, slice.Event, slice.Error);
     }
 
+    public void Add(IIntegrationHandler integration)
+    {
+        Registry.Add(integration);
+        Register(integration.Command, integration.Event, integration.Error);
+    }
+
     public void Add(IPublicationHandler publication)
     {
         Registry.Add(publication);

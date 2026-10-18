@@ -94,7 +94,8 @@ Work happens on `feature/verdandi` (PR #11), in this order:
       ports first planned here: separate ports can't commit atomically
 - [x] Durable scheduler for timeouts and retries: queue rows with an availability time (PostgreSQL prototype)
 - [x] `IWyrdRuntime` and `IWyrdBuilder<T>`: application code and modules are the same on every host
-- [ ] **Integrations** (`IIntegration<...>`): the only I/O, with idempotency keys and recorded outcomes
+- [x] **Integrations** (`Integration<TCommand, TEvent, TError>`, [design](design/integrations.md)): the only I/O, with
+      idempotency keys and recorded outcomes
 - [ ] **EF Core** host for state, inbox, outbox and queue (PostgreSQL, SQL Server), with migrations and an option to
       share the application's `DbContext` transaction; only the queue's dequeue (`FOR UPDATE SKIP LOCKED` / `READPAST`)
       is raw SQL. Replaces the hand-written Npgsql prototype

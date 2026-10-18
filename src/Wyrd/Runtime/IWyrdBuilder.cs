@@ -22,6 +22,12 @@ public interface IWyrdBuilder<out TSelf>
         where TEvent : IDomainEvent
         where TError : notnull;
 
+    /// <summary>Registers the integration that owns a command carried out by another system (the only I/O).</summary>
+    TSelf AddIntegration<TCommand, TEvent, TError>(Integration<TCommand, TEvent, TError> integration)
+        where TCommand : ICommand
+        where TEvent : IDomainEvent
+        where TError : notnull;
+
     /// <summary>Registers a mapping from a domain event to an integration event.</summary>
     TSelf AddPublication<TDomainEvent, TIntegrationEvent>(Publication<TDomainEvent, TIntegrationEvent> publication)
         where TDomainEvent : IDomainEvent

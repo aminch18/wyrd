@@ -15,17 +15,17 @@ public abstract class Slice<TCommand, TState, TEvent, TError> : ISliceHandler
 
     public abstract Result<TEvent, TError> Decide(TCommand command, TState state);
 
-    Type ISliceHandler.Command => typeof(TCommand);
+    Type ICommandOwner.Command => typeof(TCommand);
 
     Type ISliceHandler.State => typeof(TState);
 
-    Type ISliceHandler.Event => typeof(TEvent);
+    Type ICommandOwner.Event => typeof(TEvent);
 
-    Type ISliceHandler.Error => typeof(TError);
+    Type ICommandOwner.Error => typeof(TError);
 
     object ISliceHandler.Initial => TState.Initial;
 
-    object ISliceHandler.KeyOf(ICommand command) => KeyOf((TCommand)command);
+    object ICommandOwner.KeyOf(ICommand command) => KeyOf((TCommand)command);
 
     Decision ISliceHandler.Decide(ICommand command, object state) =>
         Decide((TCommand)command, (TState)state).Match<Decision>(
@@ -33,19 +33,11 @@ public abstract class Slice<TCommand, TState, TEvent, TError> : ISliceHandler
             rejected => new Decision.Rejected(rejected));
 }
 
-internal interface ISliceHandler
+internal interface ISliceHandler : ICommandOwner
 {
-    Type Command { get; }
-
     Type State { get; }
 
-    Type Event { get; }
-
-    Type Error { get; }
-
     object Initial { get; }
-
-    object KeyOf(ICommand command);
 
     Decision Decide(ICommand command, object state);
 }
