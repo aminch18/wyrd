@@ -7,7 +7,10 @@ namespace Wyrd.Testing;
 /// <summary>A future in which an invariant did not hold.</summary>
 public sealed record Violation(int Seed, string Invariant, string Detail, IReadOnlyList<JournalEntry> Journal)
 {
-    /// <summary>The smallest failing future found within the budget; null when shrinking is disabled.</summary>
+    /// <summary>
+    /// The smallest failing future found within the budget, for the first violation of each invariant (the one the
+    /// report shows); null otherwise, or when shrinking is disabled.
+    /// </summary>
     public ShrunkFuture? Shrunk { get; init; }
 }
 

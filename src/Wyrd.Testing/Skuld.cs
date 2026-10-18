@@ -53,7 +53,9 @@ public static class Skuld
             {
                 var detail = failure!;
                 var violation = new Violation(seed, invariant.Name, detail, runtime.Journal);
-                if (options.Shrink)
+
+                // The report shows the first future that breaks each invariant: only that one is worth shrinking.
+                if (options.Shrink && !violations.Any(v => v.Invariant == invariant.Name))
                 {
                     var original = new ShrunkFuture(detail, Perturbations(violation.Journal), violation.Journal, 0);
                     var shrunk = await FutureShrinker.ShrinkAsync(decisions.Recorded, original, async stream =>
