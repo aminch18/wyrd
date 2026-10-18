@@ -13,8 +13,8 @@
 
 ## Owner steps
 
-1. **NuGet key (once).** Follow "Publishing to nuget.org" in [../RELEASING.md](../RELEASING.md): reserve the `Wyrd*`
-   prefix, create an API key scoped to `Wyrd*` with push rights, add it as the repository secret `NUGET_API_KEY`.
+1. **NuGet Trusted Publishing (once).** Follow "Publishing to nuget.org" in [../RELEASING.md](../RELEASING.md): create
+   the trusted publishing policy on nuget.org and set the repository variable `NUGET_USER`. No API key needed.
 2. **Decide on the Verdandi status line.** The README says the durable runtime is in progress. If that changes before
    the tag, update the README warning and the `CHANGELOG.md` entry first.
 3. **Merge the launch PR**, then update `main` locally.
