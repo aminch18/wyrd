@@ -103,4 +103,5 @@ jobs:
 
       - name: Explain a skipped publish
         if: vars.NUGET_USER == ''
-        run: echo "::notice::NUGET_USER is not set: skipping the nuget.org push (see docs/RELEASING.md)."
+        run: |
+          echo "::notice::NUGET_USER is not set: skipping the nuget.org push (see docs/RELEASING.md)."
