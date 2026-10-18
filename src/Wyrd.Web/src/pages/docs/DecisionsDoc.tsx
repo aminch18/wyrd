@@ -105,7 +105,7 @@ export function DecisionsDoc() {
             <Decision
                 title="Retries are explicit, per step, with no default"
                 status="implemented"
-                problem="A default retry count is a hidden business decision. Retrying a payment is safe only if the owner deduplicates; retrying a booking may not be. Skuld also showed that a step that can be undone but cannot retry leaves stock reserved after a single transient failure."
+                problem="A default retry count is a hidden business decision. Retrying a payment is safe only if the owner deduplicates; retrying a booking may not be. Skuld also showed what a borrowed policy costs: an undo that inherited its step's lack of retries lost stock after a single transient failure."
                 decision='Every step declares its policy: .Retry(attempts, backoff) or .NoRetry("why"). There is no default, and an analyzer (WYRD0014) reports a step that declares neither. Retries re-send the same message id, so the owner&apos;s inbox makes them safe.'
                 gives="Reviewers see the retry decision for every step, and a missing one is a build warning instead of a surprise in production."
                 costs="One more line per step, and you have to be able to say why a step is safe to retry (or not)."

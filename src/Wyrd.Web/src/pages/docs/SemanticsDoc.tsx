@@ -384,8 +384,8 @@ export function SemanticsDoc() {
                         status: 'implemented',
                         today: (
                             <>
-                                true in the in-memory host. Durable hosts are
-                                planned for v0.5.
+                                in the in-memory host; durable hosts are planned
+                                for v0.5.
                             </>
                         ),
                     },

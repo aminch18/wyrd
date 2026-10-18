@@ -7,7 +7,7 @@ import { DocArticle } from './DocArticle'
 const FINDINGS = [
     [
         'An undo without retries leaves stock reserved after a single transient failure.',
-        'A step with an undo needs a retry policy, and .OnCompensated(...) can .Retry(...) too. Every step now declares .Retry(...) or .NoRetry("why"), and undos always insist.',
+        'Undos always insist with their own policy instead of borrowing one from the step, and every step declares .Retry(...) or .NoRetry("why") (WYRD0014).',
     ],
     [
         'A redelivered failure reply consumed an extra retry.',

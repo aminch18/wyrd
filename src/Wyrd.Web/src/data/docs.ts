@@ -211,7 +211,7 @@ public async Task the_business_holds_in_every_future()
     skuldReport: `Skuld explored 200 futures: 42 broke an invariant.
 
 ✗ "valid orders go through" broke in 42 futures. First: seed 9.
-  Smallest future that breaks it: 1 perturbations (4 replays; smallest found within budget).
+  Smallest future that breaks it: 1 perturbation (4 replays; smallest found within budget).
   A-1 didn't go through because of a transient failure
   Perturbations: ReserveStock (A-1) failed transiently
   Journal:
@@ -221,7 +221,7 @@ public async Task the_business_holds_in_every_future()
     [00:00:00] Fragile          A-1      -> ReserveStock
     [00:00:00] skuld                     ReserveStock (A-1) failed transiently
     [00:00:00] Fragile          A-1      transient failure, no retry policy
-    [00:00:00] Fragile          A-1      SUSPENDED: Stock.Reserve failed after 1 attempts, needs attention
+    [00:00:00] Fragile          A-1      SUSPENDED: Stock.Reserve failed after 1 attempt, needs attention
     [00:00:00] -                A-2      -> PlaceOrder
     [00:00:00] -                A-2      ok OrderPlaced
     [00:00:00] Fragile          A-2      started by OrderPlaced

@@ -263,8 +263,8 @@ export function RoadmapDoc() {
             </ul>
             <Callout title="The roadmap is a living contract">
                 The repository roadmap is the source of truth. Items marked Open
-                here are not claims about the current package. The planned
-                behaviour of v0.3 is described in{' '}
+                here are not claims about the current package. What is available
+                behaves as specified in{' '}
                 <a href="#/docs/semantics">How Wyrd behaves</a>.
             </Callout>
         </DocArticle>
