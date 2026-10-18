@@ -1,7 +1,8 @@
 # Agent guide
 
-Wyrd is a .NET 10 / C# 14 library for deterministic event-driven processes. Read `README.md` (✅ = works, 🔜 = planned) and
-`docs/ROADMAP.md` before changing anything.
+Wyrd is a .NET 10 / C# 14 library for deterministic event-driven processes. Read `README.md` (✅ = works, 🔜 = planned),
+`docs/ROADMAP.md` and **`docs/design/semantics.md`** before changing anything. The semantics document is the source of
+truth for behaviour: if code and document disagree, fix the code, or change the document on purpose in the same PR.
 
 ## Layout
 
@@ -69,6 +70,5 @@ Several agents may work on this repository at the same time. To stay out of each
 
 | Work | Owner | Branch | In bounds |
 |---|---|---|---|
-| Skuld — simulation (v0.3) | Claude | `feature/skuld` | `src/Wyrd/**`, `src/Wyrd.Testing/**`, `tests/Wyrd.Tests/**`, `samples/**` |
-| Public preview launch: CI matrix, NuGet publishing, README, launch material | Claude | `launch/preview` | `README.md`, `CODE_OF_CONDUCT.md`, `.github/**`, `docs/launch/**`, `docs/RELEASING.md`, `Directory.Build.props` |
-| [Task 001](docs/tasks/001-wyrd-tool.md) — `dotnet wyrd` tool | Codex | `codex/wyrd-tool` | `src/Wyrd.Tool/**`, `tests/Wyrd.Tool.Tests/**`, generated sample docs |
+| v0.3 Skuld — remaining roadmap items and the semantics review | Claude | `feature/v0.3-skuld` | `src/**`, `tests/**`, `samples/**`, `docs/**` |
+| Verdandi on PostgreSQL (parked until v0.3 and v0.4 ship) | Claude | `feature/verdandi` | `src/Wyrd.PostgreSql/**`, `tests/Wyrd.PostgreSql.Tests/**` |
