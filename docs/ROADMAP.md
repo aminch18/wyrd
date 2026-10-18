@@ -67,7 +67,8 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [ ] Shrinking: reduce a failing future to the fewest perturbations that still break the invariant
 - [x] Analyzers WYRD0011 (a step must say how it is undone: `.Undo(...)` or `.NoCompensation("why")`) and
       WYRD0012 (`Await` without `.Within(...)`), in fluent and pipe syntax
-- [ ] Analyzer: exhaustive `switch` over a `[Union]` (no `_` needed when every case is handled)
+- [x] Exhaustive `switch` over a `[Union]`: WYRD0020 names missing cases; a suppressor removes CS8509 when every case
+      is handled, so no `_` is needed and new cases break the build
 - [ ] Analyzer: `wyrd_process_style` enforcement with code fix fluent ⇄ pipe
 
 ## v0.4 — Urd (replay the past) and the `dotnet wyrd` tool

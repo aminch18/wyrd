@@ -10,6 +10,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Process analyzers, in fluent and pipe syntax: WYRD0010 (a step with `.Undo(...)` but no `.Retry(...)`), WYRD0011
   (a step followed by others must say how it is undone) and WYRD0012 (`Await` without `.Within(...)`).
 - `.NoCompensation("why")`: declares that a step needs no undo, explicitly.
+- Exhaustive switches over `[Union]` states: WYRD0020 names the cases a switch misses, and a diagnostic suppressor
+  removes CS8509 when every case is handled, so `_` is no longer needed and a new case breaks the build.
 
 ### Changed
 

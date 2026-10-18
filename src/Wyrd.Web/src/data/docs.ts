@@ -102,7 +102,7 @@ public sealed record PaymentChargedV1(string OrderId, decimal Amount, string Cur
     {
         Payment.None when command.Amount > 1_000m => PaymentError.CardDeclined,
         Payment.None                              => new PaymentCharged(command.OrderId, command.Amount),
-        _                                         => PaymentError.AlreadyCharged,
+        Payment.Charged or Payment.Refunded       => PaymentError.AlreadyCharged,
     };
 }`,
 
@@ -241,6 +241,12 @@ export const ANALYZER_RULES = [
         severity: 'Warning',
         description:
             'Process rules: an undo needs retries, every step says how it is undone (or .NoCompensation("why")), every wait has a timeout.',
+    },
+    {
+        code: 'WYRD0020',
+        severity: 'Error',
+        description:
+            'A switch over a [Union] must handle every case; when it does, no discard is needed.',
     },
     {
         code: 'WYRD0101',

@@ -52,6 +52,17 @@ internal static class Diagnostics
         "Await<{0}> has no .Within(...): if the event never arrives, the process waits forever. Add .Within(...).",
         Processes, DiagnosticSeverity.Warning, isEnabledByDefault: true, helpLinkUri: HelpLink);
 
+    public static readonly DiagnosticDescriptor UnionCaseNotHandled = new(
+        "WYRD0020",
+        "A switch over a union handles every case",
+        "The switch over union '{0}' does not handle: {1}. Handle every case explicitly, without '_', so a new case breaks the build instead of being swallowed.",
+        Messages, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly SuppressionDescriptor ExhaustiveUnionSwitch = new(
+        "WYRDSPR0001",
+        "CS8509",
+        "The switch handles every case of a [Union]: it is exhaustive, no '_' needed.");
+
     public static readonly DiagnosticDescriptor LeaksDomainType = new(
         "WYRD0101",
         "Integration events must not expose domain types",

@@ -46,6 +46,6 @@ public sealed class PlaceOrderSlice : Slice<PlaceOrder, Order, OrderPlaced, Orde
     {
         Order.None when command.Quantity <= 0 => OrderError.EmptyOrder,
         Order.None => new OrderPlaced(command.OrderId, command.Sku, command.Quantity, command.Amount),
-        _ => OrderError.AlreadyPlaced,
+        Order.Placed or Order.Cancelled => OrderError.AlreadyPlaced,
     };
 }

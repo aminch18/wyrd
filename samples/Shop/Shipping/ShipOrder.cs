@@ -35,7 +35,7 @@ public sealed class ShipOrderSlice : Slice<ShipOrder, Shipment, OrderShipped, Sh
     public override Result<OrderShipped, ShippingError> Decide(ShipOrder command, Shipment shipment) => shipment switch
     {
         Shipment.Pending => new OrderShipped(command.OrderId),
-        _ => ShippingError.AlreadyShipped,
+        Shipment.Shipped => ShippingError.AlreadyShipped,
     };
 }
 

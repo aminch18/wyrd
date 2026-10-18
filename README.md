@@ -138,7 +138,7 @@ public sealed class ChargePaymentSlice : Slice<ChargePayment, Payment, PaymentCh
     {
         Payment.None when command.Amount > 1_000m => PaymentError.CardDeclined,
         Payment.None                              => new PaymentCharged(command.OrderId, command.Amount),
-        _                                         => PaymentError.AlreadyCharged,
+        Payment.Charged or Payment.Refunded       => PaymentError.AlreadyCharged,
     };
 }
 ```
@@ -167,7 +167,12 @@ public abstract record Payment : IState<Payment>
 }
 ```
 
-Impossible states are unrepresentable: a `Refunded` payment has no amount to charge again.
+Impossible states are unrepresentable: a `Refunded` payment has no amount to charge again. A `switch` that handles
+every case needs no `_`, and adding a case breaks the build wherever it isn't handled:
+
+```
+error WYRD0020: The switch over union 'Payment' does not handle: Disputed.
+```
 
 ### 4. The process reads like the business describes it ✅
 
@@ -295,6 +300,7 @@ through an `Upcaster<PaymentChargedV1, PaymentChargedV2>` — each subscriber re
 | Rule | |
 |---|---|
 | A command decided by two slices | `WYRD0002` — **build error** |
+| A `switch` over a `[Union]` that misses a case (and no `_` needed when none is missed) | `WYRD0020` — **build error** |
 | A step that can be undone but never retries | `WYRD0010` — warning |
 | A step followed by others with no `.Undo(...)` or `.NoCompensation("why")` | `WYRD0011` — warning |
 | An `Await` with no `.Within(...)` timeout | `WYRD0012` — warning |
