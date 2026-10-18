@@ -12,6 +12,7 @@ WYRD0004 | Wyrd.Messages | Info | Name commands in the imperative
 WYRD0010 | Wyrd.Processes | Warning | A step that can be undone needs retries
 WYRD0011 | Wyrd.Processes | Warning | Say how a step is undone
 WYRD0012 | Wyrd.Processes | Warning | A wait needs a timeout
+WYRD0013 | Wyrd.Processes | Warning | Write processes in the repository's style
 WYRD0020 | Wyrd.Messages | Error | A switch over a union handles every case
 WYRD0101 | Wyrd.Messages | Error | Integration events must not expose domain types
 WYRD0102 | Wyrd.Messages | Error | Integration events need a name, a version and IIntegrationEvent

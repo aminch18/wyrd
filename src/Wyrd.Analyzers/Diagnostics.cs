@@ -63,6 +63,12 @@ internal static class Diagnostics
         "CS8509",
         "The switch handles every case of a [Union]: it is exhaustive, no '_' needed.");
 
+    public static readonly DiagnosticDescriptor ProcessStyle = new(
+        "WYRD0013",
+        "Write processes in the repository's style",
+        "This process uses the {0} syntax, but this repository writes processes with the {1} syntax (wyrd_process_style in .editorconfig). Convert it with the code fix.",
+        Processes, DiagnosticSeverity.Warning, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
     public static readonly DiagnosticDescriptor LeaksDomainType = new(
         "WYRD0101",
         "Integration events must not expose domain types",

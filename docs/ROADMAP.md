@@ -69,7 +69,8 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
       WYRD0012 (`Await` without `.Within(...)`), in fluent and pipe syntax
 - [x] Exhaustive `switch` over a `[Union]`: WYRD0020 names missing cases; a suppressor removes CS8509 when every case
       is handled, so no `_` is needed and new cases break the build
-- [ ] Analyzer: `wyrd_process_style` enforcement with code fix fluent ⇄ pipe
+- [x] Analyzer WYRD0013: `wyrd_process_style` (fluent | pipe | any) in `.editorconfig`, with a code fix that converts
+      a process between fluent and pipe syntax, keeping every argument as written
 
 ## v0.4 — Urd (replay the past) and the `dotnet wyrd` tool
 

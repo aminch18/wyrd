@@ -243,6 +243,12 @@ export const ANALYZER_RULES = [
             'Process rules: an undo needs retries, every step says how it is undone (or .NoCompensation("why")), every wait has a timeout.',
     },
     {
+        code: 'WYRD0013',
+        severity: 'Warning',
+        description:
+            'The process syntax a repository picks (wyrd_process_style), with a one-click fluent ⇄ pipe conversion.',
+    },
+    {
         code: 'WYRD0020',
         severity: 'Error',
         description:
