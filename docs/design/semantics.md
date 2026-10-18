@@ -63,8 +63,9 @@ simulate and version.
 - **A step says how it is undone**: `.Undo(command)` or `.NoCompensation("why")`; the last step is exempt
   (WYRD0011). **Implemented.**
 - A step may read the events produced by earlier steps by asking for them as extra parameters
-  (`Ship(OrderPlaced order, PaymentCharged charged)`); a step that asks for an event no earlier step produces makes
-  the process invalid. **Planned (v0.3).**
+  (`Ship(OrderPlaced order, PaymentCharged charged)`), the latest of each type; awaited events count. An undo reads
+  only events from before its own step (its step may never have run). A step that asks for an event no earlier step
+  produces makes the application fail before the first message. **Implemented.**
 
 ### 3.3 Retries: one layer
 

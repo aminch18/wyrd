@@ -29,6 +29,12 @@ public sealed class ProcessBuilder<TTrigger>
         where TCommand : ICommand =>
         Append(new StepNode(StepRef.Typed(step)));
 
+    /// <summary>
+    /// A step that also reads events earlier steps produced (or the process awaited), after the trigger:
+    /// <c>.Then(Shipping.Ship)</c> with <c>ShipOrder Ship(OrderPlaced order, PaymentCharged charged)</c>.
+    /// </summary>
+    public ProcessBuilder<TTrigger> Then(Delegate step) => Append(new StepNode(StepRef.Untyped(step)));
+
     /// <summary>Waits for an external event. <paramref name="key"/> must match the process key.</summary>
     public ProcessBuilder<TTrigger> Await<TEvent>(Func<TEvent, object> key)
         where TEvent : IEvent
@@ -52,6 +58,10 @@ public sealed class ProcessBuilder<TTrigger>
     public ProcessBuilder<TTrigger> Undo<TCommand>(Func<TTrigger, TCommand> compensation, Attempts? insist = null, Backoff backoff = Backoff.Exponential)
         where TCommand : ICommand =>
         ModifyLast(n => NodeModifiers.Undo(n, StepRef.Typed(compensation), insist is { } a ? new RetryPolicy(a, backoff) : null));
+
+    /// <summary>An undo that also reads events produced before its step, after the trigger.</summary>
+    public ProcessBuilder<TTrigger> Undo(Delegate compensation, Attempts? insist = null, Backoff backoff = Backoff.Exponential) =>
+        ModifyLast(n => NodeModifiers.Undo(n, StepRef.Untyped(compensation), insist is { } a ? new RetryPolicy(a, backoff) : null));
 
     /// <summary>
     /// When the last step's retries run out, compensate automatically instead of suspending the instance for a human.

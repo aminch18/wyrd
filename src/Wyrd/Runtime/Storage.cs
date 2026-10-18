@@ -6,12 +6,16 @@ internal sealed record StoredState(string StateType, string Key, string Type, st
 
 internal sealed record StoredMessage(string Type, string Payload);
 
-internal sealed record StoredParked(string Process, string Key, int Step, string Type, string Payload);
+internal sealed record StoredParked(string Process, string Key, int Step, string Type, string Payload)
+{
+    public StoredMessage AsFact() => new(Type, Payload);
+}
 
 /// <summary>
 /// Where a process instance is. In a database this is one row. <c>Uncertain</c> maps the steps the process gave up on
 /// without knowing whether they ran to their original command id: their undo fences that command. <c>Fingerprint</c> is
-/// the structure of the process the instance started with (see <see cref="Processes.Process.Fingerprint"/>).
+/// the structure of the process the instance started with (see <see cref="Processes.Process.Fingerprint"/>). <c>Facts</c>
+/// are the events its steps produced and the events it awaited, in order: later steps can read them.
 /// </summary>
 internal sealed record StoredInstance(
     string Process,
@@ -22,6 +26,7 @@ internal sealed record StoredInstance(
     ProcessStatus Status,
     ImmutableList<int> Completed,
     ImmutableDictionary<int, Guid> Uncertain,
+    ImmutableList<StoredMessage> Facts,
     int Attempt,
     Guid? Pending,
     bool Compensating,
