@@ -63,17 +63,52 @@ Several agents may work on this repository at the same time. To stay out of each
 - **Stay in your scope.** Tasks live in `docs/tasks/`, each with its files in and out of bounds. If you need to change
   something outside your scope, don't: say so in the PR.
 - **Shared files:** in `CHANGELOG.md` add your lines under *Unreleased* only; in `docs/ROADMAP.md` tick only your
-  items; in `README.md` add or edit only your own section. Rebase on `main` before opening the PR.
+  items; in `README.md` add or edit only your own section. Bring in the latest base first (see below).
 - **Commits:** imperative summary line, a body explaining what and why. No AI attribution trailers.
+
+### Base branch
+
+Branch from, and open pull requests into, **`main`** once release 0.3.0 is merged (PR #14); until then use
+`feature/v0.3-skuld`. Merge the latest base into your branch right before opening the PR and resolve conflicts
+yourself (`CHANGELOG.md`, `README.md` and the solution file are the usual ones).
 
 ### Current assignments
 
 | Work | Owner | Branch | In bounds |
 |---|---|---|---|
-| v0.3 Skuld — engine items (fingerprint, steps reading events, ordered projections) | Claude | `feature/v0.3-skuld` | `src/Wyrd/**`, `tests/Wyrd.Tests/**` (existing files), `samples/**`, `docs/design/**` |
-| Verdandi on PostgreSQL (parked until v0.3 and v0.4 ship) | Claude | `feature/verdandi` | `src/Wyrd.PostgreSql/**`, `tests/Wyrd.PostgreSql.Tests/**` |
-| [Task 002](docs/tasks/002-skuld-shrinking.md) — Skuld shrinking | Codex | `codex/skuld-shrinking` | `src/Wyrd.Testing/**`, a new test file |
-| [Task 003](docs/tasks/003-read-models-guide.md) — read models guide | Codex | `codex/read-models-guide` | `docs/guides/read-models.md` |
-| [Task 004](docs/tasks/004-fix-all-code-fixes.md) — fix-all code fixes | Codex | `codex/fix-all` | `src/Wyrd.Analyzers.CodeFixes/**`, a new test file |
+| v0.4 Urd: instance history capture, replay as a test | Claude | `feature/v0.4-urd` | `src/Wyrd/Runtime/**`, `src/Wyrd.Testing/**`, `src/Wyrd.Tool/**`, `docs/design/**` |
+| Verdandi on PostgreSQL (parked until v0.4 ships) | Claude | `feature/verdandi` | `src/Wyrd.PostgreSql/**`, `tests/Wyrd.PostgreSql.Tests/**` |
+| [005](docs/tasks/005-process-analyzers-round-2.md) — analyzers for what a step reads | Codex | `codex/process-analyzers-2` | `src/Wyrd.Analyzers/**` |
+| [006](docs/tasks/006-richer-diagrams.md) — diagrams that show the decisions | Codex | `codex/richer-diagrams` | `ToMermaid` only |
+| [007](docs/tasks/007-rich-order-aggregate.md) — rich order in the Shop | Codex | `codex/rich-order` | `samples/Shop*/**` |
+| [008](docs/tasks/008-operations-guide.md) — operations guide | Codex | `codex/operations-guide` | `docs/guides/operations.md` |
+| [009](docs/tasks/009-site-guides.md) — site: guides and analyzers | Codex | `codex/site-guides` | `src/Wyrd.Web/**` |
+| [010](docs/tasks/010-benchmarks.md) — benchmarks | Codex | `codex/benchmarks` | `benchmarks/**` |
+| [011](docs/tasks/011-community-templates.md) — community templates | Codex | `codex/community` | `.github/ISSUE_TEMPLATE/**`, `CONTRIBUTING.md` |
+| [012](docs/tasks/012-booking-sample.md) — booking sample | Codex | `codex/booking-sample` | `samples/Booking*/**` |
 
-While Codex works on 002–004, Claude stays out of `src/Wyrd.Testing/**` and `src/Wyrd.Analyzers.CodeFixes/**`.
+Each task file lists its exact bounds. Tasks 007 and 012 both touch the solution file, and 005, 008 and 012 each
+add a line to `README.md`: expect small conflicts and resolve them.
+
+## Review checklist (learned from earlier pull requests)
+
+Reviews check these, so check them first:
+
+- **Idiomatic, not just correct.** Code reads like the surrounding code. In tools, use established libraries
+  (Spectre.Console.Cli, YamlDotNet) instead of hand-rolled parsing; `src/Wyrd` itself stays dependency-free.
+- **Never invent output.** Journal lines, reports and diagnostics quoted in docs, tests or the site come from a real
+  run. User-facing text is exact, including singular and plural ("1 attempt", not "1 attempts").
+- **Planned is never presented as available.** Check `docs/design/semantics.md` markers before describing behaviour;
+  when you implement a rule, update its marker in the same PR.
+- **Work proportional to what is shown.** Don't do expensive work for results nobody reads (e.g. Skuld shrinks only
+  the first violation of each invariant, the one the report shows). Keep `dotnet test` fast.
+- **Workflows are linted.** Run `actionlint .github/workflows/*.yml` before pushing a workflow change, and check the
+  run after pushing: a YAML error fails every push before any job starts.
+- **The README is packed into every NuGet package.** Links and images in `README.md` are absolute
+  (`https://github.com/aminch18/wyrd/blob/main/...`), or they break on nuget.org.
+- **Process snippets declare every decision.** Every step says `.Retry(...)` or `.NoRetry("why")`, every wait has
+  `.Within(...)`, every step followed by others says `.Undo(...)` or `.NoCompensation("why")` — in docs and samples too.
+- **Engine changes keep Skuld green.** `samples/Shop.Tests/SkuldSpecs` explores thousands of hostile futures; a
+  failure there is a real bug, never a flaky test.
+- **Native AOT.** Anything reachable from the runtime must publish with Native AOT (`dotnet publish
+  samples/Shop.Console -c Release`, then run it); reflection only behind `[RequiresUnreferencedCode]` entry points.
