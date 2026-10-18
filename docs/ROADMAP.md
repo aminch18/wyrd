@@ -111,7 +111,7 @@ mental model matters as much as the code.
 ## v1.0 — Production ready
 
 - [ ] **Process versioning**: snapshot of every process; breaking changes fail the build until in-flight instances are migrated
-- [ ] Native AOT verified end to end
+- [x] Native AOT verified end to end
 - [ ] `dotnet wyrd` CLI + MCP server for agents
 - [ ] Docs site
 

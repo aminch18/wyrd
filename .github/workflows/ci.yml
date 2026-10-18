@@ -38,6 +38,36 @@ jobs:
           dotnet publish samples/Shop.Console -c Release -o aot
           ./aot/Shop.Console
 
+      - name: Native AOT HTTP smoke test
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          dotnet publish samples/Shop.Api -c Release -o aot-api
+          ./aot-api/Shop.Api --urls http://127.0.0.1:5080 > aot-api.log 2>&1 &
+          api_pid=$!
+          cleanup() {
+            kill "$api_pid" 2>/dev/null || true
+            wait "$api_pid" 2>/dev/null || true
+            cat aot-api.log
+          }
+          trap cleanup EXIT
+          ready=false
+          for ((attempt = 0; attempt < 60; attempt++)); do
+            if curl --fail --silent --max-time 1 http://127.0.0.1:5080/orders > /dev/null; then
+              ready=true
+              break
+            fi
+            if ! kill -0 "$api_pid" 2>/dev/null; then
+              echo "The native API exited before answering HTTP."
+              exit 1
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != true ]]; then
+            echo "The native API did not become ready within 60 attempts."
+            exit 1
+          fi
+          bash samples/Shop.Api/smoke.sh http://127.0.0.1:5080
+
       - name: Pack
         if: matrix.os == 'ubuntu-latest'
         run: dotnet pack --no-build -c Release -o artifacts

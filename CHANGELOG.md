@@ -5,6 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- Native AOT HTTP verification for `Shop.Api`: generated request delegates and JSON metadata, named response
+  records, and a reusable `curl`/`jq` smoke script covering checkout, rich drafts, cancellation and published events.
+  Ubuntu CI publishes and runs the native API alongside the existing native console walkthrough.
+
 ## [0.4.0] - 2026-10-18
 
 ### Added
