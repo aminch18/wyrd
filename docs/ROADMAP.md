@@ -99,9 +99,9 @@ Work happens on `feature/verdandi` (PR #11), in this order:
 - [ ] **EF Core** host for state, inbox, outbox and queue (PostgreSQL, SQL Server), with migrations and an option to
       share the application's `DbContext` transaction; only the queue's dequeue (`FOR UPDATE SKIP LOCKED` / `READPAST`)
       is raw SQL. Replaces the hand-written Npgsql prototype
-- [ ] One retry layer on durable hosts: a process command that ends in dead letters reaches its process as a failure
+- [x] One retry layer on durable hosts: a process command that ends in dead letters reaches its process as a failure
       ([semantics](design/semantics.md) 3.3)
-- [ ] Operators on durable hosts: resume and compensate suspended instances
+- [x] Operators on durable hosts: resume and compensate suspended instances
 - [ ] A hardened queue: `LISTEN/NOTIFY` (or polling backoff) instead of busy polling, batched cleanup, metrics for
       queue depth and the age of pending steps ([semantics](design/semantics.md) 3.5)
 - [ ] RabbitMQ transport between services (the outbox stays in the database; the broker carries what leaves it)

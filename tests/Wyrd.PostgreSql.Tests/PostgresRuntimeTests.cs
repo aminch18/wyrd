@@ -157,10 +157,11 @@ public class PostgresRuntimeTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task a_message_that_keeps_failing_ends_in_the_dead_letters_without_blocking_the_queue()
+    public async Task a_step_whose_command_nobody_can_handle_suspends_its_instance_without_blocking_the_queue()
     {
-        // ShipOrder has no owner here, so the step's command can never be handled.
-        Process broken = Process.StartOn<OrderPlaced>(e => e.OrderId, "Broken").Then(e => new ShipOrder(e.OrderId));
+        // ShipOrder has no owner here, so the step's command can never be handled: it reaches the process as a
+        // failure, the step has no retries, and the instance is suspended with a reason. No dead letter.
+        Process broken = Process.StartOn<OrderPlaced>(e => e.OrderId, "Broken").Then(e => new ShipOrder(e.OrderId)).NoRetry("test");
         var runtime = new PostgresRuntime(postgres.DataSource, ShopJson.Default, postgres.NewSchema() with { MaxDeliveryAttempts = 3 })
             .AddSlice(new PlaceOrderSlice())
             .AddSlice(new RestockSlice())
@@ -169,9 +170,10 @@ public class PostgresRuntimeTests(PostgresFixture postgres)
 
         await runtime.SendAsync(new PlaceOrder("A-1", "KEYBOARD", 1, 89m));
         await runtime.SendAsync(new Restock("KEYBOARD", 3)); // unrelated work behind it still flows
-        await DrainAsync(runtime, settle: TimeSpan.FromSeconds(2));
+        await DrainAsync(runtime, settle: TimeSpan.FromSeconds(1));
 
-        Assert.Equal((0, 1), await runtime.BacklogAsync());
+        Assert.Equal(ProcessStatus.Suspended, await runtime.StatusOfAsync(broken, "A-1"));
+        Assert.Equal((0, 0), await runtime.BacklogAsync());
         Assert.Equal(3, (await runtime.StateOfAsync<StockItem>("KEYBOARD")).Available);
     }
 

@@ -180,6 +180,13 @@ internal sealed class Engine(
         }
     }
 
+    /// <summary>
+    /// The failure reply a durable host sends when it can't handle a process command: the process's retry policy
+    /// decides what happens next, so hosts never retry behind its back (one retry layer).
+    /// </summary>
+    internal static Envelope Faulted(Envelope command, Guid id) =>
+        new(id, MessageKind.Reply, ReplyType, MessageTypes.SerializeReply(new ReplyMessage(ReplyOutcome.Faulted)), command.Process, command.MessageId);
+
     /// <summary>The reply envelope to a process command (also used by Urd to answer from a recording).</summary>
     internal Envelope ReplyTo(Envelope command, ReplyMessage reply) =>
         new(newId(), MessageKind.Reply, ReplyType, MessageTypes.SerializeReply(reply), command.Process, command.MessageId);
