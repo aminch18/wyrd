@@ -59,6 +59,17 @@ public sealed partial class PostgresRuntime : IWyrdBuilder<PostgresRuntime>, IWy
     }
 
     /// <summary>Registers the single owner of a command type.</summary>
+    /// <summary>Registers the integration that owns a command carried out by another system (the only I/O).</summary>
+    public PostgresRuntime AddIntegration<TCommand, TEvent, TError>(Integration<TCommand, TEvent, TError> integration)
+        where TCommand : ICommand
+        where TEvent : IDomainEvent
+        where TError : notnull
+    {
+        ArgumentNullException.ThrowIfNull(integration);
+        _application.Add(integration);
+        return this;
+    }
+
     public PostgresRuntime AddSlice<TCommand, TState, TEvent, TError>(Slice<TCommand, TState, TEvent, TError> slice)
         where TCommand : ICommand
         where TState : IState<TState>

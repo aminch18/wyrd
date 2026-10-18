@@ -11,6 +11,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   PostgreSQL transaction that also takes it off the queue — state, events, instances, inbox, outbox, timers and read
   models commit together or not at all. The queue is a table shared by any number of workers (`FOR UPDATE SKIP
   LOCKED`); failures are redelivered with backoff and poison messages go to dead letters; processes survive restarts.
+- **Integrations** (`Integration<TCommand, TEvent, TError>`, `AddIntegration`): the only I/O. An integration owns a
+  command like a slice; its event is recorded and published like a domain event, its error is a business rejection,
+  and an exception is a transient failure for the process's retry policy. `IntegrationContext.IdempotencyKey` is the
+  command's message id, stable across retries and redeliveries. Design: `docs/design/integrations.md`.
+- Operators on every host: `IWyrdRuntime.ResumeAsync` / `CompensateAsync`.
 - `IWyrdBuilder<T>`: register a module the same way on any host (`ShopModule.Register(runtime)`).
 - `IWyrdRuntime`: what application code needs (send, publish, query), implemented by both hosts.
 - `samples/Shop.Api` runs on PostgreSQL when a `Wyrd` connection string is configured (`compose.yaml` included).
