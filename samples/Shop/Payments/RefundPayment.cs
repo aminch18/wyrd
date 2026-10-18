@@ -2,14 +2,16 @@ using Wyrd;
 
 namespace Shop.Payments;
 
-/// <summary>Slice: refund a charge.</summary>
-public sealed record RefundPayment(string OrderId) : ICommand<RefundPayment, Payment, PaymentRefunded, PaymentError>
-{
-    public object Key => OrderId;
+public sealed record RefundPayment(string OrderId) : ICommand;
 
-    public static Result<PaymentRefunded, PaymentError> Decide(RefundPayment cmd, Payment payment) => payment switch
+/// <summary>Slice: refund a charge.</summary>
+public sealed class RefundPaymentSlice : Slice<RefundPayment, Payment, PaymentRefunded, PaymentError>
+{
+    public override object KeyOf(RefundPayment command) => command.OrderId;
+
+    public override Result<PaymentRefunded, PaymentError> Decide(RefundPayment command, Payment payment) => payment switch
     {
-        Payment.Charged charged => new PaymentRefunded(cmd.OrderId, charged.Amount),
+        Payment.Charged charged => new PaymentRefunded(command.OrderId, charged.Amount),
         _ => PaymentError.NothingToRefund,
     };
 }

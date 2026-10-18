@@ -1,7 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>Deterministic event-driven processes for .NET: pure deciders, declarative sagas, framework-owned side effects.</Description>
+    <Description>Deterministic event-driven processes for .NET: pure deciders, declarative sagas, versioned integration contracts, framework-owned side effects.</Description>
   </PropertyGroup>
+
+  <!-- The analyzers ship inside this package. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Wyrd.Analyzers\Wyrd.Analyzers.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
+    <ProjectReference Include="..\Wyrd.Analyzers.CodeFixes\Wyrd.Analyzers.CodeFixes.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
+    <None Include="..\Wyrd.Analyzers\bin\$(Configuration)\netstandard2.0\Wyrd.Analyzers.dll"
+          Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    <None Include="..\Wyrd.Analyzers.CodeFixes\bin\$(Configuration)\netstandard2.0\Wyrd.Analyzers.CodeFixes.dll"
+          Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    <None Include="build\Wyrd.props" Pack="true" PackagePath="build;buildTransitive" />
+  </ItemGroup>
 
 </Project>

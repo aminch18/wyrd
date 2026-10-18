@@ -12,13 +12,18 @@ public static class Pipeline
 {
     public static Fragment Step(Delegate action) => new(new StepNode(StepRef.Untyped(action)));
 
+    /// <summary>The command sent once compensation has finished.</summary>
+    public static Fragment OnCompensated(Delegate outcome) => new(new CompensatedNode(StepRef.Untyped(outcome)));
+
     public static Fragment Await<TEvent>(Func<TEvent, object> key)
+        where TEvent : IEvent
     {
         ArgumentNullException.ThrowIfNull(key);
         return new(new AwaitNode(typeof(TEvent)) { KeyOf = e => key((TEvent)e) });
     }
 
     extension<TTrigger>(ProcessBuilder<TTrigger>)
+        where TTrigger : IEvent
     {
         public static ProcessBuilder<TTrigger> operator >>(ProcessBuilder<TTrigger> process, Fragment next)
         {
@@ -31,7 +36,8 @@ public static class Pipeline
 
 public static class Start
 {
-    public static ProcessBuilder<TEvent> On<TEvent>(Func<TEvent, object> key, [CallerMemberName] string name = "") =>
+    public static ProcessBuilder<TEvent> On<TEvent>(Func<TEvent, object> key, [CallerMemberName] string name = "")
+        where TEvent : IEvent =>
         Process.StartOn(key, name);
 }
 

@@ -1,249 +1,332 @@
+using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Serialization;
 using Wyrd.Processes;
 
 namespace Wyrd.Runtime;
 
 /// <summary>
-/// A deterministic, single-threaded runtime with a virtual clock.
-/// Same inputs, same journal, every time: the foundation for testing, simulation (Skuld) and replay (Urd).
+/// Runs Wyrd in a single process with an in-memory queue, store and virtual clock. It behaves like the
+/// distributed runtime — messages, replies, JSON, outbox, inbox, durable timers — but deterministically:
+/// same inputs, same journal, every time. Use it for local development, tests, simulation and replay.
 /// </summary>
-public sealed class InMemoryRuntime
+public sealed class InMemoryRuntime : IDisposable
 {
-    private const string NoProcess = "-";
+    private static readonly DateTimeOffset Epoch = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
-    private readonly List<Process> _processes;
-    private readonly Dictionary<(Type State, object Key), object> _states = [];
-    private readonly Dictionary<(string Process, object Key), ProcessInstance> _instances = [];
+    private readonly Registry _registry = new();
+    private readonly InMemoryStore _store = new();
+    private readonly MessageTypes _types;
+    private readonly List<Envelope> _queue = [];
     private readonly Dictionary<Type, int> _faults = [];
-    private readonly Queue<object> _pending = new();
-    private readonly List<object> _history = [];
     private readonly List<JournalEntry> _journal = [];
+    private readonly Engine _engine;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private DateTimeOffset _now = Epoch;
+    private long _ids;
 
-    public InMemoryRuntime(params IEnumerable<Process> processes)
+    /// <summary>Reflection-based JSON: convenient for development and tests. Use a <c>[WyrdJsonContext]</c> for AOT.</summary>
+    [RequiresUnreferencedCode("Reflection-based System.Text.Json. Pass a [WyrdJsonContext] for AOT and trimming.")]
+    [RequiresDynamicCode("Reflection-based System.Text.Json. Pass a [WyrdJsonContext] for AOT and trimming.")]
+    public InMemoryRuntime()
+        : this(MessageTypes.Reflection())
     {
-        _processes = [.. processes];
-        var duplicate = _processes.GroupBy(p => p.Name).FirstOrDefault(g => g.Count() > 1);
-        if (duplicate is not null)
-        {
-            throw new ArgumentException($"Process '{duplicate.Key}' is registered more than once.", nameof(processes));
-        }
+    }
+
+    /// <summary>Source-generated JSON from your <c>[WyrdJsonContext]</c>: no reflection, AOT-safe.</summary>
+    public InMemoryRuntime(JsonSerializerContext json)
+        : this(MessageTypes.FromContext(json ?? throw new ArgumentNullException(nameof(json))))
+    {
+    }
+
+    private InMemoryRuntime(MessageTypes types)
+    {
+        _types = types;
+        _engine = new Engine(_registry, _store, _types, () => _now, NextId, Fault, Log);
     }
 
     /// <summary>Virtual time elapsed since the runtime started.</summary>
-    public TimeSpan Now { get; private set; }
+    public TimeSpan Now => _now - Epoch;
 
-    public IReadOnlyList<JournalEntry> Journal => _journal;
+    public IReadOnlyList<JournalEntry> Journal => Read(() => (IReadOnlyList<JournalEntry>)[.. _journal]);
 
-    /// <summary>Every accepted event, in order.</summary>
-    public IReadOnlyList<object> History => _history;
+    /// <summary>Every accepted domain event, in order (as stored, after a JSON round trip).</summary>
+    public IReadOnlyList<IDomainEvent> History =>
+        Read(() => (IReadOnlyList<IDomainEvent>)[.. _store.Events.Select(e => (IDomainEvent)_types.Deserialize(e.Type, e.Payload))]);
 
-    /// <summary>Executes a command coming from outside a process (an API call, a UI action...).</summary>
-    public Decision Send(ICommand command)
+    /// <summary>Every integration event published to other contexts, in order.</summary>
+    public IReadOnlyList<IIntegrationEvent> Published =>
+        Read(() => (IReadOnlyList<IIntegrationEvent>)[.. _store.Published.Select(e => (IIntegrationEvent)_types.Deserialize(e.Type, e.Payload))]);
+
+    /// <summary>Registers the single owner of a command type.</summary>
+    public InMemoryRuntime AddSlice<TCommand, TState, TEvent, TError>(Slice<TCommand, TState, TEvent, TError> slice)
+        where TCommand : ICommand
+        where TState : IState<TState>
+        where TEvent : IDomainEvent
+        where TError : notnull
+    {
+        ArgumentNullException.ThrowIfNull(slice);
+        _registry.Add(slice);
+        Register(typeof(TCommand), typeof(TState), typeof(TEvent), typeof(TError));
+        return this;
+    }
+
+    /// <summary>Registers a mapping from a domain event to an integration event.</summary>
+    public InMemoryRuntime AddPublication<TDomainEvent, TIntegrationEvent>(Publication<TDomainEvent, TIntegrationEvent> publication)
+        where TDomainEvent : IDomainEvent
+        where TIntegrationEvent : IIntegrationEvent
+    {
+        ArgumentNullException.ThrowIfNull(publication);
+        _registry.Add(publication);
+        Register(typeof(TDomainEvent), typeof(TIntegrationEvent));
+        return this;
+    }
+
+    /// <summary>Registers an upcaster from one contract version to the next.</summary>
+    public InMemoryRuntime AddUpcaster<TFrom, TTo>(Upcaster<TFrom, TTo> upcaster)
+        where TFrom : IIntegrationEvent
+        where TTo : IIntegrationEvent
+    {
+        ArgumentNullException.ThrowIfNull(upcaster);
+        _registry.Add(upcaster);
+        Register(typeof(TFrom), typeof(TTo));
+        return this;
+    }
+
+    /// <summary>Registers the projection that owns a read model.</summary>
+    public InMemoryRuntime AddProjection<TView>(Projection<TView> projection)
+        where TView : class
+    {
+        ArgumentNullException.ThrowIfNull(projection);
+        _registry.Add(projection);
+        Register([typeof(TView), .. ((IProjectionHandler)projection).Events]);
+        return this;
+    }
+
+    public InMemoryRuntime AddProcess(Process process)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        _registry.Add(process);
+        Register(process.Trigger);
+        foreach (var node in process.Nodes)
+        {
+            if (node is AwaitNode wait)
+            {
+                Register(wait.Event);
+            }
+            else if (node is StepNode step)
+            {
+                Register(step.Action.Output, step.Compensation?.Output);
+            }
+        }
+
+        Register(process.Outcome?.Action.Output);
+        return this;
+    }
+
+    /// <summary>
+    /// Executes a command coming from outside a process (an API call, a UI action...), returns the decision
+    /// and then lets everything it caused run until the system is idle.
+    /// </summary>
+    public async Task<Decision> SendAsync(ICommand command, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
-        Log(NoProcess, command.Key, $"-> {command.GetType().Name}");
-        var decision = Decide(command);
-        Log(NoProcess, command.Key, Describe(decision));
-        Drain();
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await SendCoreAsync(command, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task<Decision> SendCoreAsync(ICommand command, CancellationToken cancellationToken)
+    {
+        var key = Keys.Of(_registry.OwnerOf(command.GetType()).KeyOf(command));
+        Log(Engine.External, key, $"-> {command.GetType().Name}");
+
+        var (type, payload) = _types.Serialize(command, command.GetType());
+        var decision = (await _engine.HandleAsync(new Envelope(NextId(), MessageKind.Command, type, payload), cancellationToken).ConfigureAwait(false))!;
+        Log(Engine.External, key, decision switch
+        {
+            Decision.Accepted accepted => $"ok {accepted.Event.GetType().Name}",
+            Decision.Rejected rejected => $"rejected {rejected.Error}",
+            _ => throw new InvalidOperationException($"Unknown decision {decision}."),
+        });
+
+        await DrainAsync(cancellationToken).ConfigureAwait(false);
         return decision;
     }
 
-    /// <summary>Delivers an external event (a webhook, a message from another system...).</summary>
-    public void Publish(object @event)
+    /// <summary>
+    /// Delivers a fact from another context (a webhook, a message from another service...).
+    /// Only integration events can come from outside: domain events are produced by slices alone.
+    /// </summary>
+    public async Task PublishAsync(IIntegrationEvent @event, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(@event);
-        _pending.Enqueue(@event);
-        Drain();
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var (type, payload) = _types.Serialize(@event, @event.GetType());
+            _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload));
+            await DrainAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
-    /// <summary>Moves the virtual clock forward and fires any expired timeouts.</summary>
-    public void Advance(TimeSpan by)
+    /// <summary>Moves the virtual clock forward, delivering every timer and scheduled retry that falls due, in order.</summary>
+    public async Task AdvanceAsync(TimeSpan by, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(by, TimeSpan.Zero);
-        Now += by;
-
-        var expired = _instances.Values
-            .Where(i => i.Status == ProcessStatus.Awaiting && i.Deadline <= Now)
-            .OrderBy(i => i.Deadline)
-            .ToList();
-
-        foreach (var instance in expired)
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            Log(instance, $"timeout: {instance.Awaiting!.Event.Name} not received in time");
-            instance.Status = ProcessStatus.Running;
-            instance.Deadline = null;
-            Compensate(instance);
-        }
+            var until = _now + by;
+            while (await _store.TakeNextDueAsync(until, cancellationToken).ConfigureAwait(false) is { } due)
+            {
+                _now = due.At > _now ? due.At : _now;
+                _queue.Add(due.Envelope);
+                await DrainAsync(cancellationToken).ConfigureAwait(false);
+            }
 
-        Drain();
+            _now = until;
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
-    /// <summary>Makes the next <paramref name="times"/> executions of a command fail transiently.</summary>
+    /// <summary>Makes the next <paramref name="times"/> executions of a command, sent by a process, fail transiently.</summary>
     public void FailNext<TCommand>(int times = 1)
         where TCommand : ICommand
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(times, 1);
-        _faults[typeof(TCommand)] = _faults.GetValueOrDefault(typeof(TCommand)) + times;
+        Read(() => _faults[typeof(TCommand)] = _faults.GetValueOrDefault(typeof(TCommand)) + times);
     }
 
     public ProcessStatus? StatusOf(Process process, object key)
     {
         ArgumentNullException.ThrowIfNull(process);
-        return _instances.TryGetValue((process.Name, key), out var instance) ? instance.Status : null;
+        ArgumentNullException.ThrowIfNull(key);
+        return Read(() => _store.Instance(process.Name, Keys.Of(key))?.Status);
     }
 
     public TState StateOf<TState>(object key)
-        where TState : IState<TState> =>
-        _states.TryGetValue((typeof(TState), key), out var state) ? (TState)state : TState.Initial;
-
-    private Decision Decide(ICommand command)
+        where TState : IState<TState>
     {
-        var id = (command.StateType, command.Key);
-        var state = _states.TryGetValue(id, out var current) ? current : command.InitialState;
-        var decision = command.Execute(state);
-
-        if (decision is Decision.Accepted accepted)
-        {
-            _states[id] = ((IState)state).Apply(accepted.Event);
-            _history.Add(accepted.Event);
-            _pending.Enqueue(accepted.Event);
-        }
-
-        return decision;
+        ArgumentNullException.ThrowIfNull(key);
+        return Read(() => _store.State(typeof(TState).FullName!, Keys.Of(key)) is { } state
+            ? (TState)_types.Deserialize(state.Type, state.Payload)
+            : TState.Initial);
     }
 
-    private void Drain()
+    /// <summary>Reads one document of a read model, or null.</summary>
+    public TView? View<TView>(object key)
+        where TView : class
     {
-        while (_pending.TryDequeue(out var @event))
-        {
-            Route(@event);
-        }
+        ArgumentNullException.ThrowIfNull(key);
+        return Read(() => _store.View(typeof(TView).FullName!, Keys.Of(key)) is { Payload: { } payload, Type: { } type }
+            ? (TView)_types.Deserialize(type, payload)
+            : null);
     }
 
-    private void Route(object @event)
-    {
-        var type = @event.GetType();
+    /// <summary>Reads every document of a read model, in creation order.</summary>
+    public IReadOnlyList<TView> Views<TView>()
+        where TView : class =>
+        Read(() => (IReadOnlyList<TView>)[.. _store.Views(typeof(TView).FullName!).Select(v => (TView)_types.Deserialize(v.Type!, v.Payload!))]);
 
-        foreach (var process in _processes.Where(p => p.Trigger == type))
+    private async Task DrainAsync(CancellationToken cancellationToken)
+    {
+        await RelayAsync(cancellationToken).ConfigureAwait(false);
+        while (_queue.Count > 0)
         {
-            var key = process.KeyOf(@event);
-            if (_instances.ContainsKey((process.Name, key)))
+            var index = Simulation?.PickNext(_queue) ?? 0;
+            var envelope = _queue[index];
+            _queue.RemoveAt(index);
+            if (Simulation?.Duplicate(envelope) == true)
             {
-                Log(process.Name, key, $"duplicate {type.Name} ignored");
-                continue;
+                _queue.Add(envelope); // the broker will deliver it again, later
             }
 
-            var instance = new ProcessInstance(process, key, @event);
-            _instances.Add((process.Name, key), instance);
-            Log(instance, $"started by {type.Name}");
-            Run(instance);
-        }
-
-        var waiting = _instances.Values
-            .Where(i => i.Awaiting is { } wait && wait.Event == type && Equals(wait.KeyOf!(@event), i.Key))
-            .ToList();
-
-        foreach (var instance in waiting)
-        {
-            Log(instance, $"<- {type.Name}");
-            instance.Status = ProcessStatus.Running;
-            instance.Deadline = null;
-            instance.Position++;
-            Run(instance);
+            await _engine.HandleAsync(envelope, cancellationToken).ConfigureAwait(false);
+            await RelayAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
-    private void Run(ProcessInstance instance)
+    /// <summary>The outbox relay: committed messages are handed to the transport.</summary>
+    private async Task RelayAsync(CancellationToken cancellationToken)
     {
-        var nodes = instance.Process.Nodes;
-        while (instance.Position < nodes.Length)
+        foreach (var envelope in await _store.TakeOutboxAsync(cancellationToken).ConfigureAwait(false))
         {
-            switch (nodes[instance.Position])
-            {
-                case StepNode step:
-                    if (!TryExecute(instance, step.Action, step.Retry))
-                    {
-                        Compensate(instance);
-                        return;
-                    }
-
-                    instance.Completed.Push(step);
-                    instance.Position++;
-                    break;
-
-                case AwaitNode wait:
-                    instance.Status = ProcessStatus.Awaiting;
-                    instance.Deadline = Now + wait.Timeout;
-                    Log(instance, wait.Timeout is { } t ? $"awaiting {wait.Event.Name} (within {Durations.Format(t)})" : $"awaiting {wait.Event.Name}");
-                    return;
-            }
-        }
-
-        instance.Status = ProcessStatus.Completed;
-        Log(instance, "completed");
-    }
-
-    private bool TryExecute(ProcessInstance instance, StepRef step, RetryPolicy? retry)
-    {
-        var command = step.Invoke!(instance.Trigger);
-        var retries = retry?.Attempts.Count ?? 0;
-        Log(instance, $"-> {command.GetType().Name}");
-
-        for (var attempt = 1; ; attempt++)
-        {
-            if (!TryInjectFault(command))
-            {
-                var decision = Decide(command);
-                Log(instance, Describe(decision));
-                return decision is Decision.Accepted;
-            }
-
-            if (attempt > retries)
-            {
-                Log(instance, retries == 0 ? "transient failure, no retry policy" : "transient failure, retries exhausted");
-                return false;
-            }
-
-            Log(instance, $"transient failure, retry {attempt}/{retries} after {Durations.Format(retry!.DelayBefore(attempt))}");
+            _queue.Add(envelope);
         }
     }
 
-    private void Compensate(ProcessInstance instance)
+    public void Dispose() => _gate.Dispose();
+
+    /// <summary>The simulator perturbing delivery (Skuld), if any.</summary>
+    internal ISimulation? Simulation { get; set; }
+
+    /// <summary>Adds a line to the journal on behalf of the simulator.</summary>
+    internal void Note(string message) => Log("skuld", null, message);
+
+    /// <summary>Every process instance and its status, in creation order.</summary>
+    internal IReadOnlyList<(string Process, string Key, ProcessStatus Status)> Instances() =>
+        Read(() => (IReadOnlyList<(string, string, ProcessStatus)>)[.. _store.Instances.Select(i => (i.Process, i.Key, i.Status))]);
+
+    /// <summary>Short, readable name of a message for journals and reports.</summary>
+    internal string Describe(Envelope envelope) => envelope.Kind switch
     {
-        Log(instance, "compensating");
-        while (instance.Completed.TryPop(out var done))
-        {
-            if (done.Compensation is { } undo && !TryExecute(instance, undo, done.Retry))
-            {
-                instance.Status = ProcessStatus.Failed;
-                Log(instance, $"FAILED: {undo} could not run, needs attention");
-                return;
-            }
-        }
-
-        instance.Status = ProcessStatus.Compensated;
-        Log(instance, "compensated");
-    }
-
-    private bool TryInjectFault(ICommand command)
-    {
-        var type = command.GetType();
-        if (_faults.GetValueOrDefault(type) == 0)
-        {
-            return false;
-        }
-
-        _faults[type]--;
-        return true;
-    }
-
-    private static string Describe(Decision decision) => decision switch
-    {
-        Decision.Accepted accepted => $"ok {accepted.Event.GetType().Name}",
-        Decision.Rejected rejected => $"rejected {rejected.Error}",
-        _ => throw new InvalidOperationException($"Unknown decision {decision}."),
+        MessageKind.Reply => $"reply to {envelope.Process!.Process} {envelope.Process.Key}",
+        MessageKind.Timeout => $"timeout of {envelope.Process!.Process} {envelope.Process.Key}",
+        _ => $"{_types.TypeOf(envelope.Type).Name}{(envelope.Process is { } p ? $" ({p.Key})" : string.Empty)}",
     };
 
-    private void Log(ProcessInstance instance, string message) => Log(instance.Process.Name, instance.Key, message);
+    private bool Fault(Envelope command, Type commandType)
+    {
+        if (_faults.GetValueOrDefault(commandType) > 0)
+        {
+            _faults[commandType]--;
+            return true;
+        }
 
-    private void Log(string process, object? key, string message) => _journal.Add(new(Now, process, key, message));
+        return Simulation?.Fault(command, commandType) ?? false;
+    }
+
+    private void Register(params Type?[] types)
+    {
+        foreach (var type in types.OfType<Type>())
+        {
+            _types.Register(type);
+        }
+    }
+
+    private T Read<T>(Func<T> read)
+    {
+        _gate.Wait();
+        try
+        {
+            return read();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    // Deterministic message ids: same inputs, same ids.
+    private Guid NextId()
+    {
+        Span<byte> bytes = stackalloc byte[16];
+        BitConverter.TryWriteBytes(bytes, ++_ids);
+        return new Guid(bytes);
+    }
+
+    private void Log(string process, string? key, string message) => _journal.Add(new(Now, process, key, message));
 }

@@ -28,6 +28,9 @@ public sealed record StepRef(string Name)
 
     internal Type? Input { get; init; }
 
+    /// <summary>The command type the step produces.</summary>
+    internal Type? Output { get; init; }
+
     public static StepRef From(Delegate step)
     {
         ArgumentNullException.ThrowIfNull(step);
@@ -36,7 +39,7 @@ public sealed record StepRef(string Name)
 
     internal static StepRef Typed<TIn, TCommand>(Func<TIn, TCommand> step)
         where TCommand : ICommand =>
-        From(step) with { Input = typeof(TIn), Invoke = input => step((TIn)input) };
+        From(step) with { Input = typeof(TIn), Output = typeof(TCommand), Invoke = input => step((TIn)input) };
 
     internal static StepRef Untyped(Delegate step)
     {
@@ -51,6 +54,7 @@ public sealed record StepRef(string Name)
         return reference with
         {
             Input = parameters[0].ParameterType,
+            Output = step.Method.ReturnType,
             Invoke = input =>
             {
                 try
@@ -77,6 +81,12 @@ public abstract record ProcessNode;
 
 public sealed record StepNode(StepRef Action, StepRef? Compensation = null, RetryPolicy? Retry = null) : ProcessNode;
 
+/// <summary>
+/// How the process ends when it is compensated: a command that tells the business (e.g. <c>CancelOrder</c>),
+/// so read models and other slices learn the outcome. Not a position in the flow.
+/// </summary>
+public sealed record CompensatedNode(StepRef Action, RetryPolicy? Retry = null) : ProcessNode;
+
 /// <summary>Waits for an external event correlated to the process instance.</summary>
 public sealed record AwaitNode(Type Event, TimeSpan? Timeout = null) : ProcessNode
 {
@@ -99,7 +109,8 @@ internal static class NodeModifiers
     public static ProcessNode Retry(ProcessNode node, Attempts attempts, Backoff backoff) => node switch
     {
         StepNode step => step with { Retry = new RetryPolicy(attempts, backoff) },
-        _ => throw Misplaced(nameof(Retry), "a step", node),
+        CompensatedNode outcome => outcome with { Retry = new RetryPolicy(attempts, backoff) },
+        _ => throw Misplaced(nameof(Retry), "a step or OnCompensated", node),
     };
 
     public static ProcessNode Within(ProcessNode node, TimeSpan timeout) => node switch
@@ -111,12 +122,14 @@ internal static class NodeModifiers
     /// <summary>Checks that step functions accept the process trigger.</summary>
     public static void EnsureAccepts(ProcessNode node, Type trigger)
     {
-        if (node is not StepNode step)
+        StepRef?[] references = node switch
         {
-            return;
-        }
+            StepNode step => [step.Action, step.Compensation],
+            CompensatedNode outcome => [outcome.Action],
+            _ => [],
+        };
 
-        foreach (var reference in new[] { step.Action, step.Compensation })
+        foreach (var reference in references)
         {
             if (reference?.Input is { } input && !input.IsAssignableFrom(trigger))
             {

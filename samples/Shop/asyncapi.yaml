@@ -1,0 +1,59 @@
+asyncapi: 3.0.0
+info:
+  title: "Shop"
+  version: "0.0.0"
+channels:
+  "payments.payment-charged":
+    address: "payments.payment-charged"
+    messages:
+      "v1":
+        $ref: "#/components/messages/payments.payment-charged.v1"
+  "psp.payment-confirmed":
+    address: "psp.payment-confirmed"
+    messages:
+      "v1":
+        $ref: "#/components/messages/psp.payment-confirmed.v1"
+  "shipping.order-shipped":
+    address: "shipping.order-shipped"
+    messages:
+      "v1":
+        $ref: "#/components/messages/shipping.order-shipped.v1"
+components:
+  messages:
+    "payments.payment-charged.v1":
+      name: "payments.payment-charged.v1"
+      payload:
+        type: object
+        properties:
+          "Amount":
+            type: number
+          "Currency":
+            type: string
+          "OrderId":
+            type: string
+        required:
+          - "Amount"
+          - "Currency"
+          - "OrderId"
+    "psp.payment-confirmed.v1":
+      name: "psp.payment-confirmed.v1"
+      payload:
+        type: object
+        properties:
+          "OrderId":
+            type: string
+        required:
+          - "OrderId"
+    "shipping.order-shipped.v1":
+      name: "shipping.order-shipped.v1"
+      payload:
+        type: object
+        properties:
+          "OrderId":
+            type: string
+          "ShippedOn":
+            type: string
+            format: date
+        required:
+          - "OrderId"
+          - "ShippedOn"
