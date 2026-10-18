@@ -22,6 +22,10 @@ internal static class Program
         config.AddCommand<DiagramCommand>("diagram")
             .WithDescription("Generate Mermaid documentation from public static processes in an assembly.")
             .WithExample("diagram", "--assembly", "Shop.dll", "--output", "processes.md");
+        config.AddCommand<ProcessesCommand>("processes")
+            .WithDescription("Snapshot process structure, or check it for deployment-breaking changes.")
+            .WithExample("processes", "--assembly", "Shop.dll", "--output", "processes.wyrd.txt")
+            .WithExample("processes", "--assembly", "Shop.dll", "--check", "processes.wyrd.txt");
         config.AddCommand<ReplayCommand>("replay")
             .WithDescription("Print a recorded instance history, or turn it into a regression test with --as-test (Urd).")
             .WithExample("replay", "A-1.history.json")

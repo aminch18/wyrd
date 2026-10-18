@@ -32,6 +32,10 @@ jobs:
       - name: Sample smoke test
         run: dotnet run --no-build -c Release --project samples/Shop.Console
 
+      - name: Check process snapshots
+        if: matrix.os == 'ubuntu-latest'
+        run: dotnet run --no-build -c Release --project src/Wyrd.Tool -- processes --assembly samples/Shop/bin/Release/net10.0/Shop.dll --check samples/Shop/processes.wyrd.txt
+
       - name: Native AOT smoke test
         if: matrix.os == 'ubuntu-latest'
         run: |
