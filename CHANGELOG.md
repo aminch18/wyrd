@@ -7,6 +7,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- **Skuld shrinking**: broken futures replay with fewer perturbations while preserving the violated invariant.
+  `Violation.Shrunk` contains the reduced perturbations, detail and journal; reports show it first and retain the
+  original seed. Shrinking defaults on with at most 200 replays per broken future (`Shrink`, `ShrinkBudget`).
+
 - **Skuld** (`Wyrd.Testing`): `Skuld.SimulateAsync(system, scenario, invariants, options)` runs a scenario in many
   seeded futures — transient faults, redelivery, reordering, timers — checks invariants (`Invariant.ProcessesSettle`,
   `Invariant.NothingNeedsAttention`, your own) and reports each broken future with its perturbations, journal and

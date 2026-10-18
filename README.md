@@ -366,6 +366,13 @@ var report = await Skuld.SimulateAsync(
 report.ThrowIfViolated();
 ```
 
+When a future breaks an invariant, Skuld automatically replays its recorded decisions with fewer perturbations
+and shows the smallest failing future it found, including its journal. The original journal and seed remain in
+`Violation`; `Violation.Shrunk` holds the reduced result. `SimulationOptions.ShrinkBudget` bounds the extra runs
+(default 200 per broken future, shared by its invariants); set `Shrink = false` to disable shrinking. Scenario
+and runtime factories must create the same starting conditions on every replay. Greedy shrinking is bounded,
+so the result is not guaranteed to be a global minimum.
+
 The first time we pointed it at our own sample shop, it broke 85 of 200 futures:
 
 ```
