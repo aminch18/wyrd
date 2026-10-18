@@ -525,9 +525,7 @@ export function SemanticsDoc() {
                 </li>
                 <li>an undo&apos;s retries are exhausted,</li>
                 <li>the outcome command fails after its retries,</li>
-                <li>
-                    its definition&apos;s structure changed.
-                </li>
+                <li>its definition&apos;s structure changed.</li>
             </ul>
             <p>
                 Suspending does not make the world consistent: the instance
