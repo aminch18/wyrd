@@ -67,7 +67,7 @@ export function DecisionsDoc() {
         >
             <Callout title="Implemented or planned">
                 Each decision is marked <Status kind="implemented" />,{' '}
-                <Status kind="planned" version="v0.3" /> or{' '}
+                <Status kind="planned" version="v0.5" /> or{' '}
                 <Status kind="limit" />. The reference for the exact rules is{' '}
                 <a href="#/docs/semantics">How Wyrd behaves</a>. Wyrd is early
                 alpha and the current host is in memory, so read the costs as
@@ -137,7 +137,7 @@ export function DecisionsDoc() {
             <Decision
                 title="Suspend instead of failing silently"
                 status="implemented"
-                note="in the in-memory host; the definition-changed reason needs the fingerprint, planned in v0.3"
+                note="in the in-memory host"
                 problem="When retries run out, there are two bad options: cancel the order (even though the cause may be an outage or a bug in your code) or leave the instance stuck where nobody looks."
                 decision="An instance whose step retries are exhausted, whose undo retries are exhausted, whose outcome command fails, or whose definition changed becomes Suspended with a reason. Operators use ResumeAsync or CompensateAsync, a late success resumes the instance on its own, and .Retry(3.Times).OrCompensate() opts a step into compensating automatically instead."
                 gives="Nothing is lost and nothing stays stuck in silence: the situation is visible (status, reason, alert) and recoverable."
@@ -165,11 +165,10 @@ export function DecisionsDoc() {
 
             <Decision
                 title="A structure fingerprint per instance"
-                status="planned"
-                version="v0.3"
+                status="implemented"
                 note="migrating in-flight instances is planned for v1.0"
                 problem="Long-running instances outlive deployments. If someone inserts a step, an instance stored at step 3 would continue at what is now a different step 3."
-                decision='Each instance records a fingerprint of the structure it started with: the steps, their order and the waits. Configuration such as retries is not part of it. If the deployed structure differs, the instance is suspended ("definition changed").'
+                decision='Each instance records a fingerprint of the structure it started with: the steps, their order and the waits. Configuration such as retries is not part of it. If the deployed structure differs, the instance is suspended ("definition changed"), keeps what it receives meanwhile, and can be resumed once the original definition is deployed again.'
                 gives="You can change retry counts and backoff freely, and a structural change cannot silently corrupt running instances."
                 costs="Until process versioning exists, a structural change suspends in-flight instances and someone has to deal with them."
             />

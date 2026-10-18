@@ -101,8 +101,8 @@ const ROADMAP: readonly Milestone[] = [
     {
         version: 'v0.3',
         title: 'Skuld — simulate the future',
-        status: 'In progress',
-        copy: 'Failure simulation, explicit retry semantics and suspension are available. The structure fingerprint, steps that read earlier events, ordered projections and shrinking are still open.',
+        status: 'Available',
+        copy: 'Failure simulation with shrinking, explicit retry semantics, suspension, the structure fingerprint, steps that read earlier events and ordered read models.',
         items: [
             [
                 true,
@@ -112,7 +112,10 @@ const ROADMAP: readonly Milestone[] = [
                 true,
                 'Engine fixes found by Skuld: attempt-aware replies, unknown-outcome steps compensated, thread-safe type registry',
             ],
-            [true, 'Typed invokers in the pipe syntax, no reflection'],
+            [
+                true,
+                'Typed invokers in the pipe syntax; only steps that read earlier events are invoked dynamically (Native AOT-compatible)',
+            ],
             [
                 true,
                 'Analyzers WYRD0011 (how a step is undone), WYRD0012 (await without .Within), WYRD0013 (process style), WYRD0020 (exhaustive union switch)',
@@ -125,12 +128,18 @@ const ROADMAP: readonly Milestone[] = [
                 true,
                 'Suspend instead of guessing, with ResumeAsync / CompensateAsync and opt-in .OrCompensate()',
             ],
-            [false, 'Process structure fingerprint per instance'],
-            [false, 'Steps that read the events of earlier steps'],
-            [false, 'Ordered projections per stream'],
             [
-                false,
-                'Shrinking: reduce a failing future to the fewest perturbations',
+                true,
+                'Process structure fingerprint per instance: a changed definition suspends in-flight instances',
+            ],
+            [
+                true,
+                'Steps that read the events of earlier steps (and awaited events), checked before the first message',
+            ],
+            [true, 'Ordered projections per stream'],
+            [
+                true,
+                'Shrinking: reduce a failing future to the fewest perturbations that still break the invariant',
             ],
         ],
     },

@@ -115,7 +115,7 @@ export function SemanticsDoc() {
             <Callout title="How to read the status markers">
                 This page follows the repository design document, which marks
                 every rule as <Status kind="implemented" />, as{' '}
-                <Status kind="planned" version="v0.3" /> (with the version that
+                <Status kind="planned" version="v0.5" /> (with the version that
                 plans it), or as a <Status kind="limit" /> that is a deliberate
                 boundary. A planned rule is a design decision, not a claim about
                 the current package. Where it matters, the table says what
@@ -280,11 +280,14 @@ export function SemanticsDoc() {
                                 structure, the instance is{' '}
                                 <strong>suspended</strong> (&quot;definition
                                 changed&quot;) instead of continuing at the
-                                wrong step.
+                                wrong step. Nothing it receives meanwhile is
+                                lost (replies stay in the owner&apos;s inbox,
+                                awaited events are parked), and it can be
+                                resumed once the definition it started with is
+                                deployed again.
                             </>
                         ),
-                        status: 'planned',
-                        version: 'v0.3',
+                        status: 'implemented',
                     },
                     {
                         rule: (
@@ -352,11 +355,14 @@ export function SemanticsDoc() {
                                     charged)
                                 </code>
                                 . A step that asks for an event no earlier step
-                                produces makes the process invalid.
+                                produces makes the application fail before the
+                                first message. The latest event of each type is
+                                used, and awaited events count. An undo reads
+                                only events from before its own step, because
+                                its step may never have run.
                             </>
                         ),
-                        status: 'planned',
-                        version: 'v0.3',
+                        status: 'implemented',
                     },
                 ]}
             />
@@ -520,8 +526,7 @@ export function SemanticsDoc() {
                 <li>an undo&apos;s retries are exhausted,</li>
                 <li>the outcome command fails after its retries,</li>
                 <li>
-                    its definition&apos;s structure changed (needs the
-                    fingerprint, planned in v0.3).
+                    its definition&apos;s structure changed.
                 </li>
             </ul>
             <p>
@@ -535,10 +540,9 @@ export function SemanticsDoc() {
                 that did run is not run twice. <code>CompensateAsync</code>{' '}
                 undoes a forward-suspended instance and fences the step it gave
                 up on. A late success of the pending command resumes the
-                instance on its own. <Status kind="implemented" /> The
-                structure-changed reason depends on the fingerprint, which is{' '}
-                <Status kind="planned" version="v0.3" />. Durable hosts come
-                with v0.5.
+                instance on its own. <Status kind="implemented" /> A changed
+                process structure suspends an instance the same way. Durable
+                hosts come with v0.5.
             </p>
 
             <h3>Statuses</h3>
@@ -642,11 +646,25 @@ export function SemanticsDoc() {
                                 projection{' '}
                                 <strong>in the order they happened</strong>,
                                 whatever the delivery order, so views do not
-                                defend against reordering by hand.
+                                defend against reordering by hand. Each domain
+                                event carries its stream and version, and one
+                                that arrives early is held until the gap is
+                                filled. Processes do not wait for read models.
                             </>
                         ),
-                        status: 'planned',
-                        version: 'v0.3',
+                        status: 'implemented',
+                    },
+                    {
+                        rule: (
+                            <>
+                                Across streams there is no order (two orders, or
+                                an order and its payment when they are different
+                                states), and integration events from outside
+                                carry no stream. A view that combines several
+                                streams still tolerates reordering between them.
+                            </>
+                        ),
+                        status: 'limit',
                     },
                 ]}
             />

@@ -71,14 +71,19 @@ export function SimulationDoc() {
             <h2>Read the report, replay the future</h2>
             <p>
                 Each broken invariant comes with the first future that broke it:
-                the perturbations Skuld injected, the complete journal and the
-                seed. <code>options.Only(seed)</code> replays exactly that
-                future, as many times as you need to debug it.
+                the perturbations Skuld injected, the journal and the seed.
+                Skuld then shrinks the future: it replays it with fewer
+                perturbations while the invariant still breaks, and the report
+                shows the smallest failing future first (
+                <code>SimulationOptions.Shrink</code>, on by default, with at
+                most <code>ShrinkBudget</code> = 200 replays per broken future).{' '}
+                <code>options.Only(seed)</code> replays the original future
+                exactly, as many times as you need to debug it.
             </p>
             <CodeBlock
                 code={SNIPPETS.skuldReport}
                 language="text"
-                title="Test output"
+                title="Test output (a deliberately fragile process)"
             />
             <Callout title="A misconfigured simulation fails">
                 Zero runs or rates outside <code>[0, 1]</code> throw instead of

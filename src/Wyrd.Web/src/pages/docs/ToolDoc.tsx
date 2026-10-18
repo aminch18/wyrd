@@ -5,7 +5,7 @@ import { DocArticle } from './DocArticle'
 const ASYNCAPI_COMMAND = `dotnet run --project src/Wyrd.Tool -- asyncapi \\
   --contracts samples/Shop/contracts.wyrd.txt \\
   --title "Shop integration events" \\
-  --version 0.2.0 \\
+  --version 0.3.0 \\
   --output samples/Shop/asyncapi.yaml`
 
 const DIAGRAM_COMMAND = `dotnet build samples/Shop

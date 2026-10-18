@@ -208,19 +208,32 @@ public async Task the_business_holds_in_every_future()
     report.ThrowIfViolated();
 }`,
 
-    skuldReport: `Skuld explored 200 futures: 85 broke an invariant.
+    skuldReport: `Skuld explored 200 futures: 42 broke an invariant.
 
-✗ "stock is conserved" broke in 41 futures. First: seed 3.
-  1 available, expected 4
-  Perturbations: ...; ReleaseStock (A-2) failed transiently; ...
+✗ "valid orders go through" broke in 42 futures. First: seed 9.
+  Smallest future that breaks it: 1 perturbations (4 replays; smallest found within budget).
+  A-1 didn't go through because of a transient failure
+  Perturbations: ReserveStock (A-1) failed transiently
   Journal:
-    [00:00:00] OrderFulfillment A-2   rejected CardDeclined
-    [00:00:00] OrderFulfillment A-2   compensating
-    [00:00:00] OrderFulfillment A-2   -> ReleaseStock
-    [00:00:00] skuld                  ReleaseStock (A-2) failed transiently
-    [00:00:00] OrderFulfillment A-2   transient failure, no retry policy
-    [00:00:00] OrderFulfillment A-2   FAILED: Stock.Release could not run, needs attention
-  Replay it: Skuld.SimulateAsync(..., options.Only(3))`,
+    [00:00:00] -                A-1      -> PlaceOrder
+    [00:00:00] -                A-1      ok OrderPlaced
+    [00:00:00] Fragile          A-1      started by OrderPlaced
+    [00:00:00] Fragile          A-1      -> ReserveStock
+    [00:00:00] skuld                     ReserveStock (A-1) failed transiently
+    [00:00:00] Fragile          A-1      transient failure, no retry policy
+    [00:00:00] Fragile          A-1      SUSPENDED: Stock.Reserve failed after 1 attempts, needs attention
+    [00:00:00] -                A-2      -> PlaceOrder
+    [00:00:00] -                A-2      ok OrderPlaced
+    [00:00:00] Fragile          A-2      started by OrderPlaced
+    [00:00:00] Fragile          A-2      -> ReserveStock
+    [00:00:00] Fragile          A-2      ok StockReserved
+    [00:00:00] Fragile          A-2      -> ChargePayment
+    [00:00:00] Fragile          A-2      rejected Declined
+    [00:00:00] Fragile          A-2      compensating
+    [00:00:00] Fragile          A-2      -> ReleaseStock
+    [00:00:00] Fragile          A-2      ok StockReleased
+    [00:00:00] Fragile          A-2      compensated
+  Replay it: Skuld.SimulateAsync(..., options.Only(9))`,
 
     aotJson: `[WyrdJsonContext]
 [JsonSerializable(typeof(ChargePayment))]

@@ -50,7 +50,7 @@ export function HomePage() {
                     </div>
                     <TerminalInstall />
                     <div className={styles['alpha-note']}>
-                        <span>v0.2 alpha</span> · built for .NET 10 and C# 14
+                        <span>v0.3 preview</span> · built for .NET 10 and C# 14
                     </div>
                 </div>
                 <div
