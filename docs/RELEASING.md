@@ -37,7 +37,9 @@ One-time setup by the owner:
    repository owner `aminch18`, repository `wyrd`, workflow file `ci.yml`, environment empty.
 2. In GitHub, *Settings > Secrets and variables > Actions > Variables > New repository variable*: name `NUGET_USER`,
    value your nuget.org **username** (not your email).
-3. Optional: reserve the `Wyrd` prefix (*Account > Manage Prefixes*) so the packages show as verified.
+3. Later, optional: ask for the `Wyrd` prefix reservation by email to account@nuget.org (prefix, nuget.org username,
+   repository URL). Reserved packages show as verified and nobody else can publish `Wyrd.*`; nuget.org reviews
+   requests by hand and expects some adoption first.
 4. Push a version tag as in the steps above. Packages appear on nuget.org after validation (a few minutes).
    A published version can't be deleted, only unlisted.
 
