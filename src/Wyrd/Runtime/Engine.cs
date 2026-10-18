@@ -81,12 +81,13 @@ internal sealed class Engine(
         ReplyMessage reply;
         if (decision is Decision.Accepted accepted)
         {
+            var version = (current?.Version ?? 0) + 1;
             var (nextType, nextPayload) = types.Serialize(((IState)state).Apply(accepted.Event), slice.State);
-            changes.States.Add(new StoredState(stateType, key, nextType, nextPayload, (current?.Version ?? 0) + 1));
+            changes.States.Add(new StoredState(stateType, key, nextType, nextPayload, version));
 
             var (eventType, eventPayload) = types.Serialize(accepted.Event, slice.Event);
             changes.Events.Add(new StoredMessage(eventType, eventPayload));
-            changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, eventType, eventPayload));
+            changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, eventType, eventPayload, Stream: new StreamRef(stateType, key, version)));
 
             foreach (var publication in registry.PublicationsOf(accepted.Event.GetType()))
             {
@@ -159,16 +160,7 @@ internal sealed class Engine(
         var changes = new Changes();
         changes.Handled.Add(envelope.MessageId);
 
-        foreach (var projection in registry.Projections)
-        {
-            foreach (var handled in projection.Events)
-            {
-                if (Accept(@event, handled) is { } projected)
-                {
-                    await ProjectAsync(projection, projected, changes, cancellationToken).ConfigureAwait(false);
-                }
-            }
-        }
+        await ProjectInOrderAsync(envelope, @event, changes, cancellationToken).ConfigureAwait(false);
 
         foreach (var process in registry.Processes)
         {
@@ -187,6 +179,62 @@ internal sealed class Engine(
         }
 
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Read models get the events of one stream in the order they happened, whatever the delivery order: an event that
+    /// arrives before an earlier one of its stream is held, and projected once the gap is filled. Processes don't wait.
+    /// </summary>
+    private async ValueTask ProjectInOrderAsync(Envelope envelope, IEvent @event, Changes changes, CancellationToken cancellationToken)
+    {
+        if (registry.Projections.Count == 0)
+        {
+            return;
+        }
+
+        if (envelope.Stream is not { } stream)
+        {
+            await ProjectAsync(@event, changes, cancellationToken).ConfigureAwait(false); // From outside: no stream to order by.
+            return;
+        }
+
+        var projected = await store.LoadProjectedAsync(stream.StateType, stream.Key, cancellationToken).ConfigureAwait(false);
+        if (stream.Version <= projected)
+        {
+            return;
+        }
+
+        if (stream.Version > projected + 1)
+        {
+            log(External, stream.Key, $"{@event.GetType().Name} held for read models until earlier events of its stream arrive");
+            changes.Hold.Add(new StoredHeld(stream.StateType, stream.Key, stream.Version, envelope.Type, envelope.Payload));
+            return;
+        }
+
+        await ProjectAsync(@event, changes, cancellationToken).ConfigureAwait(false);
+        var version = stream.Version;
+        while (await store.FindHeldAsync(stream.StateType, stream.Key, version + 1, cancellationToken).ConfigureAwait(false) is { } held)
+        {
+            changes.Release.Add(held);
+            await ProjectAsync((IEvent)types.Deserialize(held.Type, held.Payload), changes, cancellationToken).ConfigureAwait(false);
+            version++;
+        }
+
+        changes.Projected[(stream.StateType, stream.Key)] = (projected, version);
+    }
+
+    private async ValueTask ProjectAsync(IEvent @event, Changes changes, CancellationToken cancellationToken)
+    {
+        foreach (var projection in registry.Projections)
+        {
+            foreach (var handled in projection.Events)
+            {
+                if (Accept(@event, handled) is { } projected)
+                {
+                    await ProjectAsync(projection, projected, changes, cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
     }
 
     private async ValueTask ProjectAsync(IProjectionHandler projection, IEvent @event, Changes changes, CancellationToken cancellationToken)

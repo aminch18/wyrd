@@ -143,7 +143,12 @@ fences the step it gave up on; a late success of the pending command resumes it 
 - A projection updates a view from events with pure functions, in the transaction that handles the event; the same
   message is never applied twice. **Implemented.**
 - Events of one stream (one state key) reach a projection **in the order they happened**, whatever the delivery
-  order, so views don't defend against reordering by hand. **Planned (v0.3).**
+  order, so views don't defend against reordering by hand: each domain event carries its stream and version, and one
+  that arrives early is held until the gap is filled. Processes don't wait for read models. **Implemented.**
+- Across streams there is no order (two orders, or an order and its payment if they are different states), and
+  integration events from outside carry no stream. A view combining several streams still tolerates reordering
+  between them. *Conscious limit.* Catching up a projection added to an existing durable store comes with the
+  durable hosts (v0.5).
 
 ## 6. Conscious limits
 
