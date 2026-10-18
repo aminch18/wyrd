@@ -25,7 +25,8 @@ internal sealed record StoredInstance(
     Guid? Pending,
     bool Compensating,
     DateTimeOffset? Deadline,
-    long Version);
+    long Version,
+    string? Reason = null);
 
 internal sealed record Scheduled(DateTimeOffset At, Envelope Envelope);
 

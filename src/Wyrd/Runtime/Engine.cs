@@ -381,7 +381,7 @@ internal sealed class Engine(
             case ReplyOutcome.Rejected:
                 log(instance.Process, instance.Key, $"rejected {types.Deserialize(reply.Type!, reply.Payload!)}");
                 instance = target.Compensating
-                    ? Fail(instance, step.Compensation!)
+                    ? Suspend(instance, $"undo {step.Compensation} was rejected: {types.Deserialize(reply.Type!, reply.Payload!)}")
                     : StartCompensation(process, instance, trigger, changes);
                 break;
 
@@ -406,17 +406,30 @@ internal sealed class Engine(
 
         if (target.Compensating)
         {
-            return Fail(instance, retried);
+            return Suspend(instance, $"undo {retried} failed after {instance.Attempt} attempts");
         }
 
-        // We give up without knowing whether the command ran: a delayed copy may still execute. Its undo fences it.
+        if (!step.CompensateWhenExhausted)
+        {
+            return Suspend(instance, $"{retried} failed after {instance.Attempt} attempts");
+        }
+
+        return CompensateUncertain(process, instance, step, target.Step, trigger, changes);
+    }
+
+    /// <summary>
+    /// Compensates a process that gave up on a step without knowing whether it ran: a delayed copy may still execute,
+    /// so the step joins the undo list and its undo fences the original command.
+    /// </summary>
+    private StoredInstance CompensateUncertain(Process process, StoredInstance instance, StepNode step, int index, IEvent trigger, Changes changes)
+    {
         if (step.Compensation is not null)
         {
             log(instance.Process, instance.Key, $"outcome of {step.Action} unknown: its undo will fence it");
             instance = instance with
             {
-                Completed = instance.Completed.Add(target.Step),
-                Uncertain = instance.Uncertain.SetItem(target.Step, instance.Pending!.Value),
+                Completed = instance.Completed.Add(index),
+                Uncertain = instance.Uncertain.SetItem(index, instance.Pending!.Value),
             };
         }
 
@@ -487,16 +500,88 @@ internal sealed class Engine(
                 return instance with { Status = ProcessStatus.Compensated, Pending = null };
             case ReplyOutcome.Rejected:
                 log(instance.Process, instance.Key, $"rejected {types.Deserialize(reply.Type!, reply.Payload!)}");
-                return Fail(instance, outcome.Action);
+                return Suspend(instance, $"outcome {outcome.Action} was rejected: {types.Deserialize(reply.Type!, reply.Payload!)}");
             default:
-                return Retry(instance, outcome.Action, outcome.Policy, target, trigger, changes) ?? Fail(instance, outcome.Action);
+                return Retry(instance, outcome.Action, outcome.Policy, target, trigger, changes)
+                    ?? Suspend(instance, $"outcome {outcome.Action} failed after {instance.Attempt} attempts");
         }
     }
 
-    private StoredInstance Fail(StoredInstance instance, StepRef undo)
+    /// <summary>
+    /// Stops instead of guessing. The instance keeps where it was — position, completed steps, pending command — so an
+    /// operator can resume or compensate it; a late success of the pending command still resumes it on its own.
+    /// </summary>
+    private StoredInstance Suspend(StoredInstance instance, string reason)
     {
-        log(instance.Process, instance.Key, $"FAILED: {undo} could not run, needs attention");
-        return instance with { Status = ProcessStatus.Failed, Pending = null };
+        log(instance.Process, instance.Key, $"SUSPENDED: {reason}, needs attention");
+        return instance with { Status = ProcessStatus.Suspended, Reason = reason };
+    }
+
+    // ── Operators: resume or compensate a suspended instance ─────────────────────────────────
+
+    /// <summary>Re-sends what the suspended instance was doing, with the same message id (the owner's inbox makes it safe).</summary>
+    public async ValueTask ResumeAsync(string processName, string key, CancellationToken cancellationToken)
+    {
+        var (process, instance) = await SuspendedAsync(processName, key, cancellationToken).ConfigureAwait(false);
+        var trigger = Trigger(instance);
+        var changes = new Changes();
+        log(instance.Process, instance.Key, "resumed by an operator");
+
+        instance = instance with { Status = ProcessStatus.Running, Reason = null };
+        if (!instance.Compensating)
+        {
+            var step = (StepNode)process.Nodes[instance.Position];
+            instance = Resend(instance, trigger, step.Action, instance.Position, compensating: false, changes);
+        }
+        else if (instance.Completed.Count > 0)
+        {
+            var index = instance.Completed[^1];
+            instance = Resend(instance, trigger, ((StepNode)process.Nodes[index]).Compensation!, index, compensating: true, changes);
+        }
+        else
+        {
+            instance = Resend(instance, trigger, process.Outcome!.Action, process.Nodes.Length, compensating: true, changes);
+        }
+
+        changes.Save(instance);
+        await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Undoes a suspended instance that was going forward; the step it gave up on is fenced, like any unknown outcome.</summary>
+    public async ValueTask CompensateAsync(string processName, string key, CancellationToken cancellationToken)
+    {
+        var (process, instance) = await SuspendedAsync(processName, key, cancellationToken).ConfigureAwait(false);
+        if (instance.Compensating)
+        {
+            throw new InvalidOperationException(
+                $"{processName} '{key}' was already compensating when it was suspended: resume it to finish the compensation.");
+        }
+
+        var changes = new Changes();
+        log(instance.Process, instance.Key, "compensation requested by an operator");
+        var step = (StepNode)process.Nodes[instance.Position];
+        instance = instance with { Status = ProcessStatus.Running, Reason = null };
+        changes.Save(CompensateUncertain(process, instance, step, instance.Position, Trigger(instance), changes));
+        await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask<(Process Process, StoredInstance Instance)> SuspendedAsync(string processName, string key, CancellationToken cancellationToken)
+    {
+        var instance = await store.LoadInstanceAsync(processName, key, cancellationToken).ConfigureAwait(false);
+        return instance is { Status: ProcessStatus.Suspended }
+            ? (registry.ProcessNamed(processName), instance)
+            : throw new InvalidOperationException($"{processName} '{key}' is not suspended (it is {instance?.Status.ToString() ?? "unknown"}).");
+    }
+
+    private StoredInstance Resend(StoredInstance instance, IEvent trigger, StepRef step, int index, bool compensating, Changes changes)
+    {
+        var command = step.Invoke!(trigger);
+        var (type, payload) = types.Serialize(command, step.Output ?? command.GetType());
+        var id = instance.Pending ?? newId();
+        var fences = compensating && instance.Uncertain.TryGetValue(index, out var original) ? original : (Guid?)null;
+        changes.Outbox.Add(new Envelope(id, MessageKind.Command, type, payload, new ProcessRef(instance.Process, instance.Key, index, compensating), Fences: fences));
+        log(instance.Process, instance.Key, $"-> {command.GetType().Name} (again)");
+        return instance with { Pending = id, Attempt = 1 };
     }
 
     // ── Timeouts ──────────────────────────────────────────────────────────────────────────────

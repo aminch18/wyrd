@@ -53,6 +53,12 @@ public sealed class ProcessBuilder<TTrigger>
         where TCommand : ICommand =>
         ModifyLast(n => NodeModifiers.Undo(n, StepRef.Typed(compensation), insist is { } a ? new RetryPolicy(a, backoff) : null));
 
+    /// <summary>
+    /// When the last step's retries run out, compensate automatically instead of suspending the instance for a human.
+    /// Reads as "retry three times, or compensate": <c>.Retry(3.Times).OrCompensate()</c>.
+    /// </summary>
+    public ProcessBuilder<TTrigger> OrCompensate() => ModifyLast(NodeModifiers.OrCompensate);
+
     /// <summary>Declares that the last step is not retried, and why (e.g. "the carrier retries on its side").</summary>
     public ProcessBuilder<TTrigger> NoRetry(string reason) => ModifyLast(n => NodeModifiers.NoRetry(n, reason));
 

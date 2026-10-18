@@ -57,8 +57,8 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 
 - [x] Retry semantics ([design](design/semantics.md) 3.2–3.4): every step declares `.Retry(...)` or `.NoRetry("why")`
       (WYRD0014, no default); undos and the outcome always insist with their own adjustable policy; WYRD0010 removed
-- [ ] Suspend instead of failing silently ([design](design/semantics.md) 3.6): exhausted retries, exhausted undos and a
-      changed definition suspend the instance with a reason; operations to resume or compensate it
+- [x] Suspend instead of guessing ([design](design/semantics.md) 3.6): exhausted retries, exhausted undos and a
+      failed outcome suspend the instance with a reason; `ResumeAsync` / `CompensateAsync`; opt-in `.OrCompensate()`
 - [ ] Process structure fingerprint per instance ([design](design/semantics.md) 3.1)
 - [ ] Steps that read the events of earlier steps, not only the trigger
 - [x] Typed invokers in the pipe syntax, no reflection: `DynamicInvoke` is gone; plain delegates are bound to typed

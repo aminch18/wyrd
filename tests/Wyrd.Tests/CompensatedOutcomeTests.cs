@@ -64,8 +64,8 @@ public class CompensatedOutcomeTests
         await runtime.SendAsync(new PlaceOrder("A-1", Quantity: 99, Amount: 50));
         await runtime.AdvanceAsync(10.Minutes);
 
-        Assert.Equal(ProcessStatus.Failed, runtime.StatusOf(Fluent, "A-1"));
-        Assert.Contains(runtime.Journal, e => e.Message == "FAILED: Orders.Cancel could not run, needs attention");
+        Assert.Equal(ProcessStatus.Suspended, runtime.StatusOf(Fluent, "A-1"));
+        Assert.Equal("outcome Orders.Cancel failed after 11 attempts", runtime.ReasonOf(Fluent, "A-1"));
     }
 
     [Fact]

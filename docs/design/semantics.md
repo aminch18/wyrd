@@ -107,8 +107,10 @@ An instance is **suspended — needs attention** when:
 
 Suspending doesn't make the world consistent: the instance stays half-way. It makes the situation **visible**
 (status, reason, alert) and **recoverable**: an operator **resumes** it (after a fix) or **compensates** it.
-Nothing is lost and nothing stays stuck in silence. **Planned (v0.3).** *Today: an exhausted undo ends as `Failed`,
-and exhausted forward retries compensate.*
+Nothing is lost and nothing stays stuck in silence. `ResumeAsync` re-sends what the instance was doing with the same
+message id (a command that did run is not run twice); `CompensateAsync` undoes a forward-suspended instance and
+fences the step it gave up on; a late success of the pending command resumes it on its own. **Implemented**
+(in memory; durable hosts in v0.5). Opt-in automatic compensation: `.Retry(3.Times).OrCompensate()`. **Implemented.**
 
 ### 3.7 Statuses
 
@@ -120,12 +122,12 @@ and exhausted forward retries compensate.*
 | Compensated | Undone, outcome done |
 | Suspended | Needs attention, with a reason; resumable or compensable |
 
-`Failed` becomes `Suspended` when 3.6 is implemented.
+`Suspended` carries its reason (`ReasonOf`). It replaced the earlier `Failed`.
 
 ## 4. Delivery
 
 - Every message is handled in **one transaction**: state, events, instances, inbox, outbox, timers and read
-  models commit together or not at all. **Implemented** (in memory and on PostgreSQL).
+  models commit together or not at all. **Implemented** in memory; PostgreSQL is built and parked until v0.5.
 - Delivery is **at least once**; decisions are **effectively once**: the owner's inbox remembers every command it
   decided and replays the outcome to duplicates. **Implemented.**
 - Integration events reach each subscriber **once, in the contract version it understands** (upcast step by step;

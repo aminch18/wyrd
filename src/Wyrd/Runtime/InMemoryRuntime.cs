@@ -202,6 +202,41 @@ public sealed class InMemoryRuntime : IDisposable
         }
     }
 
+    /// <summary>
+    /// Resumes a suspended instance (after fixing what made it stop): what it was doing is sent again with the same
+    /// message id, so a command that did run in the meantime is not run twice.
+    /// </summary>
+    public Task ResumeAsync(Process process, object key, CancellationToken cancellationToken = default) =>
+        OperateAsync(process, key, (name, k, ct) => _engine.ResumeAsync(name, k, ct), cancellationToken);
+
+    /// <summary>Compensates a suspended instance that was going forward: what it completed is undone, and the step it gave up on is fenced.</summary>
+    public Task CompensateAsync(Process process, object key, CancellationToken cancellationToken = default) =>
+        OperateAsync(process, key, (name, k, ct) => _engine.CompensateAsync(name, k, ct), cancellationToken);
+
+    /// <summary>The reason an instance is suspended, or null.</summary>
+    public string? ReasonOf(Process process, object key)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(key);
+        return Read(() => _store.Instance(process.Name, Keys.Of(key))?.Reason);
+    }
+
+    private async Task OperateAsync(Process process, object key, Func<string, string, CancellationToken, ValueTask> operation, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(key);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await operation(process.Name, Keys.Of(key), cancellationToken).ConfigureAwait(false);
+            await DrainAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     /// <summary>Makes the next <paramref name="times"/> executions of a command, sent by a process, fail transiently.</summary>
     public void FailNext<TCommand>(int times = 1)
         where TCommand : ICommand

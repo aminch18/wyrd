@@ -58,19 +58,36 @@ public class RuntimeTests
     }
 
     [Fact]
-    public async Task exhausted_retries_compensate()
+    public async Task exhausted_retries_suspend_instead_of_guessing()
     {
         _runtime.FailNext<ChargePayment>(times: 4);
 
         await _runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
         await _runtime.AdvanceAsync(10.Seconds);
 
-        Assert.Equal(ProcessStatus.Compensated, _runtime.StatusOf(Fulfillment, "A-1"));
-        Assert.Equal([new StockReserved("A-1"), new StockReleased("A-1")], Events());
+        Assert.Equal(ProcessStatus.Suspended, _runtime.StatusOf(Fulfillment, "A-1"));
+        Assert.Equal("Payment.Charge failed after 4 attempts", _runtime.ReasonOf(Fulfillment, "A-1"));
+        Assert.Equal([new StockReserved("A-1")], Events()); // nothing undone behind anyone's back
+    }
 
-        // We gave up on the charge without knowing whether it ran, so its refund was attempted too: nothing to undo.
-        Assert.Contains(_runtime.Journal, e => e.Message == "outcome of Payment.Charge unknown: its undo will fence it");
-        Assert.Contains(_runtime.Journal, e => e.Message == "nothing to undo: Payment.Charge never ran");
+    [Fact]
+    public async Task a_step_can_opt_into_compensating_when_its_retries_run_out()
+    {
+        Process process = Process.StartOn<OrderPlaced>(e => e.OrderId, "OptIn")
+            .Then(Stock.Reserve).Undo(Stock.Release)
+            .Then(Payment.Charge).Retry(3.Times).OrCompensate().Undo(Payment.Refund);
+        var runtime = TestSystem.Create(process);
+        runtime.FailNext<ChargePayment>(times: 4);
+
+        await runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+        await runtime.AdvanceAsync(10.Seconds);
+
+        Assert.Equal(ProcessStatus.Compensated, runtime.StatusOf(process, "A-1"));
+        Assert.Equal<object>([new StockReserved("A-1"), new StockReleased("A-1")], [.. runtime.History.Where(e => e is not OrderPlaced)]);
+
+        // We gave up on the charge without knowing whether it ran, so its refund fenced it: nothing to undo.
+        Assert.Contains(runtime.Journal, e => e.Message == "outcome of Payment.Charge unknown: its undo will fence it");
+        Assert.Contains(runtime.Journal, e => e.Message == "nothing to undo: Payment.Charge never ran");
     }
 
     [Fact]
@@ -179,7 +196,8 @@ public class RuntimeTests
         await _runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 5_000));
         await _runtime.AdvanceAsync(10.Minutes);
 
-        Assert.Equal(ProcessStatus.Failed, _runtime.StatusOf(Fulfillment, "A-1"));
+        Assert.Equal(ProcessStatus.Suspended, _runtime.StatusOf(Fulfillment, "A-1"));
+        Assert.Equal("undo Stock.Release failed after 11 attempts", _runtime.ReasonOf(Fulfillment, "A-1"));
     }
 
     [Fact]

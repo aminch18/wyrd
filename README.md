@@ -256,7 +256,7 @@ microseconds to test, and the journal is identical on every run.
 | Behaviour | |
 |---|---|
 | Domain rejection (`Result` error) → compensate completed steps, in reverse order | ✅ |
-| Transient failure → retry scheduled with backoff, same message id; retries exhausted → compensate | ✅ |
+| Transient failure → retry scheduled with backoff, same message id; retries exhausted → **suspended** for a human (or `.OrCompensate()`) | ✅ |
 | An awaited event that arrives early is parked until the process needs it | ✅ |
 | Duplicate command delivery → the owner's inbox replays the stored outcome | ✅ |
 | Redelivered failure replies never consume extra retries; late successes are accepted | ✅ |
@@ -264,7 +264,7 @@ microseconds to test, and the journal is identical on every run.
 | `Await` timeout → compensate | ✅ |
 | Duplicate trigger (at-least-once delivery) → ignored | ✅ |
 | External events correlated by key | ✅ |
-| Failed compensation → instance flagged as needing attention | ✅ |
+| Undos always insist; one that never succeeds → **suspended**, then resumed or compensated by an operator | ✅ |
 
 ## Versioned integration contracts ✅
 

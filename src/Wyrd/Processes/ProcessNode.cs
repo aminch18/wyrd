@@ -111,6 +111,9 @@ public sealed record StepNode(StepRef Action, StepRef? Compensation = null, Retr
     /// <summary>Why this step is not retried, when that was decided explicitly with <c>.NoRetry("why")</c>.</summary>
     public string? NoRetryReason { get; init; }
 
+    /// <summary>When the step's retries are exhausted: compensate automatically instead of suspending.</summary>
+    public bool CompensateWhenExhausted { get; init; }
+
     /// <summary>How the undo insists, when adjusted; null means <see cref="RetryPolicy.Undo"/>.</summary>
     public RetryPolicy? CompensationRetry { get; init; }
 
@@ -172,6 +175,12 @@ internal static class NodeModifiers
             _ => throw Misplaced(nameof(NoRetry), "a step", node),
         };
     }
+
+    public static ProcessNode OrCompensate(ProcessNode node) => node switch
+    {
+        StepNode step => step with { CompensateWhenExhausted = true },
+        _ => throw Misplaced(nameof(OrCompensate), "a step", node),
+    };
 
     public static ProcessNode Retry(ProcessNode node, Attempts attempts, Backoff backoff) => node switch
     {

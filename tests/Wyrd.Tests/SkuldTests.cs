@@ -6,7 +6,7 @@ namespace Wyrd.Tests;
 
 public class SkuldTests
 {
-    // No step retries: one transient failure cancels an order that should have gone through.
+    // No step retries: one transient failure stops an order that should have gone through.
     private static Process Fragile => Process
         .StartOn<OrderPlaced>(e => e.OrderId)
         .Then(Stock.Reserve).Undo(Stock.Release)
@@ -16,7 +16,7 @@ public class SkuldTests
     private static readonly Invariant ValidOrdersGoThrough = new("valid orders go through", runtime =>
         runtime.History.Contains(new PaymentCharged("A-1", 50)) && !runtime.History.Contains(new PaymentRefunded("A-1"))
             ? null
-            : "A-1 was cancelled by a transient failure");
+            : "A-1 didn't go through because of a transient failure");
 
     private static Process Robust => Process
         .StartOn<OrderPlaced>(e => e.OrderId)
@@ -32,14 +32,17 @@ public class SkuldTests
     }
 
     [Fact]
-    public async Task skuld_finds_that_a_step_without_retries_cancels_valid_orders()
+    public async Task skuld_finds_that_a_step_without_retries_stops_valid_orders()
     {
         var report = await Skuld.SimulateAsync(System(Fragile), TwoOrders, [.. Invariant.Defaults, ValidOrdersGoThrough]);
 
         var violation = report.Violations.First(v => v.Invariant == "valid orders go through");
         Assert.Contains(violation.Journal, e => e.Process == "skuld" && e.Message.EndsWith("failed transiently", StringComparison.Ordinal));
         Assert.Contains(violation.Journal, e => e.Message == "transient failure, no retry policy");
-        Assert.DoesNotContain(report.Violations, v => v.Invariant == "nothing needs attention"); // undos insist
+
+        // Wyrd doesn't guess: the instance is suspended for a human, not silently cancelled.
+        Assert.Contains(report.Violations, v => v.Invariant == "nothing needs attention" && v.Detail.StartsWith("suspended:", StringComparison.Ordinal));
+        Assert.DoesNotContain(report.Violations, v => v.Invariant == "processes settle");
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 # Design: Wyrd in a distributed system
 
-> Status: **proposal**. Nothing in this document is implemented yet, except where marked ✅.
+> Status: **proposal for the distributed hosts (v0.5)**. The behaviour itself is specified in
+> [semantics](semantics.md), which wins where they differ; the API shapes below are illustrative.
 
 ## Goal
 
@@ -128,9 +129,9 @@ tx: inbox += reply
 | Orchestrator crashes after committing, before publishing | Outbox relay publishes on restart |
 | Message delivered twice | Receiver's inbox returns the stored reply; `Decide` runs once |
 | No reply in time / `Faulted` | Orchestrator re-sends **the same message id** (so it is deduplicated) per the step's `Retry` |
-| Retries exhausted | Compensation |
+| Retries exhausted | Instance **suspended** (needs attention) — or compensation, if the step says `.OrCompensate()` |
 | `Rejected` | Compensation, no retry (a pure decision would answer the same) |
-| A compensation fails after its retries | Instance → `Failed`, surfaced as a metric/alert; never silently dropped |
+| An undo fails after its retries (it always insists) | Instance **suspended**, surfaced as a metric/alert; resumed or compensated by an operator |
 | Awaited event arrives **before** the instance reaches the `Await` | **Parked** by `(type, key)` and consumed when the instance gets there |
 | Messages arrive out of order | Allowed. Nothing assumes ordering; parking covers awaits |
 | Two pods handle the same instance | Optimistic concurrency on the instance row; the loser retries |
@@ -172,7 +173,7 @@ Simulating the sample shop in thousands of hostile futures taught four rules eve
 - **No lost messages**: state changes and outgoing messages commit together (outbox).
 - **Effectively once per decision**: at-least-once delivery + inbox deduplication + stable message ids.
 - **Durable progress and timers**: a process continues from its last committed step after any crash.
-- **Every failure ends visibly**: completed, compensated, or `Failed` with an alert.
+- **Every failure ends visibly**: completed, compensated, or suspended with a reason and an alert.
 
 **Not guaranteed:** isolation between processes (others may observe intermediate states, such as reserved
 stock — the usual saga trade-off), and anything about the correctness of business rules.

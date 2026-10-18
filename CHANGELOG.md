@@ -19,6 +19,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Exhaustive switches over `[Union]` states: WYRD0020 names the cases a switch misses, and a diagnostic suppressor
   removes CS8509 when every case is handled, so `_` is no longer needed and a new case breaks the build.
 - `.NoRetry("why")`, `.NoCompensation("why")`, `.Undo(command, 20.Times)` and `.OnCompensated(command).Retry(...)`.
+- **Suspension**: when Wyrd can't resolve something — a step's retries exhausted, an undo or the outcome that never
+  succeeds — the instance is `Suspended` with a reason (`ReasonOf`) instead of guessing. `ResumeAsync` re-sends what it
+  was doing with the same message id; `CompensateAsync` undoes it and fences the step it gave up on; a late success
+  resumes it on its own. `.Retry(3.Times).OrCompensate()` opts into compensating automatically.
 - `Wyrd.Tool` (`dotnet wyrd`): AsyncAPI 3.0 documentation from contract snapshots and Mermaid diagrams of processes.
 - `Wyrd.Web`: the documentation site, with the philosophy and the classic-DDD-to-Wyrd guides.
 - `docs/design/semantics.md`: the specification of how Wyrd behaves.
@@ -26,6 +30,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
+- **Breaking:** `ProcessStatus.Failed` is now `ProcessStatus.Suspended`, and exhausted retries suspend instead of
+  compensating (opt back in per step with `.OrCompensate()`).
 - **Undos always insist.** An undo no longer borrows its step's retry policy: undoing, and the outcome command,
   retry 10 times with exponential backoff by default (waits capped at a minute), adjustable, never off. Whether a
   step retries is its own explicit decision.

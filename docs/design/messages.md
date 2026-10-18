@@ -1,6 +1,7 @@
 # Design: messages — commands, domain events, integration events
 
-> Status: **proposal**. This is a core pillar of Wyrd: the theory applied correctly by construction,
+> Status: **implemented** (taxonomy, publications, contract snapshots, upcasters and the analyzers). AsyncAPI comes
+> from the `dotnet wyrd` tool. This is a core pillar of Wyrd: the theory applied correctly by construction,
 > so developers spend their time on the business, not on re-learning messaging pitfalls.
 
 ## Three kinds of message, three different contracts
