@@ -16,6 +16,15 @@ public interface IWyrdRuntime
 
     Task<ProcessStatus?> StatusOfAsync(Process process, object key, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Resumes a suspended instance (after fixing what made it stop): what it was doing is sent again with the same
+    /// message id, so a command that did run is not run twice.
+    /// </summary>
+    Task ResumeAsync(Process process, object key, CancellationToken cancellationToken = default);
+
+    /// <summary>Compensates a suspended instance that was going forward; the step it gave up on is fenced.</summary>
+    Task CompensateAsync(Process process, object key, CancellationToken cancellationToken = default);
+
     /// <summary>What the instance received and sent (Urd), or null if there is no such instance.</summary>
     Task<InstanceHistory?> HistoryOfAsync(Process process, object key, CancellationToken cancellationToken = default);
 

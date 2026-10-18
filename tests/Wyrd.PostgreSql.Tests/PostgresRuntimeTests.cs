@@ -67,6 +67,21 @@ public class PostgresRuntimeTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task an_operator_resumes_a_suspended_instance_on_postgresql()
+    {
+        var clock = PostgresFixture.Clock();
+        var shop = await postgres.ShopAsync(postgres.NewSchema(), clock);
+        await shop.SendAsync(new Restock("KEYBOARD", 5));
+        await shop.SendAsync(new PlaceOrder("A-1", "KEYBOARD", 1, 89m));
+        await DrainAsync(shop);
+        await shop.PublishAsync(new PaymentConfirmed("A-1"));
+        await DrainAsync(shop);
+        Assert.Equal(ProcessStatus.Completed, await shop.StatusOfAsync(Fulfillment, "A-1"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => shop.ResumeAsync(Fulfillment, "A-1")); // not suspended
+    }
+
+    [Fact]
     public async Task a_declined_card_compensates_and_cancels_the_order()
     {
         var shop = await postgres.ShopAsync(postgres.NewSchema());

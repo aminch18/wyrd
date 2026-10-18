@@ -189,6 +189,27 @@ public sealed partial class PostgresRuntime : IWyrdBuilder<PostgresRuntime>, IWy
         }
     }
 
+    // ── Operators ────────────────────────────────────────────────────────────────────────────
+
+    public Task ResumeAsync(Process process, object key, CancellationToken cancellationToken = default) =>
+        OperateAsync(process, key, (engine, name, k) => engine.ResumeAsync(name, k, cancellationToken), cancellationToken);
+
+    public Task CompensateAsync(Process process, object key, CancellationToken cancellationToken = default) =>
+        OperateAsync(process, key, (engine, name, k) => engine.CompensateAsync(name, k, cancellationToken), cancellationToken);
+
+    private async Task OperateAsync(Process process, object key, Func<Engine, string, string, ValueTask> operation, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(key);
+        await InTransactionAsync(
+            async (engine, _) =>
+            {
+                await operation(engine, process.Name, Keys.Of(key)).ConfigureAwait(false);
+                return 0;
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
     // ── Queries ──────────────────────────────────────────────────────────────────────────────
 
     public async Task<ProcessStatus?> StatusOfAsync(Process process, object key, CancellationToken cancellationToken = default)
