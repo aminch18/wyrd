@@ -22,6 +22,7 @@ internal sealed class Engine(
 
     public async ValueTask<Decision?> HandleAsync(Envelope envelope, CancellationToken cancellationToken)
     {
+        registry.Validate();
         switch (envelope.Kind)
         {
             case MessageKind.Command:
@@ -80,12 +81,13 @@ internal sealed class Engine(
         ReplyMessage reply;
         if (decision is Decision.Accepted accepted)
         {
+            var version = (current?.Version ?? 0) + 1;
             var (nextType, nextPayload) = types.Serialize(((IState)state).Apply(accepted.Event), slice.State);
-            changes.States.Add(new StoredState(stateType, key, nextType, nextPayload, (current?.Version ?? 0) + 1));
+            changes.States.Add(new StoredState(stateType, key, nextType, nextPayload, version));
 
             var (eventType, eventPayload) = types.Serialize(accepted.Event, slice.Event);
             changes.Events.Add(new StoredMessage(eventType, eventPayload));
-            changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, eventType, eventPayload));
+            changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, eventType, eventPayload, Stream: new StreamRef(stateType, key, version)));
 
             foreach (var publication in registry.PublicationsOf(accepted.Event.GetType()))
             {
@@ -158,16 +160,7 @@ internal sealed class Engine(
         var changes = new Changes();
         changes.Handled.Add(envelope.MessageId);
 
-        foreach (var projection in registry.Projections)
-        {
-            foreach (var handled in projection.Events)
-            {
-                if (Accept(@event, handled) is { } projected)
-                {
-                    await ProjectAsync(projection, projected, changes, cancellationToken).ConfigureAwait(false);
-                }
-            }
-        }
+        await ProjectInOrderAsync(envelope, @event, changes, cancellationToken).ConfigureAwait(false);
 
         foreach (var process in registry.Processes)
         {
@@ -186,6 +179,62 @@ internal sealed class Engine(
         }
 
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Read models get the events of one stream in the order they happened, whatever the delivery order: an event that
+    /// arrives before an earlier one of its stream is held, and projected once the gap is filled. Processes don't wait.
+    /// </summary>
+    private async ValueTask ProjectInOrderAsync(Envelope envelope, IEvent @event, Changes changes, CancellationToken cancellationToken)
+    {
+        if (registry.Projections.Count == 0)
+        {
+            return;
+        }
+
+        if (envelope.Stream is not { } stream)
+        {
+            await ProjectAsync(@event, changes, cancellationToken).ConfigureAwait(false); // From outside: no stream to order by.
+            return;
+        }
+
+        var projected = await store.LoadProjectedAsync(stream.StateType, stream.Key, cancellationToken).ConfigureAwait(false);
+        if (stream.Version <= projected)
+        {
+            return;
+        }
+
+        if (stream.Version > projected + 1)
+        {
+            log(External, stream.Key, $"{@event.GetType().Name} held for read models until earlier events of its stream arrive");
+            changes.Hold.Add(new StoredHeld(stream.StateType, stream.Key, stream.Version, envelope.Type, envelope.Payload));
+            return;
+        }
+
+        await ProjectAsync(@event, changes, cancellationToken).ConfigureAwait(false);
+        var version = stream.Version;
+        while (await store.FindHeldAsync(stream.StateType, stream.Key, version + 1, cancellationToken).ConfigureAwait(false) is { } held)
+        {
+            changes.Release.Add(held);
+            await ProjectAsync((IEvent)types.Deserialize(held.Type, held.Payload), changes, cancellationToken).ConfigureAwait(false);
+            version++;
+        }
+
+        changes.Projected[(stream.StateType, stream.Key)] = (projected, version);
+    }
+
+    private async ValueTask ProjectAsync(IEvent @event, Changes changes, CancellationToken cancellationToken)
+    {
+        foreach (var projection in registry.Projections)
+        {
+            foreach (var handled in projection.Events)
+            {
+                if (Accept(@event, handled) is { } projected)
+                {
+                    await ProjectAsync(projection, projected, changes, cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
     }
 
     private async ValueTask ProjectAsync(IProjectionHandler projection, IEvent @event, Changes changes, CancellationToken cancellationToken)
@@ -220,7 +269,7 @@ internal sealed class Engine(
 
         var (triggerType, triggerPayload) = types.Serialize(trigger, process.Trigger);
         var instance = new StoredInstance(
-            process.Name, key, triggerType, triggerPayload, 0, ProcessStatus.Running, [], ImmutableDictionary<int, Guid>.Empty, 0, null, false, null,
+            process.Name, key, triggerType, triggerPayload, 0, ProcessStatus.Running, [], ImmutableDictionary<int, Guid>.Empty, [], 0, null, false, null,
             process.Fingerprint, 0);
         log(process.Name, key, $"started by {trigger.GetType().Name}");
         changes.Save(await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false));
@@ -243,7 +292,10 @@ internal sealed class Engine(
         {
             log(process.Name, key, $"<- {awaited.GetType().Name}");
             var trigger = Trigger(instance);
-            instance = instance with { Position = step + 1, Status = ProcessStatus.Running, Deadline = null };
+            instance = instance with
+            {
+                Position = step + 1, Status = ProcessStatus.Running, Deadline = null, Facts = instance.Facts.Add(Parked(process, key, step, wait, awaited).AsFact()),
+            };
             changes.Save(await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false));
         }
         else if (instance is null
@@ -324,7 +376,7 @@ internal sealed class Engine(
                         changes.Park.Remove(parked);
                         changes.Unpark.Add(parked);
                         log(instance.Process, instance.Key, $"<- {types.TypeOf(parked.Type).Name} (parked)");
-                        instance = instance with { Position = instance.Position + 1 };
+                        instance = instance with { Position = instance.Position + 1, Facts = instance.Facts.Add(parked.AsFact()) };
                         continue;
                     }
 
@@ -348,7 +400,7 @@ internal sealed class Engine(
 
     private StoredInstance SendStep(StoredInstance instance, IEvent trigger, StepRef step, int index, bool compensating, Changes changes)
     {
-        var command = step.Invoke!(trigger);
+        var command = Command(step, instance, trigger);
         var (type, payload) = types.Serialize(command, step.Output ?? command.GetType());
         var id = newId();
         var fences = compensating && instance.Uncertain.TryGetValue(index, out var original) ? original : (Guid?)null;
@@ -407,7 +459,13 @@ internal sealed class Engine(
                 log(instance.Process, instance.Key, $"ok {types.TypeOf(reply.Type!).Name}");
                 instance = target.Compensating
                     ? ContinueCompensation(process, instance with { Completed = instance.Completed.RemoveAt(instance.Completed.Count - 1) }, trigger, changes)
-                    : await AdvanceAsync(process, instance with { Completed = instance.Completed.Add(target.Step), Position = target.Step + 1, Pending = null }, trigger, changes, cancellationToken).ConfigureAwait(false);
+                    : await AdvanceAsync(process, instance with
+                    {
+                        Completed = instance.Completed.Add(target.Step),
+                        Position = target.Step + 1,
+                        Pending = null,
+                        Facts = instance.Facts.Add(new StoredMessage(reply.Type!, reply.Payload!)),
+                    }, trigger, changes, cancellationToken).ConfigureAwait(false);
                 break;
 
             case ReplyOutcome.NothingToUndo:
@@ -488,7 +546,7 @@ internal sealed class Engine(
         log(instance.Process, instance.Key, $"transient failure, retry {instance.Attempt}/{retries} after {Durations.Format(delay)}");
 
         // Same message id: if an earlier attempt did go through, the owner's inbox replays its outcome.
-        var command = retried.Invoke!(trigger);
+        var command = Command(retried, instance, trigger);
         var (type, payload) = types.Serialize(command, retried.Output ?? command.GetType());
         var next = instance.Attempt + 1;
         var fences = target.Compensating && instance.Uncertain.TryGetValue(target.Step, out var original) ? original : (Guid?)null;
@@ -627,7 +685,7 @@ internal sealed class Engine(
 
     private StoredInstance Resend(StoredInstance instance, IEvent trigger, StepRef step, int index, bool compensating, Changes changes)
     {
-        var command = step.Invoke!(trigger);
+        var command = Command(step, instance, trigger);
         var (type, payload) = types.Serialize(command, step.Output ?? command.GetType());
         var id = instance.Pending ?? newId();
         var fences = compensating && instance.Uncertain.TryGetValue(index, out var original) ? original : (Guid?)null;
@@ -661,6 +719,24 @@ internal sealed class Engine(
         changes.Save(StartCompensation(process, instance with { Deadline = null }, Trigger(instance), changes));
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Calls a step with the trigger and the facts it reads: the latest event of each type it asks for. The registry
+    /// checked that an earlier step produces every one of them, so they are there.
+    /// </summary>
+    private ICommand Command(StepRef step, StoredInstance instance, IEvent trigger) =>
+        step.Invoke!(trigger, wanted =>
+        {
+            for (var i = instance.Facts.Count - 1; i >= 0; i--)
+            {
+                if (wanted.IsAssignableFrom(types.TypeOf(instance.Facts[i].Type)))
+                {
+                    return types.Deserialize(instance.Facts[i].Type, instance.Facts[i].Payload);
+                }
+            }
+
+            throw new InvalidOperationException($"Step '{step}' reads {wanted.Name}, but {instance.Process} '{instance.Key}' has no such event.");
+        });
 
     private IEvent Trigger(StoredInstance instance) => (IEvent)types.Deserialize(instance.TriggerType, instance.TriggerPayload);
 }

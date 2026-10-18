@@ -60,14 +60,14 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] Suspend instead of guessing ([design](design/semantics.md) 3.6): exhausted retries, exhausted undos and a
       failed outcome suspend the instance with a reason; `ResumeAsync` / `CompensateAsync`; opt-in `.OrCompensate()`
 - [x] Process structure fingerprint per instance ([design](design/semantics.md) 3.1): a changed definition suspends in-flight instances
-- [ ] Steps that read the events of earlier steps, not only the trigger
-- [x] Typed invokers in the pipe syntax, no reflection: `DynamicInvoke` is gone; plain delegates are bound to typed
-      calls through delegate variance when the stage is added (no source generator needed)
+- [x] Steps that read the events of earlier steps (and awaited events), not only the trigger; checked before the first message
+- [x] Typed invokers in the pipe syntax: plain delegates are bound to typed calls through delegate variance when the
+      stage is added; only steps that read earlier events are invoked dynamically (Native AOT-compatible)
 - [x] **Failure simulation** (`Skuld.SimulateAsync`): seeded futures with transient faults, redelivery and reordering,
       timers on the clock, invariants (`Invariant.Defaults` + your own), replay by seed, actionable reports
 - [x] Engine fixes found by Skuld: attempt-aware replies (stale faults ignored), unknown-outcome steps compensated,
       `.OnCompensated(...).Retry(...)`, thread-safe type registry
-- [ ] Ordered projections per stream (events carry their stream version), so read models don't fight reordering by hand
+- [x] Ordered projections per stream (events carry their stream version), so read models don't fight reordering by hand
 - [x] Shrinking: reduce a failing future to the fewest perturbations that still break the invariant
 - [x] Analyzers WYRD0011 (a step must say how it is undone: `.Undo(...)` or `.NoCompensation("why")`) and
       WYRD0012 (`Await` without `.Within(...)`), in fluent and pipe syntax

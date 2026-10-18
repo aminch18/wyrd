@@ -192,7 +192,12 @@ Steps are pure functions from the event that started the process to the next com
 public static ChargePayment Charge(OrderPlaced order) => new(order.OrderId, order.Amount);
 ```
 
-They are type-checked against the trigger: a step that doesn't accept `OrderPlaced` doesn't compile.
+They are type-checked against the trigger: a step that doesn't accept `OrderPlaced` doesn't compile. A step can also
+read what earlier steps produced — Wyrd hands it the event, and refuses to start if no earlier step produces it:
+
+```csharp
+public static ShipOrder Ship(OrderPlaced order, PaymentCharged charged) => new(order.OrderId, charged.Amount);
+```
 
 Prefer pipes? Opt in with a `using` — same model, same guarantees:
 

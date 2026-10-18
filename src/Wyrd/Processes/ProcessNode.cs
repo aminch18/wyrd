@@ -36,7 +36,14 @@ public sealed record RetryPolicy(Attempts Attempts, Backoff Backoff)
 /// </summary>
 public sealed record StepRef(string Name)
 {
-    internal Func<object, ICommand>? Invoke { get; init; }
+    /// <summary>Builds the command from the trigger and, for each type in <see cref="Reads"/>, a fact of the instance.</summary>
+    internal Func<object, Func<Type, object>, ICommand>? Invoke { get; init; }
+
+    /// <summary>
+    /// The events produced by earlier steps (or awaited) that the step reads besides the trigger, e.g.
+    /// <c>Ship(OrderPlaced order, PaymentCharged charged)</c> reads <c>PaymentCharged</c>.
+    /// </summary>
+    public IReadOnlyList<Type> Reads { get; init; } = [];
 
     internal Type? Input { get; init; }
 
@@ -51,7 +58,7 @@ public sealed record StepRef(string Name)
 
     internal static StepRef Typed<TIn, TCommand>(Func<TIn, TCommand> step)
         where TCommand : ICommand =>
-        From(step) with { Input = typeof(TIn), Output = typeof(TCommand), Invoke = input => step((TIn)input) };
+        From(step) with { Input = typeof(TIn), Output = typeof(TCommand), Invoke = (input, _) => step((TIn)input) };
 
     /// <summary>
     /// A step given as a plain delegate (pipe syntax). It is bound to a typed call once the process trigger is known:
@@ -61,13 +68,20 @@ public sealed record StepRef(string Name)
     {
         var reference = From(step);
         var parameters = step.Method.GetParameters();
-        if (parameters.Length != 1 || !typeof(ICommand).IsAssignableFrom(step.Method.ReturnType))
+        if (parameters.Length == 0 || !typeof(ICommand).IsAssignableFrom(step.Method.ReturnType)
+            || parameters.Skip(1).Any(p => !typeof(IEvent).IsAssignableFrom(p.ParameterType)))
         {
             throw new InvalidOperationException(
-                $"Step '{reference}' must take exactly one argument and return an ICommand.");
+                $"Step '{reference}' must take the trigger, then optionally events of earlier steps, and return an ICommand.");
         }
 
-        return reference with { Input = parameters[0].ParameterType, Output = step.Method.ReturnType, Raw = step };
+        return reference with
+        {
+            Input = parameters[0].ParameterType,
+            Output = step.Method.ReturnType,
+            Reads = [.. parameters.Skip(1).Select(p => p.ParameterType)],
+            Raw = step,
+        };
     }
 
     /// <summary>The delegate of a step not bound yet (pipe syntax).</summary>
@@ -84,10 +98,31 @@ public sealed record StepRef(string Name)
             return this;
         }
 
+        if (Reads.Count > 0)
+        {
+            // Reading events: the types are only known from the delegate, so it is invoked dynamically (no code generation).
+            var raw = Raw;
+            var reads = Reads;
+            return this with { Invoke = (input, fact) => Call(raw, [input, .. reads.Select(fact)]), Raw = null };
+        }
+
         return Raw is Func<TTrigger, ICommand> step
-            ? this with { Invoke = input => step((TTrigger)input), Raw = null }
+            ? this with { Invoke = (input, _) => step((TTrigger)input), Raw = null }
             : throw new InvalidOperationException(
                 $"Step '{Name}' can't be called with {typeof(TTrigger).Name}: it must take {typeof(TTrigger).Name} (or a type it derives from) and return a command record.");
+    }
+
+    private static ICommand Call(Delegate step, object[] arguments)
+    {
+        try
+        {
+            return (ICommand)step.DynamicInvoke(arguments)!;
+        }
+        catch (System.Reflection.TargetInvocationException ex) when (ex.InnerException is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(ex.InnerException);
+            throw;
+        }
     }
 
     public bool Equals(StepRef? other) => other is not null && Name == other.Name;

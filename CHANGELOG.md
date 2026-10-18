@@ -32,6 +32,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   instance is suspended ("definition changed") instead of continuing at the wrong step; nothing it receives meanwhile
   is lost, and it resumes once its definition is back.
 - A suspended instance keeps events it awaits (parked) instead of dropping them.
+- **Steps read earlier events**: a step (or an undo) may take, after the trigger, events earlier steps produced or the
+  process awaited: `.Then(Shipping.Ship)` with `ShipOrder Ship(OrderPlaced order, PaymentCharged charged)`. A step
+  reading an event no earlier step produces fails before the first message; an undo reads only events from before
+  its own step.
+- **Ordered read models per stream**: domain events carry their stream (state and key) and version; a projection
+  gets the events of one stream in the order they happened, holding an early one until the gap is filled. Processes
+  don't wait. Across streams, and for integration events from outside, there is still no order.
 - `Wyrd.Tool` (`dotnet wyrd`): AsyncAPI 3.0 documentation from contract snapshots and Mermaid diagrams of processes.
 - `Wyrd.Web`: the documentation site, with the philosophy and the classic-DDD-to-Wyrd guides.
 - `docs/design/semantics.md`: the specification of how Wyrd behaves.

@@ -10,6 +10,7 @@ namespace Wyrd.Pipe;
 /// </summary>
 public static class Pipeline
 {
+    /// <summary>A step: the trigger, then optionally events earlier steps produced, to a command.</summary>
     public static Fragment Step(Delegate action) => new(new StepNode(StepRef.Untyped(action)));
 
     /// <summary>The command sent once compensation has finished.</summary>

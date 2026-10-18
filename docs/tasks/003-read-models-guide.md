@@ -20,9 +20,10 @@ Cover, with examples from the shop:
 - `Projection<TView>`: pure `On<TEvent>(key, apply)`, returning null to delete, one projection per view, events from
   several slices feeding one view.
 - Guarantees: the view is stored in the transaction that handles the event; a redelivered message is never applied twice.
-- **Ordering, honestly**: today events from different streams can arrive in any order, so a view must tolerate it
-  (the shop's "statuses only move forward", found by Skuld); ordered delivery per stream is *planned in v0.3* — say so
-  and keep the advice valid either way.
+- **Ordering, honestly**: events of one stream (one state key) reach a projection in the order they happened (an early
+  one is held until the gap is filled); across streams, and for integration events from outside, there is no order, so
+  a view combining streams must tolerate it (the shop's "statuses only move forward", found by Skuld). See
+  `docs/design/semantics.md` section 5 and `tests/Wyrd.Tests/OrderedProjectionTests.cs`.
 - Testing views with `Scenario.For(projection).Given(...).Then(key, view)`, including a reordering test.
 - Querying: `View<TView>(key)`, `Views<TView>()`, and `IWyrdRuntime` in endpoints.
 - Common mistakes: deciding on a view, putting logic in endpoints, views that assume order, one huge view for everything.

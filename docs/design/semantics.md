@@ -63,8 +63,9 @@ simulate and version.
 - **A step says how it is undone**: `.Undo(command)` or `.NoCompensation("why")`; the last step is exempt
   (WYRD0011). **Implemented.**
 - A step may read the events produced by earlier steps by asking for them as extra parameters
-  (`Ship(OrderPlaced order, PaymentCharged charged)`); a step that asks for an event no earlier step produces makes
-  the process invalid. **Planned (v0.3).**
+  (`Ship(OrderPlaced order, PaymentCharged charged)`), the latest of each type; awaited events count. An undo reads
+  only events from before its own step (its step may never have run). A step that asks for an event no earlier step
+  produces makes the application fail before the first message. **Implemented.**
 
 ### 3.3 Retries: one layer
 
@@ -142,7 +143,12 @@ fences the step it gave up on; a late success of the pending command resumes it 
 - A projection updates a view from events with pure functions, in the transaction that handles the event; the same
   message is never applied twice. **Implemented.**
 - Events of one stream (one state key) reach a projection **in the order they happened**, whatever the delivery
-  order, so views don't defend against reordering by hand. **Planned (v0.3).**
+  order, so views don't defend against reordering by hand: each domain event carries its stream and version, and one
+  that arrives early is held until the gap is filled. Processes don't wait for read models. **Implemented.**
+- Across streams there is no order (two orders, or an order and its payment if they are different states), and
+  integration events from outside carry no stream. A view combining several streams still tolerates reordering
+  between them. *Conscious limit.* Catching up a projection added to an existing durable store comes with the
+  durable hosts (v0.5).
 
 ## 6. Conscious limits
 
