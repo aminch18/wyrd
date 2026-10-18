@@ -61,10 +61,12 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
       timers on the clock, invariants (`Invariant.Defaults` + your own), replay by seed, actionable reports
 - [x] Engine fixes found by Skuld: attempt-aware replies (stale faults ignored), unknown-outcome steps compensated,
       `.OnCompensated(...).Retry(...)`, thread-safe type registry
-- [ ] Analyzer: a step with `.Undo(...)` but no `.Retry(...)` (its undo can't retry either) — Skuld's first finding
+- [x] Analyzer WYRD0010: a step with `.Undo(...)` but no `.Retry(...)` (its undo can't retry either) — Skuld's first finding
 - [ ] Ordered projections per stream (events carry their stream version), so read models don't fight reordering by hand
 - [ ] Shrinking: reduce a failing future to the fewest perturbations that still break the invariant
-- [ ] First analyzers: exhaustive `[Union]` switch, missing compensation, `Await` without timeout
+- [x] Analyzers WYRD0011 (a step must say how it is undone: `.Undo(...)` or `.NoCompensation("why")`) and
+      WYRD0012 (`Await` without `.Within(...)`), in fluent and pipe syntax
+- [ ] Analyzer: exhaustive `switch` over a `[Union]` (no `_` needed when every case is handled)
 - [ ] Analyzer: `wyrd_process_style` enforcement with code fix fluent ⇄ pipe
 
 ## v0.4 — Urd (replay the past) and the `dotnet wyrd` tool

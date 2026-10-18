@@ -237,6 +237,12 @@ export const ANALYZER_RULES = [
             'Events should be past tense; commands should be imperative.',
     },
     {
+        code: 'WYRD0010 / 0011 / 0012',
+        severity: 'Warning',
+        description:
+            'Process rules: an undo needs retries, every step says how it is undone (or .NoCompensation("why")), every wait has a timeout.',
+    },
+    {
         code: 'WYRD0101',
         severity: 'Error',
         description:

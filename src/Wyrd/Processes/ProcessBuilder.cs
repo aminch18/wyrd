@@ -49,6 +49,12 @@ public sealed class ProcessBuilder<TTrigger>
         where TCommand : ICommand =>
         ModifyLast(n => NodeModifiers.Undo(n, StepRef.Typed(compensation)));
 
+    /// <summary>
+    /// Declares that the last step needs no undo if a later step fails, and why (e.g. "only sends an email").
+    /// Leaving it unsaid is reported by WYRD0011.
+    /// </summary>
+    public ProcessBuilder<TTrigger> NoCompensation(string reason) => ModifyLast(n => NodeModifiers.NoCompensation(n, reason));
+
     public ProcessBuilder<TTrigger> Retry(Attempts attempts, Backoff backoff = Backoff.Exponential) =>
         ModifyLast(n => NodeModifiers.Retry(n, attempts, backoff));
 

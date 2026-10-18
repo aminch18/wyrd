@@ -50,6 +50,9 @@ public sealed class Fragment
 
     public Fragment Undo(Delegate compensation) => new(NodeModifiers.Undo(Node, StepRef.Untyped(compensation)));
 
+    /// <summary>Declares that this step needs no undo if a later step fails, and why.</summary>
+    public Fragment NoCompensation(string reason) => new(NodeModifiers.NoCompensation(Node, reason));
+
     public Fragment Retry(Attempts attempts, Backoff backoff = Backoff.Exponential) =>
         new(NodeModifiers.Retry(Node, attempts, backoff));
 

@@ -9,6 +9,9 @@ WYRD0001 | Wyrd.Messages | Error | A message is either a command or an event
 WYRD0002 | Wyrd.Messages | Error | A command has exactly one owner
 WYRD0003 | Wyrd.Messages | Info | Name events in the past tense
 WYRD0004 | Wyrd.Messages | Info | Name commands in the imperative
+WYRD0010 | Wyrd.Processes | Warning | A step that can be undone needs retries
+WYRD0011 | Wyrd.Processes | Warning | Say how a step is undone
+WYRD0012 | Wyrd.Processes | Warning | A wait needs a timeout
 WYRD0101 | Wyrd.Messages | Error | Integration events must not expose domain types
 WYRD0102 | Wyrd.Messages | Error | Integration events need a name, a version and IIntegrationEvent
 WYRD0300 | Wyrd.Json | Error | Wyrd serializes this type: declare it in the JSON context

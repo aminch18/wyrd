@@ -295,6 +295,9 @@ through an `Upcaster<PaymentChargedV1, PaymentChargedV2>` — each subscriber re
 | Rule | |
 |---|---|
 | A command decided by two slices | `WYRD0002` — **build error** |
+| A step that can be undone but never retries | `WYRD0010` — warning |
+| A step followed by others with no `.Undo(...)` or `.NoCompensation("why")` | `WYRD0011` — warning |
+| An `Await` with no `.Within(...)` timeout | `WYRD0012` — warning |
 | Events not in the past tense, commands that read like events | `WYRD0003`, `WYRD0004` — suggestions |
 
 ## Try the samples

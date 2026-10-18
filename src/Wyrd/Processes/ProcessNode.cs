@@ -79,7 +79,11 @@ public sealed record StepRef(string Name)
 
 public abstract record ProcessNode;
 
-public sealed record StepNode(StepRef Action, StepRef? Compensation = null, RetryPolicy? Retry = null) : ProcessNode;
+public sealed record StepNode(StepRef Action, StepRef? Compensation = null, RetryPolicy? Retry = null) : ProcessNode
+{
+    /// <summary>Why this step needs no undo, when that was decided explicitly with <c>.NoCompensation("why")</c>.</summary>
+    public string? NoCompensationReason { get; init; }
+}
 
 /// <summary>
 /// How the process ends when it is compensated: a command that tells the business (e.g. <c>CancelOrder</c>),
@@ -102,9 +106,23 @@ internal static class NodeModifiers
 {
     public static ProcessNode Undo(ProcessNode node, StepRef compensation) => node switch
     {
+        StepNode { NoCompensationReason: not null } => throw new InvalidOperationException(
+            "A step is either undone with Undo() or explicitly not with NoCompensation(), never both."),
         StepNode step => step with { Compensation = compensation },
         _ => throw Misplaced(nameof(Undo), "a step", node),
     };
+
+    public static ProcessNode NoCompensation(ProcessNode node, string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        return node switch
+        {
+            StepNode { Compensation: not null } => throw new InvalidOperationException(
+                "A step is either undone with Undo() or explicitly not with NoCompensation(), never both."),
+            StepNode step => step with { NoCompensationReason = reason },
+            _ => throw Misplaced(nameof(NoCompensation), "a step", node),
+        };
+    }
 
     public static ProcessNode Retry(ProcessNode node, Attempts attempts, Backoff backoff) => node switch
     {

@@ -7,6 +7,7 @@ internal static class Diagnostics
     private const string Messages = "Wyrd.Messages";
     private const string Contracts = "Wyrd.Contracts";
     private const string Json = "Wyrd.Json";
+    private const string Processes = "Wyrd.Processes";
     private const string HelpLink = "https://github.com/aminch18/wyrd/blob/main/docs/design/messages.md";
 
     public static readonly DiagnosticDescriptor CommandAndEvent = new(
@@ -32,6 +33,24 @@ internal static class Diagnostics
         "Name commands in the imperative",
         "Command '{0}' reads like an event ('{1}'). Name it as an intention in the imperative (e.g. 'ChargePayment', 'ShipOrder').",
         Messages, DiagnosticSeverity.Info, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly DiagnosticDescriptor UndoWithoutRetry = new(
+        "WYRD0010",
+        "A step that can be undone needs retries",
+        "Step '{0}' can be undone but has no .Retry(...). Its undo uses the same retry policy, so one transient failure would leave it undone. Add .Retry(...).",
+        Processes, DiagnosticSeverity.Warning, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly DiagnosticDescriptor CompensationUnsaid = new(
+        "WYRD0011",
+        "Say how a step is undone",
+        "Step '{0}' has no .Undo(...), so it will not be reverted if a later step fails. Add .Undo(...), or .NoCompensation(\"why\") if nothing needs undoing.",
+        Processes, DiagnosticSeverity.Warning, isEnabledByDefault: true, helpLinkUri: HelpLink);
+
+    public static readonly DiagnosticDescriptor AwaitWithoutTimeout = new(
+        "WYRD0012",
+        "A wait needs a timeout",
+        "Await<{0}> has no .Within(...): if the event never arrives, the process waits forever. Add .Within(...).",
+        Processes, DiagnosticSeverity.Warning, isEnabledByDefault: true, helpLinkUri: HelpLink);
 
     public static readonly DiagnosticDescriptor LeaksDomainType = new(
         "WYRD0101",
