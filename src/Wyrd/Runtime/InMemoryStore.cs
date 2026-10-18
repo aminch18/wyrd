@@ -55,7 +55,7 @@ internal sealed class InMemoryStore : IWyrdStore
             var current = _states.GetValueOrDefault((state.StateType, state.Key))?.Version ?? 0;
             if (current != state.Version - 1)
             {
-                throw new InvalidOperationException($"Concurrency conflict on {state.StateType} '{state.Key}'.");
+                throw new ConcurrencyConflictException($"Concurrency conflict on {state.StateType} '{state.Key}'.");
             }
         }
 
@@ -64,7 +64,7 @@ internal sealed class InMemoryStore : IWyrdStore
             var current = _instances.GetValueOrDefault((instance.Process, instance.Key))?.Version ?? 0;
             if (current != instance.Version)
             {
-                throw new InvalidOperationException($"Concurrency conflict on process '{instance.Process}' '{instance.Key}'.");
+                throw new ConcurrencyConflictException($"Concurrency conflict on process '{instance.Process}' '{instance.Key}'.");
             }
         }
 

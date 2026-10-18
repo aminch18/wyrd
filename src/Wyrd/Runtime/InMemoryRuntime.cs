@@ -9,7 +9,7 @@ namespace Wyrd.Runtime;
 /// distributed runtime — messages, replies, JSON, outbox, inbox, durable timers — but deterministically:
 /// same inputs, same journal, every time. Use it for local development, tests, simulation and replay.
 /// </summary>
-public sealed class InMemoryRuntime : IDisposable
+public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IDisposable
 {
     private static readonly DateTimeOffset Epoch = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 

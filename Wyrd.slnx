@@ -8,12 +8,14 @@
   <Folder Name="/src/">
     <Project Path="src/Wyrd.Analyzers.CodeFixes/Wyrd.Analyzers.CodeFixes.csproj" />
     <Project Path="src/Wyrd.Analyzers/Wyrd.Analyzers.csproj" />
+    <Project Path="src/Wyrd.PostgreSql/Wyrd.PostgreSql.csproj" />
     <Project Path="src/Wyrd.Testing/Wyrd.Testing.csproj" />
     <Project Path="src/Wyrd.Tool/Wyrd.Tool.csproj" />
     <Project Path="src/Wyrd/Wyrd.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Wyrd.Analyzers.Tests/Wyrd.Analyzers.Tests.csproj" />
+    <Project Path="tests/Wyrd.PostgreSql.Tests/Wyrd.PostgreSql.Tests.csproj" />
     <Project Path="tests/Wyrd.Tests/Wyrd.Tests.csproj" />
     <Project Path="tests/Wyrd.Tool.Tests/Wyrd.Tool.Tests.csproj" />
   </Folder>

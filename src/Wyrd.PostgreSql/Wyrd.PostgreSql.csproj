@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Verdandi: the durable Wyrd runtime on PostgreSQL. One transaction per message — state, events, inbox, outbox, timers — and PostgreSQL as the queue.</Description>
+    <RootNamespace>Wyrd.PostgreSql</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Wyrd\Wyrd.csproj" />
+  </ItemGroup>
+
+</Project>

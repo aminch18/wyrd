@@ -7,10 +7,15 @@ using Wyrd.Runtime;
 
 namespace Shop;
 
-/// <summary>Wires every slice, publication, projection and process of the shop, with source-generated JSON.</summary>
+/// <summary>Wires every slice, publication, projection and process of the shop into any Wyrd host.</summary>
 public static class ShopModule
 {
-    public static InMemoryRuntime CreateRuntime() => new InMemoryRuntime(ShopJson.Default)
+    /// <summary>The shop in memory, with source-generated JSON: tests, simulation and development.</summary>
+    public static InMemoryRuntime CreateRuntime() => Register(new InMemoryRuntime(ShopJson.Default));
+
+    /// <summary>The same wiring for any host: in memory or durable.</summary>
+    public static TRuntime Register<TRuntime>(TRuntime runtime)
+        where TRuntime : IWyrdBuilder<TRuntime> => runtime
         .AddSlice(new PlaceOrderSlice())
         .AddSlice(new CancelOrderSlice())
         .AddSlice(new RestockSlice())

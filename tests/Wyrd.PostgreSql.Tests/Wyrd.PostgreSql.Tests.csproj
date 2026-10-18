@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Wyrd.PostgreSql\Wyrd.PostgreSql.csproj" />
+    <ProjectReference Include="..\..\samples\Shop\Shop.csproj" />
+  </ItemGroup>
+
+</Project>
