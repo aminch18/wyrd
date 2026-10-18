@@ -142,10 +142,13 @@ internal sealed class Engine(
     {
         if (command.Process is not null)
         {
-            changes.Outbox.Add(new Envelope(
-                newId(), MessageKind.Reply, ReplyType, MessageTypes.SerializeReply(reply), command.Process, command.MessageId));
+            changes.Outbox.Add(ReplyTo(command, reply));
         }
     }
+
+    /// <summary>The reply envelope to a process command (also used by Urd to answer from a recording).</summary>
+    internal Envelope ReplyTo(Envelope command, ReplyMessage reply) =>
+        new(newId(), MessageKind.Reply, ReplyType, MessageTypes.SerializeReply(reply), command.Process, command.MessageId);
 
     // ── Events: start processes, resume waits, park early arrivals ─────────────────────────────
 
@@ -162,7 +165,7 @@ internal sealed class Engine(
 
         await ProjectInOrderAsync(envelope, @event, changes, cancellationToken).ConfigureAwait(false);
 
-        foreach (var process in registry.Processes)
+        foreach (var process in registry.Active)
         {
             if (Accept(@event, process.Trigger) is { } trigger)
             {

@@ -141,5 +141,10 @@ internal sealed class Registry
         }
     }
 
+    /// <summary>When set, only this process reacts to events (Urd replays one instance at a time).</summary>
+    public string? Only { get; set; }
+
+    public IEnumerable<Process> Active => Only is null ? _processes : _processes.Where(p => p.Name == Only);
+
     public Process ProcessNamed(string name) => _processes.Single(p => p.Name == name);
 }

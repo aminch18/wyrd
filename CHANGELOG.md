@@ -11,6 +11,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   replies, awaited events, timeouts, suspensions, operator actions — committed with the instance itself.
   `InMemoryRuntime.HistoryOf(process, key)` returns it; `ToJson()` / `InstanceHistory.FromJson(...)` export it.
   Design: `docs/design/urd.md`.
+- **Urd** (`Wyrd.Testing`): `Urd.ReplayAsync(system, process, history)` replays a recorded instance against today's
+  code — the process runs for real, each command is answered with the recorded reply, the clock replays retries and
+  timeouts — and reports the first entry that differs (`ReplayReport.Divergence`, `ThrowIfDiverged()`). A history
+  recorded with another process structure is reported up front.
 
 ### Added
 
