@@ -101,7 +101,7 @@ mental model matters as much as the code.
 
 - [x] Guide: **[From classic DDD to Wyrd](guides/from-ddd-to-wyrd.md)** — aggregate root, entities, value objects, invariants, repositories
       and domain events mapped one by one, with the same example written both ways
-- [ ] Rich aggregate in `samples/Shop`: `Order` with `OrderLine` entities and a `Money` value object;
+- [x] Rich aggregate in `samples/Shop`: `Order` with `OrderLine` entities and a `Money` value object;
       `AddLine`, `CancelLine` and `CancelOrder` slices sharing invariants defined on the state; API endpoints
 - [x] Guidance: shared invariants live on the state or in pure domain policies, never duplicated across slices
       (covered in the DDD guide; an analyzer for state-module cohesion is still a possible future addition)

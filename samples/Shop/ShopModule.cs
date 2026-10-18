@@ -12,6 +12,10 @@ public static class ShopModule
 {
     public static InMemoryRuntime CreateRuntime() => new InMemoryRuntime(ShopJson.Default)
         .AddSlice(new PlaceOrderSlice())
+        .AddSlice(new AddLineSlice())
+        .AddSlice(new CancelLineSlice())
+        .AddSlice(new SubmitOrderSlice())
+        .AddSlice(new CancelDraftOrderSlice())
         .AddSlice(new CancelOrderSlice())
         .AddSlice(new RestockSlice())
         .AddSlice(new ReserveStockSlice())
@@ -22,5 +26,6 @@ public static class ShopModule
         .AddPublication(new PaymentChargedPublication())
         .AddPublication(new OrderShippedPublication())
         .AddProjection(new OrderSummaries())
+        .AddProjection(new OrderDetails())
         .AddProcess(Processes.OrderFulfillment);
 }

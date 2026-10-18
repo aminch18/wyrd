@@ -135,7 +135,9 @@ An order with ten lines is not ten unrelated aggregates merely because its state
 
 A `Money` value object still needs a currency, valid amounts, and operations that reject incompatible currencies. A `record` gives you a useful representation, not automatic domain validity. A public constructor that accepts invalid data is still a modeling problem in functional C#.
 
-Those are modeling guidelines, not additional Wyrd APIs. The current Shop sample has one SKU and quantity per order; a full multi-line order and `Money` model are roadmap work. Start from the invariants your domain actually needs rather than copying a proposed rich-order example as a shipped feature.
+The [Shop order aggregate](https://github.com/aminch18/wyrd/blob/main/samples/Shop/Orders/Order.cs) puts those rules on the state. Its draft contains identified [OrderLine entities](https://github.com/aminch18/wyrd/blob/main/samples/Shop/Orders/OrderLine.cs) with [Money values](https://github.com/aminch18/wyrd/blob/main/samples/Shop/Orders/Money.cs); adding and cancelling lines preserves their identities and recalculates the total. The line's amount is its whole price, not a unit price. Cancelled lines still occupy one of the order's ten line identities, and all lines keep one currency.
+
+The [business specifications](https://github.com/aminch18/wyrd/blob/main/samples/Shop.Tests/RichOrderSpecs.cs) exercise those shared rules through several slices. `SubmitOrder` freezes the draft before fulfillment starts; further edits are rejected. The existing sample fulfillment handles one SKU in EUR, so submitting active lines with different SKUs or a different settlement currency is explicitly rejected. The original one-line `PlaceOrder` shortcut still works. [HTTP examples](https://github.com/aminch18/wyrd/blob/main/samples/Shop.Api/Shop.Api.http) show both paths and draft cancellation; cancellation of fulfillment remains the process's compensation outcome, not a direct user cancellation of an in-flight order.
 
 ## Keep the behavior when you remove the mutation
 
@@ -189,6 +191,6 @@ Today, use the in-memory host to learn and validate the model. It loses its data
 
 Continue with [Modelling read models for screens and reports](read-models.md) to shape query views, handle facts from several owners, and test ordering rules without putting business decisions in endpoints.
 
-Read the actual [Shop cancellation slice](https://github.com/aminch18/wyrd/blob/main/samples/Shop/Orders/CancelOrder.cs), [order state](https://github.com/aminch18/wyrd/blob/main/samples/Shop/Orders/PlaceOrder.cs), and [business specifications](https://github.com/aminch18/wyrd/tree/main/samples/Shop.Tests). Then follow the site's messages, processes, contracts, and CLI chapters as implementation references.
+Read the actual [Shop cancellation slice](https://github.com/aminch18/wyrd/blob/main/samples/Shop/Orders/CancelOrder.cs), [order state](https://github.com/aminch18/wyrd/blob/main/samples/Shop/Orders/Order.cs), and [business specifications](https://github.com/aminch18/wyrd/tree/main/samples/Shop.Tests). Then follow the site's messages, processes, contracts, and CLI chapters as implementation references.
 
 For the conventional aggregate and value-object background, see Microsoft's [domain-model guide](https://learn.microsoft.com/en-us/dotnet/architecture/microservices/microservice-ddd-cqrs-patterns/microservice-domain-model) and [value-object guide](https://learn.microsoft.com/en-us/dotnet/architecture/microservices/microservice-ddd-cqrs-patterns/implement-value-objects). Wyrd's functional expression is the project's architectural choice, not a prerequisite of DDD itself.

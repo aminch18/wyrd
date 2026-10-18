@@ -25,6 +25,18 @@ app.MapPost("/stock/{sku}", async (string sku, RestockRequest request, InMemoryR
 app.MapPost("/orders", async (PlaceOrderRequest request, InMemoryRuntime wyrd) =>
     ToHttp(await wyrd.SendAsync(new PlaceOrder(request.OrderId, request.Sku, request.Quantity, request.Amount)), $"/orders/{request.OrderId}"));
 
+app.MapPost("/orders/{orderId}/lines", async (string orderId, AddLineRequest request, InMemoryRuntime wyrd) =>
+    ToHttp(await wyrd.SendAsync(new AddLine(orderId, request.LineId, request.Sku, request.Quantity, request.Amount, request.Currency)), $"/orders/{orderId}"));
+
+app.MapDelete("/orders/{orderId}/lines/{lineId}", async (string orderId, string lineId, InMemoryRuntime wyrd) =>
+    ToHttp(await wyrd.SendAsync(new CancelLine(orderId, lineId)), $"/orders/{orderId}"));
+
+app.MapPost("/orders/{orderId}/submit", async (string orderId, InMemoryRuntime wyrd) =>
+    ToHttp(await wyrd.SendAsync(new SubmitOrder(orderId)), $"/orders/{orderId}"));
+
+app.MapPost("/orders/{orderId}/cancel", async (string orderId, InMemoryRuntime wyrd) =>
+    ToHttp(await wyrd.SendAsync(new CancelDraftOrder(orderId)), $"/orders/{orderId}"));
+
 // ── Facts from other systems: the payment provider's webhook ────────────────────────────────
 
 app.MapPost("/webhooks/payments", async (PaymentWebhook webhook, InMemoryRuntime wyrd) =>
@@ -37,9 +49,16 @@ app.MapPost("/webhooks/payments", async (PaymentWebhook webhook, InMemoryRuntime
 
 app.MapGet("/orders", (InMemoryRuntime wyrd) => wyrd.Views<OrderSummary>());
 
+app.MapGet("/order-details", (InMemoryRuntime wyrd) => wyrd.Views<OrderDetail>());
+
 app.MapGet("/orders/{orderId}", (string orderId, InMemoryRuntime wyrd) =>
-    wyrd.View<OrderSummary>(orderId) is { } order
-        ? Results.Ok(new { order, fulfillment = wyrd.StatusOf(Processes.OrderFulfillment, orderId)?.ToString() })
+    wyrd.View<OrderDetail>(orderId) is { } details
+        ? Results.Ok(new
+        {
+            order = wyrd.View<OrderSummary>(orderId),
+            details,
+            fulfillment = wyrd.StatusOf(Processes.OrderFulfillment, orderId)?.ToString(),
+        })
         : Results.NotFound());
 
 app.MapGet("/stock/{sku}", (string sku, InMemoryRuntime wyrd) =>
