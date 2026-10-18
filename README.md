@@ -119,7 +119,7 @@ In Norse myth, *wyrd* — fate — is woven by three Norns. Wyrd is built on the
 | | Norn | Feature | |
 |---|---|---|---|
 | ⏩ | **Skuld** — *what will be* | **Simulation.** Run your scenario in hundreds of hostile futures — faults, duplicates, reordering, timeouts — before you deploy. | ✅ |
-| ⏪ | **Urd** — *what was* | **Replay.** Export a production process instance and replay it locally, deterministically, as a test. | 🔜 |
+| ⏪ | **Urd** — *what was* | **Replay.** Export a process instance's history and replay it locally, deterministically, as a test. In memory today; from a durable store with Verdandi. | ✅ |
 | ▶️ | **Verdandi** — *what is* | **Runtime.** Deterministic in-memory runtime today ✅; durable outbox, inbox and timeouts next. | 🚧 |
 
 ## Quick start
@@ -498,6 +498,36 @@ dotnet wyrd diagram --assembly samples/Shop/bin/Debug/net10.0/Shop.dll --output 
 public static process properties and fields. Both commands write to stdout when `--output` is omitted.
 Use `dotnet wyrd --help` or `dotnet wyrd asyncapi --help` for command and option descriptions. Invalid inputs
 are reported on stderr with a nonzero exit code, so redirected documents stay clean.
+
+## Urd replays what happened ✅
+
+Every process instance records what crossed its boundary: the trigger, each command it sent, each reply, the events
+it awaited, timeouts, suspensions and operator actions. Export it, and replay it against today's code: the process
+runs for real, every command is answered with the recorded reply, and the first difference is reported.
+
+```csharp
+File.WriteAllText("A-1005.history.json", shop.HistoryOf(Processes.OrderFulfillment, "A-1005").ToJson());
+```
+
+```bash
+dotnet wyrd replay A-1005.history.json          # the timeline
+dotnet wyrd replay A-1005.history.json --as-test \
+  --runtime ShopModule.CreateRuntime --process Processes.OrderFulfillment \
+  --using Shop --using Shop.Fulfillment --namespace Shop.Tests --output OrderFulfillmentA1005Replay.cs
+```
+
+The generated test embeds the history and calls `Urd.ReplayAsync(...).ThrowIfDiverged()`. Change the charge step to
+bill twice the amount and it fails with both sides:
+
+```
+✗ OrderFulfillment 'A-1005' does not replay as recorded.
+  First difference at entry 3:
+    recorded: +00:00:00 Sent step 1 attempt 1 Shop.Payments.ChargePayment {"OrderId":"A-1005","Amount":89}
+    replayed: +00:00:00 Sent step 1 attempt 1 Shop.Payments.ChargePayment {"OrderId":"A-1005","Amount":178}
+```
+
+A history recorded with another process structure is reported up front instead of replayed. Design:
+[Urd](https://github.com/aminch18/wyrd/blob/main/docs/design/urd.md).
 
 ## Coming next
 

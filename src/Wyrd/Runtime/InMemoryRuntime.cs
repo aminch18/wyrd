@@ -225,6 +225,19 @@ public sealed class InMemoryRuntime : IDisposable
     public Task CompensateAsync(Process process, object key, CancellationToken cancellationToken = default) =>
         OperateAsync(process, key, (name, k, ct) => _engine.CompensateAsync(name, k, ct), cancellationToken);
 
+    /// <summary>
+    /// Everything the instance received and sent, in order (Urd): export it with <see cref="InstanceHistory.ToJson"/>
+    /// and replay it as a test with <c>Urd.ReplayAsync</c>.
+    /// </summary>
+    public InstanceHistory HistoryOf(Process process, object key)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(key);
+        return Read(() => _store.Instance(process.Name, Keys.Of(key)) is { } instance
+            ? new InstanceHistory(instance.Process, instance.Key, instance.Fingerprint, instance.History)
+            : throw new InvalidOperationException($"{process.Name} has no instance '{Keys.Of(key)}'."));
+    }
+
     /// <summary>The reason an instance is suspended, or null.</summary>
     public string? ReasonOf(Process process, object key)
     {
@@ -301,6 +314,16 @@ public sealed class InMemoryRuntime : IDisposable
                 _queue.Add(envelope); // the broker will deliver it again, later
             }
 
+            if (Responder is not null && envelope is { Kind: MessageKind.Command, Process: not null })
+            {
+                if (Responder(envelope) is { } reply)
+                {
+                    _queue.Add(_engine.ReplyTo(envelope, reply));
+                }
+
+                continue;
+            }
+
             await _engine.HandleAsync(envelope, cancellationToken).ConfigureAwait(false);
             await RelayAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -316,6 +339,30 @@ public sealed class InMemoryRuntime : IDisposable
     }
 
     public void Dispose() => _gate.Dispose();
+
+    /// <summary>
+    /// Urd: answers the commands processes send instead of their owners (a null answer leaves the command unanswered,
+    /// as it was when the history was recorded).
+    /// </summary>
+    internal Func<Envelope, ReplyMessage?>? Responder { get; set; }
+
+    /// <summary>Urd: only this process reacts to events.</summary>
+    internal void ReplayOnly(string process) => _registry.Only = process;
+
+    /// <summary>Urd: delivers a recorded event (a trigger or an awaited event) as it was stored.</summary>
+    internal async Task InjectAsync(string type, string payload, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload));
+            await DrainAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
     /// <summary>The simulator perturbing delivery (Skuld), if any.</summary>
     internal ISimulation? Simulation { get; set; }

@@ -7,18 +7,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- **Instance history (Urd)**: every process instance records what crossed its boundary — trigger, commands sent,
+  replies, awaited events, timeouts, suspensions, operator actions — committed with the instance itself.
+  `InMemoryRuntime.HistoryOf(process, key)` returns it; `ToJson()` / `InstanceHistory.FromJson(...)` export it.
+  Design: `docs/design/urd.md`.
+- **Urd** (`Wyrd.Testing`): `Urd.ReplayAsync(system, process, history)` replays a recorded instance against today's
+  code — the process runs for real, each command is answered with the recorded reply, the clock replays retries and
+  timeouts — and reports the first entry that differs (`ReplayReport.Divergence`, `ThrowIfDiverged()`). A history
+  recorded with another process structure is reported up front.
+- `dotnet wyrd replay <history.json>` prints an instance's timeline; with `--as-test --runtime ... --process ...`
+  it writes an xUnit test that embeds the history and replays it with Urd.
 - Rich Shop order aggregate: immutable identified lines, decimal `Money`, shared state-owned rules, editable drafts,
   line and draft cancellation, rich detail projection and HTTP examples. Submission freezes the draft for the
   existing single-SKU EUR fulfillment; the original `PlaceOrder` shortcut remains supported.
-
-- IDE **Fix all** in document, project or solution for contract snapshots (WYRD0200/WYRD0202) and JSON
-  declarations (WYRD0300/WYRD0301/WYRD0302): coordinated edits preserve existing attributes and snapshot comments,
-  avoid duplicate declarations, and resolve JSON name collisions exposed by newly declared union cases.
 
 ## [0.3.0] - 2026-10-18
 
 ### Added
 
+- IDE **Fix all** in document, project or solution for contract snapshots (WYRD0200/WYRD0202) and JSON
+  declarations (WYRD0300/WYRD0301/WYRD0302): coordinated edits preserve existing attributes and snapshot comments,
+  avoid duplicate declarations, and resolve JSON name collisions exposed by newly declared union cases.
 - **Skuld shrinking**: broken futures replay with fewer perturbations while preserving the violated invariant.
   `Violation.Shrunk` contains the reduced perturbations, detail and journal; reports show it first and retain the
   original seed. Shrinking defaults on with at most 200 replays per broken future (`Shrink`, `ShrinkBudget`).
