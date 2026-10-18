@@ -40,71 +40,72 @@ public static class Skuld
         {
             var seed = options.Seed + run;
             using var runtime = system();
-            runtime.Simulation = new Future(runtime, new Random(seed), options);
+            var decisions = new SimulationDecisions(runtime, new Random(seed), options);
+            runtime.Simulation = decisions;
+            var error = await RunAsync(runtime, scenario, options).ConfigureAwait(false);
+            var broken = error is null
+                ? invariants.Select(invariant => (Invariant: invariant, Detail: invariant.Check(runtime)))
+                    .Where(result => result.Detail is not null).ToArray()
+                : [(Invariant: new Invariant("runs without errors", _ => Describe(error)), Detail: (string?)Describe(error))];
+            var remaining = options.ShrinkBudget;
 
-            try
+            foreach (var (invariant, failure) in broken)
             {
-                await scenario(runtime).ConfigureAwait(false);
-                await runtime.AdvanceAsync(options.SettleFor).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                violations.Add(new Violation(seed, "runs without errors", $"{ex.GetType().Name}: {ex.Message}", runtime.Journal));
-                continue;
-            }
-
-            foreach (var invariant in invariants)
-            {
-                if (invariant.Check(runtime) is { } detail)
+                var detail = failure!;
+                var violation = new Violation(seed, invariant.Name, detail, runtime.Journal);
+                if (options.Shrink)
                 {
-                    violations.Add(new Violation(seed, invariant.Name, detail, runtime.Journal));
+                    var original = new ShrunkFuture(detail, Perturbations(violation.Journal), violation.Journal, 0);
+                    var shrunk = await FutureShrinker.ShrinkAsync(decisions.Recorded, original, async stream =>
+                    {
+                        using var replay = system();
+                        replay.Simulation = new SimulationDecisions(replay, new Random(seed), options, stream);
+                        var replayError = await RunAsync(replay, scenario, options).ConfigureAwait(false);
+                        var replayDetail = CheckFailure(invariant, replay, error, replayError);
+                        return replayDetail is null ? null
+                            : new ShrunkFuture(replayDetail, Perturbations(replay.Journal), replay.Journal, 0);
+                    }, remaining).ConfigureAwait(false);
+                    remaining -= shrunk.Replays;
+                    violation = violation with { Shrunk = shrunk };
                 }
+
+                violations.Add(violation);
             }
         }
 
         return new SimulationReport(options.Runs, options, violations);
     }
 
-    /// <summary>One future: every perturbation is drawn from a seeded random source and written to the journal.</summary>
-    private sealed class Future(InMemoryRuntime runtime, Random random, SimulationOptions options) : ISimulation
+    private static string? CheckFailure(
+        Invariant invariant, InMemoryRuntime runtime, Exception? originalError, Exception? replayError)
     {
-        private readonly HashSet<Envelope> _duplicated = [];
-
-        public int PickNext(IReadOnlyList<Envelope> queue)
+        if (originalError is null)
         {
-            if (queue.Count < 2 || random.NextDouble() >= options.ReorderRate)
-            {
-                return 0;
-            }
-
-            var index = random.Next(1, queue.Count);
-            runtime.Note($"delivered {runtime.Describe(queue[index])} before {runtime.Describe(queue[0])}");
-            return index;
+            // An exception is not evidence that the original business invariant still breaks.
+            return replayError is null ? invariant.Check(runtime) : null;
         }
 
-        public bool Duplicate(Envelope envelope)
+        return replayError?.GetType() == originalError.GetType() && replayError.Message == originalError.Message
+            ? Describe(replayError) : null;
+    }
+
+    private static string[] Perturbations(IReadOnlyList<JournalEntry> journal) =>
+        journal.Where(entry => entry.Process == "skuld").Select(entry => entry.Message).ToArray();
+
+    private static string Describe(Exception error) => $"{error.GetType().Name}: {error.Message}";
+
+    private static async Task<Exception?> RunAsync(
+        InMemoryRuntime runtime, Func<InMemoryRuntime, Task> scenario, SimulationOptions options)
+    {
+        try
         {
-            // Each message is redelivered at most once, so even a 100% rate always terminates.
-            if (_duplicated.Contains(envelope) || random.NextDouble() >= options.DuplicateRate)
-            {
-                return false;
-            }
-
-            _duplicated.Add(envelope);
-
-            runtime.Note($"will deliver {runtime.Describe(envelope)} twice");
-            return true;
+            await scenario(runtime).ConfigureAwait(false);
+            await runtime.AdvanceAsync(options.SettleFor).ConfigureAwait(false);
+            return null;
         }
-
-        public bool Fault(Envelope command, Type commandType)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            if (random.NextDouble() >= options.FaultRate)
-            {
-                return false;
-            }
-
-            runtime.Note($"{runtime.Describe(command)} failed transiently");
-            return true;
+            return ex;
         }
     }
 }

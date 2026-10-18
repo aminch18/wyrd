@@ -5,7 +5,15 @@ using Wyrd.Runtime;
 namespace Wyrd.Testing;
 
 /// <summary>A future in which an invariant did not hold.</summary>
-public sealed record Violation(int Seed, string Invariant, string Detail, IReadOnlyList<JournalEntry> Journal);
+public sealed record Violation(int Seed, string Invariant, string Detail, IReadOnlyList<JournalEntry> Journal)
+{
+    /// <summary>The smallest failing future found within the budget; null when shrinking is disabled.</summary>
+    public ShrunkFuture? Shrunk { get; init; }
+}
+
+/// <summary>A reduced future that still breaks the same invariant. Greedy shrinking need not find a global minimum.</summary>
+public sealed record ShrunkFuture(
+    string Detail, IReadOnlyList<string> Perturbations, IReadOnlyList<JournalEntry> Journal, int Replays);
 
 /// <summary>What Skuld found.</summary>
 public sealed class SimulationReport(int runs, SimulationOptions options, IReadOnlyList<Violation> violations)
@@ -38,15 +46,23 @@ public sealed class SimulationReport(int runs, SimulationOptions options, IReadO
             var count = Violations.Count(v => v.Invariant == violation.Invariant);
             text.AppendLine();
             text.AppendLine(CultureInfo.InvariantCulture, $"✗ \"{violation.Invariant}\" broke in {count} futures. First: seed {violation.Seed}.");
-            text.AppendLine(CultureInfo.InvariantCulture, $"  {violation.Detail}");
-            var perturbations = violation.Journal.Where(e => e.Process == "skuld").Select(e => e.Message).ToList();
+            if (violation.Shrunk is { } shrunk)
+            {
+                text.AppendLine(CultureInfo.InvariantCulture,
+                    $"  Smallest future that breaks it: {shrunk.Perturbations.Count} perturbations ({shrunk.Replays} replays; smallest found within budget).");
+            }
+
+            text.AppendLine(CultureInfo.InvariantCulture, $"  {violation.Shrunk?.Detail ?? violation.Detail}");
+            var journal = violation.Shrunk?.Journal ?? violation.Journal;
+            var perturbations = violation.Shrunk?.Perturbations
+                ?? journal.Where(e => e.Process == "skuld").Select(e => e.Message).ToArray();
             if (perturbations.Count > 0)
             {
                 text.AppendLine(CultureInfo.InvariantCulture, $"  Perturbations: {string.Join("; ", perturbations)}");
             }
 
             text.AppendLine("  Journal:");
-            foreach (var entry in violation.Journal)
+            foreach (var entry in journal)
             {
                 text.AppendLine(CultureInfo.InvariantCulture, $"    {entry}");
             }

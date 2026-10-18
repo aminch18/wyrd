@@ -68,7 +68,7 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] Engine fixes found by Skuld: attempt-aware replies (stale faults ignored), unknown-outcome steps compensated,
       `.OnCompensated(...).Retry(...)`, thread-safe type registry
 - [ ] Ordered projections per stream (events carry their stream version), so read models don't fight reordering by hand
-- [ ] Shrinking: reduce a failing future to the fewest perturbations that still break the invariant
+- [x] Shrinking: reduce a failing future to the fewest perturbations that still break the invariant
 - [x] Analyzers WYRD0011 (a step must say how it is undone: `.Undo(...)` or `.NoCompensation("why")`) and
       WYRD0012 (`Await` without `.Within(...)`), in fluent and pipe syntax
 - [x] Exhaustive `switch` over a `[Union]`: WYRD0020 names missing cases; a suppressor removes CS8509 when every case
