@@ -70,5 +70,10 @@ Several agents may work on this repository at the same time. To stay out of each
 
 | Work | Owner | Branch | In bounds |
 |---|---|---|---|
-| v0.3 Skuld — remaining roadmap items and the semantics review | Claude | `feature/v0.3-skuld` | `src/**`, `tests/**`, `samples/**`, `docs/**` |
+| v0.3 Skuld — engine items (fingerprint, steps reading events, ordered projections) | Claude | `feature/v0.3-skuld` | `src/Wyrd/**`, `tests/Wyrd.Tests/**` (existing files), `samples/**`, `docs/design/**` |
 | Verdandi on PostgreSQL (parked until v0.3 and v0.4 ship) | Claude | `feature/verdandi` | `src/Wyrd.PostgreSql/**`, `tests/Wyrd.PostgreSql.Tests/**` |
+| [Task 002](docs/tasks/002-skuld-shrinking.md) — Skuld shrinking | Codex | `codex/skuld-shrinking` | `src/Wyrd.Testing/**`, a new test file |
+| [Task 003](docs/tasks/003-read-models-guide.md) — read models guide | Codex | `codex/read-models-guide` | `docs/guides/read-models.md` |
+| [Task 004](docs/tasks/004-fix-all-code-fixes.md) — fix-all code fixes | Codex | `codex/fix-all` | `src/Wyrd.Analyzers.CodeFixes/**`, a new test file |
+
+While Codex works on 002–004, Claude stays out of `src/Wyrd.Testing/**` and `src/Wyrd.Analyzers.CodeFixes/**`.
