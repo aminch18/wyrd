@@ -70,4 +70,5 @@ Several agents may work on this repository at the same time. To stay out of each
 | Work | Owner | Branch | In bounds |
 |---|---|---|---|
 | Skuld — simulation (v0.3) | Claude | `feature/skuld` | `src/Wyrd/**`, `src/Wyrd.Testing/**`, `tests/Wyrd.Tests/**`, `samples/**` |
+| Public preview launch: CI matrix, NuGet publishing, README, launch material | Claude | `launch/preview` | `README.md`, `CODE_OF_CONDUCT.md`, `.github/**`, `docs/launch/**`, `docs/RELEASING.md`, `Directory.Build.props` |
 | [Task 001](docs/tasks/001-wyrd-tool.md) — `dotnet wyrd` tool | Codex | `codex/wyrd-tool` | `src/Wyrd.Tool/**`, `tests/Wyrd.Tool.Tests/**`, generated sample docs |

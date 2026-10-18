@@ -10,9 +10,33 @@
 
 </div>
 
-> [!NOTE]
-> **Early alpha.** Everything marked ✅ works today and is covered by tests. Everything marked 🔜 is designed
-> and on the [roadmap](docs/ROADMAP.md).
+Wyrd is an open-source .NET 10 / C# 14 library for event-driven processes that behave the same way every time.
+You write pure business decisions and declarative sagas; Wyrd owns retries, timeouts, compensations and
+idempotency, enforces versioned message contracts at compile time, and simulates hostile futures before you deploy.
+
+> [!WARNING]
+> **Preview for feedback, not for production yet.** Available today: the message and process model, the analyzers
+> and contract snapshots, the in-memory runtime, `Wyrd.Testing`, the `dotnet wyrd` tool and **Skuld** (failure
+> simulation). The durable runtime (PostgreSQL, transports) is in progress. Everything marked ✅ works and is
+> covered by tests; 🔜 and 🚧 are designed and on the [roadmap](docs/ROADMAP.md). APIs may change before 1.0.
+> Please [tell us what you think](https://github.com/aminch18/wyrd/discussions).
+
+## Try it in two minutes
+
+You need the [.NET 10 SDK](https://dotnet.microsoft.com/download).
+
+```bash
+git clone https://github.com/aminch18/wyrd.git && cd wyrd
+dotnet run --project samples/Shop.Console   # six order scenarios with a colored journal
+dotnet test samples/Shop.Tests              # business specs, including Skuld exploring thousands of futures
+dotnet run --project samples/Shop.Api       # the same shop as an HTTP API on http://localhost:5080
+```
+
+Then break something on purpose: change a field type in `samples/Shop/Contracts/IntegrationEvents.cs` and
+rebuild to see `WYRD0201`, or remove a `.Retry(...)` from the order process and run the Skuld specs. The
+[demo script](docs/launch/demo.md) walks through both. Questions and ideas are welcome in
+[Discussions](https://github.com/aminch18/wyrd/discussions); the [documentation site](https://aminch18.github.io/wyrd/)
+has the mental model first and the details second.
 
 ---
 
@@ -74,8 +98,8 @@ modular monolith. Domain boundaries and deployment boundaries are separate choic
 
 Start with one meaningful behavior or bounded context. Wyrd is not a requirement to rewrite an application,
 and a simple CRUD screen may not benefit from a command/event/process model. Today the runtime is in memory
-and loses its data on restart; durable storage, transports, simulation, and recorded-instance replay remain
-roadmap capabilities rather than production guarantees.
+and loses its data on restart; durable storage, transports and recorded-instance replay remain roadmap
+capabilities rather than production guarantees.
 
 ## The three Norns
 
@@ -295,7 +319,7 @@ POST /orders              (same order again)                                    
 ```
 
 Plus developer endpoints to read the journal, make the payment gateway flaky and jump the clock forward.
-It runs on the in-memory runtime; PostgreSQL and RabbitMQ will replace one line of configuration.
+It runs on the in-memory runtime, so its data is lost on restart; PostgreSQL and RabbitMQ hosts are planned.
 
 **A console walkthrough** — [`samples/Shop.Console`](samples/Shop.Console): six scenarios (happy path, flaky
 gateway with an early confirmation, card declined, out of stock, abandoned 3-D Secure, double-clicked "Buy")
@@ -446,7 +470,7 @@ are reported on stderr with a nonzero exit code, so redirected documents stay cl
 Most event-driven code will be written by AI agents. Wyrd is designed so they can't get it wrong quietly:
 a tiny pure surface, and diagnostics written for a feedback loop — *what* is wrong, *why* it matters and
 *how* to fix it, like `WYRD0201` above. Next: process rules (missing compensation, `Await` without timeout)
-and deterministic tooling (`dotnet wyrd` CLI and an MCP server).
+and more deterministic tooling (replay from the CLI and an MCP server).
 
 ## What Wyrd guarantees — and what it doesn't
 
@@ -485,7 +509,7 @@ docs/                      philosophy, DDD migration guide, roadmap and design n
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Requires the .NET 10 SDK (C# 14).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Requires the .NET 10 SDK (C# 14).
 
 ```bash
 dotnet test
