@@ -53,7 +53,7 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] Native AOT: the shop sample publishes and runs as a native executable, checked in CI
 - [x] Analyzer WYRD0302: types sharing a name in the JSON context (union cases, namespaces, nested property types) get a unique `TypeInfoPropertyName` via code fix, before SYSLIB1031
 
-## v0.3 — Skuld (simulate the future)
+## ✅ v0.3 — Skuld (simulate the future) · `0.3.0`
 
 - [x] Retry semantics ([design](design/semantics.md) 3.2–3.4): every step declares `.Retry(...)` or `.NoRetry("why")`
       (WYRD0014, no default); undos and the outcome always insist with their own adjustable policy; WYRD0010 removed
@@ -76,10 +76,11 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] Analyzer WYRD0013: `wyrd_process_style` (fluent | pipe | any) in `.editorconfig`, with a code fix that converts
       a process between fluent and pipe syntax, keeping every argument as written
 
-## v0.4 — Urd (replay the past) and the `dotnet wyrd` tool
+## ✅ v0.4 — Urd (replay the past) and the `dotnet wyrd` tool
 
 - [x] Process instance history capture ([design](design/urd.md)): `HistoryOf(process, key)`, committed with the instance, exported as JSON
-- [ ] `dotnet wyrd replay <instance> --as-test`
+- [x] `dotnet wyrd replay <history.json> --as-test`: the timeline, or an xUnit test that replays the instance with
+      `Urd.ReplayAsync` and reports the first difference (reading histories from a durable store comes with v0.5)
 - [x] `dotnet wyrd asyncapi`: AsyncAPI document from the integration event contracts (moved from v0.1)
 - [x] `dotnet wyrd diagram`: Mermaid diagrams for every process
 

@@ -1,6 +1,6 @@
 # Design: Urd — replay the past
 
-> Status: **proposal for v0.4**. Follows [semantics](semantics.md); when they disagree, semantics wins.
+> Status: **implemented in v0.4** (in memory; durable hosts record the same history in v0.5). Follows [semantics](semantics.md); when they disagree, semantics wins.
 
 Skuld asks "what could happen?". Urd asks "what *did* happen, and does today's code still do the same?". A process
 instance that misbehaved — in a test environment today, in production once durable hosts exist — is recorded, exported

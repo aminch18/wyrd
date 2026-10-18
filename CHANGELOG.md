@@ -15,6 +15,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   code — the process runs for real, each command is answered with the recorded reply, the clock replays retries and
   timeouts — and reports the first entry that differs (`ReplayReport.Divergence`, `ThrowIfDiverged()`). A history
   recorded with another process structure is reported up front.
+- `dotnet wyrd replay <history.json>` prints an instance's timeline; with `--as-test --runtime ... --process ...`
+  it writes an xUnit test that embeds the history and replays it with Urd.
 
 ### Added
 
