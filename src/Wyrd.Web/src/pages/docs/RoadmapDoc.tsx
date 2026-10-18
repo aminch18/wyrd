@@ -146,13 +146,13 @@ const ROADMAP: readonly Milestone[] = [
     {
         version: 'v0.4',
         title: 'Urd — replay the past, and the dotnet wyrd tool',
-        status: 'In progress',
-        copy: 'The documentation tool already generates AsyncAPI and Mermaid. Instance capture and replay come next.',
+        status: 'Available',
+        copy: 'Capture in-memory instance histories and replay them against today’s process definition with Urd.',
         items: [
             [true, 'dotnet wyrd asyncapi'],
             [true, 'dotnet wyrd diagram'],
-            [false, 'Process instance history capture'],
-            [false, 'dotnet wyrd replay <instance> --as-test'],
+            [true, 'Process instance history capture'],
+            [true, 'dotnet wyrd replay <history.json> --as-test'],
         ],
     },
     {
