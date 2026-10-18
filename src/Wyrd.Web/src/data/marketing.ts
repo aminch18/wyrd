@@ -60,9 +60,9 @@ export const NORNS: Norn[] = [
         name: 'Urd',
         tense: 'what was',
         label: 'Replay',
-        status: 'Planned',
+        status: 'Available',
         icon: Clock3,
-        copy: 'Turn the exact history of a production process into a deterministic local test.',
+        copy: 'Capture an in-memory process instance and replay its recorded replies and clock as a deterministic local test.',
     },
     {
         name: 'Verdandi',

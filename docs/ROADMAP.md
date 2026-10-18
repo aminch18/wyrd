@@ -106,7 +106,7 @@ mental model matters as much as the code.
 - [x] Guidance: shared invariants live on the state or in pure domain policies, never duplicated across slices
       (covered in the DDD guide; an analyzer for state-module cohesion is still a possible future addition)
 - [x] Guide: modelling read models (projections) for screens and reports
-- [ ] Docs site with the mental model first, API reference second
+- [x] Docs site with the mental model first, API reference second
 
 ## v1.0 — Production ready
 

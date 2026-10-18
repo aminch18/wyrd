@@ -19,7 +19,7 @@ export function ToolDoc() {
         <DocArticle
             eyebrow="Developer tools"
             title="The Wyrd CLI"
-            lead="Generate AsyncAPI contracts and Mermaid process diagrams from the same source your application uses."
+            lead="Generate contracts and diagrams, then turn an instance history into a replay test."
         >
             <h2>Run it from the repository</h2>
             <p>
@@ -86,11 +86,29 @@ dotnet run --project src/Wyrd.Tool -- diagram --help`}
                 generated documentation, not a replacement for contract
                 compatibility checks.
             </p>
-            <Callout title="Available today">
-                AsyncAPI export and process diagrams work today.
-                Process-instance capture and <code>wyrd replay</code> are
-                planned and are not CLI commands in the current version.
-            </Callout>
+            <h2>Replay a recorded instance</h2>
+            <p>
+                Export <code>shop.HistoryOf(process, key).ToJson()</code> to a
+                file. The replay command prints its timeline;{' '}
+                <code>--as-test</code>
+                writes an xUnit test embedding the history and invoking Urd.
+                Instance history capture and replay are available in memory
+                today; reading histories from durable stores comes with
+                Verdandi.
+            </p>
+            <CodeBlock
+                language="shellscript"
+                title="Recorded history"
+                code={`dotnet run --project src/Wyrd.Tool -- replay A-1.history.json
+
+dotnet run --project src/Wyrd.Tool -- replay A-1.history.json --as-test \\
+  --runtime Shop.ShopModule.CreateRuntime \\
+  --process Shop.Fulfillment.Processes.OrderFulfillment`}
+            />
+            <p>
+                See the <a href="#/docs/api-reference">API reference</a> for
+                InstanceHistory, Urd and ReplayReport.
+            </p>
         </DocArticle>
     )
 }
