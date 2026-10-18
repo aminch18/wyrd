@@ -76,7 +76,7 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] Analyzer WYRD0013: `wyrd_process_style` (fluent | pipe | any) in `.editorconfig`, with a code fix that converts
       a process between fluent and pipe syntax, keeping every argument as written
 
-## ✅ v0.4 — Urd (replay the past) and the `dotnet wyrd` tool
+## ✅ v0.4 — Urd (replay the past) and the `dotnet wyrd` tool · `0.4.0`
 
 - [x] Process instance history capture ([design](design/urd.md)): `HistoryOf(process, key)`, committed with the instance, exported as JSON
 - [x] `dotnet wyrd replay <history.json> --as-test`: the timeline, or an xUnit test that replays the instance with
