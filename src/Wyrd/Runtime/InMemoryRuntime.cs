@@ -225,6 +225,19 @@ public sealed class InMemoryRuntime : IDisposable
     public Task CompensateAsync(Process process, object key, CancellationToken cancellationToken = default) =>
         OperateAsync(process, key, (name, k, ct) => _engine.CompensateAsync(name, k, ct), cancellationToken);
 
+    /// <summary>
+    /// Everything the instance received and sent, in order (Urd): export it with <see cref="InstanceHistory.ToJson"/>
+    /// and replay it as a test with <c>Urd.ReplayAsync</c>.
+    /// </summary>
+    public InstanceHistory HistoryOf(Process process, object key)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(key);
+        return Read(() => _store.Instance(process.Name, Keys.Of(key)) is { } instance
+            ? new InstanceHistory(instance.Process, instance.Key, instance.Fingerprint, instance.History)
+            : throw new InvalidOperationException($"{process.Name} has no instance '{Keys.Of(key)}'."));
+    }
+
     /// <summary>The reason an instance is suspended, or null.</summary>
     public string? ReasonOf(Process process, object key)
     {

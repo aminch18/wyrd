@@ -4,4 +4,6 @@ namespace Wyrd.Runtime;
 
 /// <summary>Source-generated JSON for Wyrd's own messages.</summary>
 [JsonSerializable(typeof(ReplyMessage))]
+[JsonSerializable(typeof(InstanceHistory))]
+[JsonSourceGenerationOptions(WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault)]
 internal sealed partial class WyrdJsonContext : JsonSerializerContext;

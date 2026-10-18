@@ -78,7 +78,7 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 
 ## v0.4 — Urd (replay the past) and the `dotnet wyrd` tool
 
-- [ ] Process instance history capture
+- [x] Process instance history capture ([design](design/urd.md)): `HistoryOf(process, key)`, committed with the instance, exported as JSON
 - [ ] `dotnet wyrd replay <instance> --as-test`
 - [x] `dotnet wyrd asyncapi`: AsyncAPI document from the integration event contracts (moved from v0.1)
 - [x] `dotnet wyrd diagram`: Mermaid diagrams for every process
