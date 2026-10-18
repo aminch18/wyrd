@@ -132,7 +132,7 @@ fences the step it gave up on; a late success of the pending command resumes it 
 ## 4. Delivery
 
 - Every message is handled in **one transaction**: state, events, instances, inbox, outbox, timers and read
-  models commit together or not at all. **Implemented** in memory; PostgreSQL is built and parked until v0.5.
+  models commit together or not at all. **Implemented** in memory; durable hosts in v0.5 (a PostgreSQL prototype exists on `feature/verdandi`; the EF Core host replaces it).
 - Delivery is **at least once**; decisions are **effectively once**: the owner's inbox remembers every command it
   decided and replays the outcome to duplicates. **Implemented.**
 - Integration events reach each subscriber **once, in the contract version it understands** (upcast step by step;
