@@ -76,12 +76,18 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 
 ## v0.5 — Verdandi (run the present)
 
+- [x] Framework reply envelope (Accepted / Rejected / Faulted / fenced) and re-send with stable message ids
+- [x] Storage port (`IWyrdStore`) and host-agnostic wiring (`IWyrdBuilder<T>`, `IWyrdRuntime`)
+- [x] `Wyrd.PostgreSql`: one transaction per message (state, events, instances, inbox, outbox, timers, read models);
+      PostgreSQL as the queue with `FOR UPDATE SKIP LOCKED`; optimistic concurrency; redelivery with backoff;
+      dead letters; durable timers; survives restarts; any number of workers
+- [x] `samples/Shop.Api` runs on PostgreSQL with a connection string (in memory without one)
+- [ ] Skuld against the durable runtime (crash between commit and delivery, concurrent workers)
+- [ ] Hosting package: `services.AddWyrd(...)` and a worker, instead of wiring by hand
+- [ ] Cancel pending timers when a wait ends early (today they fire later and are ignored)
+- [ ] LISTEN/NOTIFY to wake workers instead of polling
 - [ ] Integrations (`IIntegration<...>`): the only I/O, with idempotency keys and recorded outcomes
-- [ ] Framework reply envelope (Accepted / Rejected / Faulted) and re-send with stable message ids
-- [ ] Ports: `IMessageTransport`, `IOutboxStore`, `IProcessStateStore`, `IScheduler`
-- [ ] EF Core outbox/inbox/state (PostgreSQL, SQL Server)
-- [ ] Durable scheduler for timeouts
-- [ ] RabbitMQ transport
+- [ ] Transport between services (RabbitMQ or Azure Service Bus) with routing by contract
 - [ ] OpenTelemetry with process-level traces
 
 ## Documentation & adoption (continuous, required before going public)

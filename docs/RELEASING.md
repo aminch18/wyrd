@@ -38,4 +38,5 @@ All packages are versioned in **lockstep**: one tag versions every package, so `
 | `Wyrd` | Messages, slices, processes, projections, the engine and its in-memory host, analyzers and code fixes |
 | `Wyrd.Testing` | Given/When/Then scenarios for slices and projections; Skuld simulation *(planned)* |
 | `Wyrd.Tool` | `dotnet wyrd` CLI: AsyncAPI and diagrams; Urd replay *(planned)* |
-| `Wyrd.PostgreSql`, `Wyrd.RabbitMq`, `Wyrd.AspNetCore` *(planned)* | Verdandi: production infrastructure |
+| `Wyrd.PostgreSql` | Verdandi: the durable runtime on PostgreSQL |
+| `Wyrd.RabbitMq`, `Wyrd.AspNetCore` *(planned)* | Transports between services, hosting integration |

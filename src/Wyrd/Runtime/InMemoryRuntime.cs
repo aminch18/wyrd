@@ -9,7 +9,7 @@ namespace Wyrd.Runtime;
 /// distributed runtime — messages, replies, JSON, outbox, inbox, durable timers — but deterministically:
 /// same inputs, same journal, every time. Use it for local development, tests, simulation and replay.
 /// </summary>
-public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IDisposable
+public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntime, IDisposable
 {
     private static readonly DateTimeOffset Epoch = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
@@ -146,13 +146,13 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IDisposable
     /// Delivers a fact from another context (a webhook, a message from another service...).
     /// Only integration events can come from outside: domain events are produced by slices alone.
     /// </summary>
-    public async Task PublishAsync(IIntegrationEvent @event, CancellationToken cancellationToken = default)
+    public async Task PublishAsync(IIntegrationEvent integrationEvent, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(@event);
+        ArgumentNullException.ThrowIfNull(integrationEvent);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var (type, payload) = _types.Serialize(@event, @event.GetType());
+            var (type, payload) = _types.Serialize(integrationEvent, integrationEvent.GetType());
             _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload));
             await DrainAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -208,6 +208,19 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IDisposable
             ? (TState)_types.Deserialize(state.Type, state.Payload)
             : TState.Initial);
     }
+
+    Task<ProcessStatus?> IWyrdRuntime.StatusOfAsync(Process process, object key, CancellationToken cancellationToken) =>
+        Task.FromResult(StatusOf(process, key));
+
+    Task<TState> IWyrdRuntime.StateOfAsync<TState>(object key, CancellationToken cancellationToken) =>
+        Task.FromResult(StateOf<TState>(key));
+
+    Task<TView?> IWyrdRuntime.ViewAsync<TView>(object key, CancellationToken cancellationToken)
+        where TView : class =>
+        Task.FromResult(View<TView>(key));
+
+    Task<IReadOnlyList<TView>> IWyrdRuntime.ViewsAsync<TView>(CancellationToken cancellationToken) =>
+        Task.FromResult(Views<TView>());
 
     /// <summary>Reads one document of a read model, or null.</summary>
     public TView? View<TView>(object key)

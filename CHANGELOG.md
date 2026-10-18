@@ -7,6 +7,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- **Verdandi** (`Wyrd.PostgreSql`): the durable runtime. `PostgresRuntime` handles every message in one PostgreSQL
+  transaction that also takes it off the queue — state, events, instances, inbox, outbox, timers and read models
+  commit together or not at all. The queue is a table shared by any number of workers (`FOR UPDATE SKIP LOCKED`);
+  failures are redelivered with backoff and poison messages go to dead letters; processes survive restarts.
+- `IWyrdBuilder<T>`: register a module the same way on any host (`ShopModule.Register(runtime)`).
+- `IWyrdRuntime`: what application code needs (send, publish, query), implemented by both hosts.
+- `samples/Shop.Api` runs on PostgreSQL when a `Wyrd` connection string is configured (`compose.yaml` included).
+
 - `Wyrd.Tool`: generate AsyncAPI 3.0 documentation from reviewed contract snapshots and Mermaid diagrams from compiled processes, with Spectre CLI help and validation, typed YAML serialization, and nullable/immutable collection mapping.
 - `Wyrd.Web`: responsive marketing and framework documentation site with light/dark themes, IDE-matched code palettes, and automated GitHub Pages deployment.
 - Shared Markdown guides for the Wyrd philosophy and the transition from classic DDD, with equivalent cancellation examples, a concept map, and adoption guidance.

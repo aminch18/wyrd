@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Shop\Shop.csproj" />
+    <ProjectReference Include="..\..\src\Wyrd.PostgreSql\Wyrd.PostgreSql.csproj" />
   </ItemGroup>
 
 </Project>

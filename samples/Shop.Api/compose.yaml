@@ -1,0 +1,17 @@
+# PostgreSQL for the durable shop:
+#   docker compose -f samples/Shop.Api/compose.yaml up -d
+#   ConnectionStrings__Wyrd="Host=localhost;Port=5433;Username=wyrd;Password=wyrd;Database=shop" dotnet run --project samples/Shop.Api
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: wyrd
+      POSTGRES_PASSWORD: wyrd
+      POSTGRES_DB: shop
+    ports:
+      - "5433:5432"
+    volumes:
+      - wyrd-shop:/var/lib/postgresql/data
+
+volumes:
+  wyrd-shop:

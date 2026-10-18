@@ -15,7 +15,7 @@ namespace Wyrd.PostgreSql;
 /// is a table, so any number of workers — in one process or many — share it with <c>FOR UPDATE SKIP LOCKED</c>,
 /// and nothing is lost on a crash or a restart.
 /// </summary>
-public sealed partial class PostgresRuntime : IWyrdBuilder<PostgresRuntime>
+public sealed partial class PostgresRuntime : IWyrdBuilder<PostgresRuntime>, IWyrdRuntime
 {
     private readonly NpgsqlDataSource _dataSource;
     private readonly Application _application;
@@ -139,10 +139,10 @@ public sealed partial class PostgresRuntime : IWyrdBuilder<PostgresRuntime>
     }
 
     /// <summary>Delivers a fact from another context (a webhook, a message from another service...).</summary>
-    public async Task PublishAsync(IIntegrationEvent @event, CancellationToken cancellationToken = default)
+    public async Task PublishAsync(IIntegrationEvent integrationEvent, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(@event);
-        var (type, payload) = _application.Types.Serialize(@event, @event.GetType());
+        ArgumentNullException.ThrowIfNull(integrationEvent);
+        var (type, payload) = _application.Types.Serialize(integrationEvent, integrationEvent.GetType());
         await InTransactionAsync(
             async (_, store) =>
             {

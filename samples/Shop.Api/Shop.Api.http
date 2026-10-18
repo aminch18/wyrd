@@ -1,4 +1,9 @@
-# Run the API (dotnet run --project samples/Shop.Api) and send these one by one from Rider, VS or VS Code.
+# Run the API and send these one by one from Rider, VS or VS Code.
+#   In memory:      dotnet run --project samples/Shop.Api
+#   On PostgreSQL:  docker compose -f samples/Shop.Api/compose.yaml up -d
+#                   ConnectionStrings__Wyrd="Host=localhost;Port=5433;Username=wyrd;Password=wyrd;Database=shop" dotnet run --project samples/Shop.Api
+#   On PostgreSQL, stop and start the API at any point: every order continues where it was.
+#   The /dev endpoints (journal, flaky gateway, clock) exist only in memory.
 @api = http://localhost:5080
 
 ### 1. The warehouse receives 5 keyboards

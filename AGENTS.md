@@ -12,6 +12,8 @@ Wyrd is a .NET 10 / C# 14 library for deterministic event-driven processes. Read
 - `src/Wyrd.Analyzers` — Roslyn analyzers (netstandard2.0, Roslyn 4.14), packed into the Wyrd package.
   New rules go in `Diagnostics.cs` **and** `AnalyzerReleases.Unshipped.md`. Messages: what, why, how to fix.
 - `src/Wyrd.Analyzers.CodeFixes` — IDE code fixes (needs Workspaces, so it can't live in the analyzer assembly).
+- `src/Wyrd.PostgreSql` — Verdandi: `PostgresStore` (one transaction per message) and `PostgresRuntime` (PostgreSQL
+  as the queue). Tests in `tests/Wyrd.PostgreSql.Tests` run on a real PostgreSQL with Testcontainers: Docker required.
 - `src/Wyrd.Testing` — Given/When/Then scenarios and Skuld (uses Wyrd internals through InternalsVisibleTo:
   `ISimulation` hooks in `InMemoryRuntime` pick, duplicate and fault messages). Any engine change must keep
   `samples/Shop.Tests/SkuldSpecs` green: it explores thousands of hostile futures.

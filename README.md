@@ -85,7 +85,7 @@ In Norse myth, *wyrd* — fate — is woven by three Norns. Wyrd is built on the
 |---|---|---|---|
 | ⏩ | **Skuld** — *what will be* | **Simulation.** Run your scenario in hundreds of hostile futures — faults, duplicates, reordering, timeouts — before you deploy. | ✅ |
 | ⏪ | **Urd** — *what was* | **Replay.** Export a production process instance and replay it locally, deterministically, as a test. | 🔜 |
-| ▶️ | **Verdandi** — *what is* | **Runtime.** Deterministic in-memory runtime today ✅; durable outbox, inbox and timeouts next. | 🚧 |
+| ▶️ | **Verdandi** — *what is* | **Runtime.** In memory for tests and development, and durable on PostgreSQL: one transaction per message, PostgreSQL as the queue. Transports between services next. | 🚧 |
 
 ## Quick start
 
@@ -380,6 +380,34 @@ Every expectation also checks that events, states and views survive a JSON round
 when Wyrd stores them — so a state that can't be persisted fails a unit test, not production.
 See [`samples/Shop.Tests`](samples/Shop.Tests).
 
+## Verdandi: the durable runtime on PostgreSQL ✅
+
+The same application, now durable. Register your module on `PostgresRuntime` instead of `InMemoryRuntime`:
+
+```csharp
+var wyrd = ShopModule.Register(new PostgresRuntime(dataSource, ShopJson.Default));
+await wyrd.EnsureSchemaAsync();
+
+await wyrd.SendAsync(new PlaceOrder("A-1", "KEYBOARD", 1, 89m)); // decided and committed now
+await wyrd.RunAsync(stoppingToken);                              // a worker: run as many as you like
+```
+
+- **One transaction per message**: state, events, instances, inbox, outbox, timers and read models commit together
+  with taking the message off the queue — or not at all.
+- **PostgreSQL is the queue**: workers in one process or many share it with `FOR UPDATE SKIP LOCKED`; optimistic
+  concurrency settles races; failures are redelivered with backoff; poison messages go to dead letters.
+- **Survives restarts**: kill the process mid-saga, start it again, and the order continues where it was.
+
+Try it with the API sample:
+
+```bash
+docker compose -f samples/Shop.Api/compose.yaml up -d
+ConnectionStrings__Wyrd="Host=localhost;Port=5433;Username=wyrd;Password=wyrd;Database=shop" \
+  dotnet run --project samples/Shop.Api
+```
+
+Your endpoints depend on `IWyrdRuntime`, so the host is configuration: no connection string, and the same API runs in memory.
+
 ## Native AOT, source-generated JSON ✅
 
 Everything Wyrd stores or sends crosses as JSON. In development the runtime uses reflection; for production,
@@ -465,6 +493,7 @@ It does **not** know your business rules. If you compute the tax wrong, Wyrd wil
 
 ```
 src/Wyrd/                  the library
+src/Wyrd.PostgreSql/        Verdandi: the durable runtime on PostgreSQL (package)
 src/Wyrd.Analyzers/        Roslyn analyzers, shipped inside the Wyrd package
 src/Wyrd.Analyzers.CodeFixes/  IDE code fixes, shipped inside the Wyrd package
 tests/Wyrd.Tests/          unit and runtime tests
