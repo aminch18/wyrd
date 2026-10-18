@@ -78,7 +78,9 @@ export function HomePage() {
                         </div>
                         <div className={styles['indent']}>
                             .<span className={styles['code-cyan']}>Then</span>
-                            (Stock.Reserve)
+                            (Stock.Reserve).
+                            <span className={styles['code-cyan']}>Retry</span>
+                            (3.Times)
                         </div>
                         <div className={styles['indent']}>
                             .<span className={styles['code-cyan']}>Then</span>

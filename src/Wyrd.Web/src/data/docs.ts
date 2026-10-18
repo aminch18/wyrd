@@ -11,6 +11,17 @@ export const DOC_SECTIONS: DocSection[] = [
         subtitle: 'Why Wyrd exists and what it guarantees by construction.',
     },
     {
+        id: 'semantics',
+        title: 'How Wyrd behaves',
+        subtitle:
+            'The rules behind the API, each marked implemented or planned.',
+    },
+    {
+        id: 'decisions',
+        title: 'Design decisions',
+        subtitle: 'Problem, decision, what it gives you and what it costs.',
+    },
+    {
         id: 'from-ddd',
         title: 'From DDD to Wyrd',
         subtitle:
@@ -240,7 +251,13 @@ export const ANALYZER_RULES = [
         code: 'WYRD0010 / 0011 / 0012',
         severity: 'Warning',
         description:
-            'Process rules: an undo needs retries, every step says how it is undone (or .NoCompensation("why")), every wait has a timeout.',
+            'Process rules: a step with an undo but no retries (WYRD0010, to be replaced by WYRD0014 in v0.3), every step says how it is undone or .NoCompensation("why") (WYRD0011), every wait has .Within (WYRD0012).',
+    },
+    {
+        code: 'WYRD0014',
+        severity: 'Warning',
+        description:
+            'Planned in v0.3, not available yet: every step declares its retry policy, .Retry(...) or .NoRetry("why").',
     },
     {
         code: 'WYRD0013',

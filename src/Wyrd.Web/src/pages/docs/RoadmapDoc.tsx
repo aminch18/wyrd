@@ -2,37 +2,205 @@ import styles from '../../styles/site.module.css'
 import { Callout } from '../../components/common/Callout'
 import { DocArticle } from './DocArticle'
 
-const ROADMAP = [
-    [
-        'v0.2',
-        'Distributed-shaped core',
-        'Available',
-        'Message-driven engine, atomic change sets, virtual time, projections, source-generated JSON, and Native AOT validation.',
-    ],
-    [
-        'v0.3',
-        'Skuld — simulation',
-        'In progress',
-        'Skuld simulation is available: seeded hostile futures, invariants, exact replay, and the engine fixes it found, such as fencing for unknown outcomes. Next: an analyzer for undos without retries, ordered projections, state-aware steps, and typed invokers.',
-    ],
-    [
-        'v0.4',
-        'Urd — replay',
-        'In progress',
-        'The documentation tool already generates AsyncAPI and Mermaid. Instance capture and deterministic replay come next.',
-    ],
-    [
-        'v0.5',
-        'Verdandi — durable runtime',
-        'Planned',
-        'I/O integrations, durable state and scheduling, outbox/inbox storage, transports, and OpenTelemetry.',
-    ],
-    [
-        'v1.0',
-        'Production ready',
-        'Planned',
-        'Process versioning, end-to-end Native AOT, agent tooling, and complete framework documentation.',
-    ],
+type Item = readonly [done: boolean, text: string]
+
+interface Milestone {
+    version: string
+    title: string
+    status: string
+    copy: string
+    items: readonly Item[]
+}
+
+const ROADMAP: readonly Milestone[] = [
+    {
+        version: 'v0.0',
+        title: 'Spike',
+        status: 'Available',
+        copy: 'The process model as data, with two syntaxes building the same model.',
+        items: [
+            [
+                true,
+                'Process model as data (Process, StepNode, AwaitNode) with structural equality',
+            ],
+            [true, 'Fluent syntax, and the opt-in pipe syntax (>>)'],
+            [true, 'Extension member literals such as 15.Minutes and 3.Times'],
+            [
+                true,
+                'Result<TOk, TError>, the [Union] marker, Mermaid rendering',
+            ],
+        ],
+    },
+    {
+        version: 'v0.0.x',
+        title: 'Runnable core',
+        status: 'Available',
+        copy: 'Slices with pure decisions and a deterministic in-memory runtime.',
+        items: [
+            [true, 'Slices with a static pure Decide, and state via IState'],
+            [true, 'Explicit correlation with StartOn and Await'],
+            [
+                true,
+                'Deterministic InMemoryRuntime with a virtual clock: retries, reverse compensation, timeouts, duplicates, correlation',
+            ],
+            [
+                true,
+                'samples/Shop and library scaffolding (CI on 3 operating systems)',
+            ],
+        ],
+    },
+    {
+        version: 'v0.1',
+        title: 'Messages done right',
+        status: 'Available',
+        copy: 'Commands, domain events and integration events as different things, enforced at build time.',
+        items: [
+            [
+                true,
+                'Message taxonomy, contracts split from slices, explicit publication mapping',
+            ],
+            [
+                true,
+                'Runtime rules: one owner per command, only integration events published from outside',
+            ],
+            [
+                true,
+                'Analyzers WYRD0001 to WYRD0004, contract snapshots with breaking-change detection (WYRD0200 to WYRD0204) and a code fix',
+            ],
+            [true, 'Multi-version publishing and upcasters for subscribers'],
+        ],
+    },
+    {
+        version: 'v0.2',
+        title: 'Distributed-shaped core, in memory',
+        status: 'Available',
+        copy: 'A message-driven engine that behaves like a distributed system while staying deterministic.',
+        items: [
+            [
+                true,
+                'Steps as command messages with Accepted / Rejected / Faulted replies; everything crosses the queue as JSON',
+            ],
+            [
+                true,
+                'One transaction per message (state, inbox, outbox, timers) behind a storage port, with an in-memory store',
+            ],
+            [
+                true,
+                'Retries with backoff, early events parked, projections with redelivery protection',
+            ],
+            [
+                true,
+                'Process outcomes as commands (.OnCompensated), Wyrd.Testing Given/When/Then',
+            ],
+            [
+                true,
+                'Source-generated JSON with analyzers WYRD0300 to WYRD0302, and Native AOT checked in CI',
+            ],
+        ],
+    },
+    {
+        version: 'v0.3',
+        title: 'Skuld — simulate the future',
+        status: 'In progress',
+        copy: 'Failure simulation is available. The retry semantics and suspension described in How Wyrd behaves are still open.',
+        items: [
+            [
+                true,
+                'Skuld.SimulateAsync: seeded futures with faults, redelivery and reordering, invariants, replay by seed',
+            ],
+            [
+                true,
+                'Engine fixes found by Skuld: attempt-aware replies, unknown-outcome steps compensated, thread-safe type registry',
+            ],
+            [true, 'Typed invokers in the pipe syntax, no reflection'],
+            [
+                true,
+                'Analyzers WYRD0010 (undo without retries), WYRD0011 (how a step is undone), WYRD0012 (await without .Within), WYRD0013 (process style), WYRD0020 (exhaustive union switch)',
+            ],
+            [
+                false,
+                'Retry semantics: every step declares .Retry(...) or .NoRetry("why") (WYRD0014); undos always insist; WYRD0010 removed',
+            ],
+            [
+                false,
+                'Suspend instead of failing silently, with operations to resume or compensate',
+            ],
+            [false, 'Process structure fingerprint per instance'],
+            [false, 'Steps that read the events of earlier steps'],
+            [false, 'Ordered projections per stream'],
+            [
+                false,
+                'Shrinking: reduce a failing future to the fewest perturbations',
+            ],
+        ],
+    },
+    {
+        version: 'v0.4',
+        title: 'Urd — replay the past, and the dotnet wyrd tool',
+        status: 'In progress',
+        copy: 'The documentation tool already generates AsyncAPI and Mermaid. Instance capture and replay come next.',
+        items: [
+            [true, 'dotnet wyrd asyncapi'],
+            [true, 'dotnet wyrd diagram'],
+            [false, 'Process instance history capture'],
+            [false, 'dotnet wyrd replay <instance> --as-test'],
+        ],
+    },
+    {
+        version: 'v0.5',
+        title: 'Verdandi — run the present',
+        status: 'Planned',
+        copy: 'The durable runtime and the only place with real I/O.',
+        items: [
+            [
+                false,
+                'Integrations (IIntegration): the only I/O, with idempotency keys and recorded outcomes',
+            ],
+            [
+                false,
+                'Framework reply envelope and re-send with stable message ids',
+            ],
+            [false, 'Ports for transport, outbox, process state and scheduler'],
+            [false, 'EF Core outbox, inbox and state (PostgreSQL, SQL Server)'],
+            [false, 'Durable scheduler for timeouts'],
+            [false, 'RabbitMQ transport'],
+            [false, 'OpenTelemetry with process-level traces'],
+        ],
+    },
+    {
+        version: 'Docs',
+        title: 'Documentation & adoption',
+        status: 'Continuous',
+        copy: 'Teaching the mental model matters as much as the code.',
+        items: [
+            [true, 'Guide: From classic DDD to Wyrd'],
+            [
+                true,
+                'Guidance on shared invariants living on the state or in pure domain policies',
+            ],
+            [false, 'Rich aggregate in samples/Shop (Order, OrderLine, Money)'],
+            [false, 'Guide: modelling read models for screens and reports'],
+            [
+                false,
+                'Docs site with the mental model first, API reference second',
+            ],
+        ],
+    },
+    {
+        version: 'v1.0',
+        title: 'Production ready',
+        status: 'Planned',
+        copy: 'Everything needed to run Wyrd with confidence.',
+        items: [
+            [
+                false,
+                'Process versioning: a snapshot of every process, with breaking changes failing the build until in-flight instances are migrated',
+            ],
+            [false, 'Native AOT verified end to end'],
+            [false, 'dotnet wyrd CLI and an MCP server for agents'],
+            [false, 'Docs site'],
+        ],
+    },
 ] as const
 
 export function RoadmapDoc() {
@@ -43,7 +211,7 @@ export function RoadmapDoc() {
             lead="Wyrd grows around three capabilities: simulate the future, replay the past, and run the present."
         >
             <div className={styles['roadmap-list']}>
-                {ROADMAP.map(([version, title, status, copy]) => (
+                {ROADMAP.map(({ version, title, status, copy, items }) => (
                     <article key={version}>
                         <span>{version}</span>
                         <div>
@@ -52,13 +220,43 @@ export function RoadmapDoc() {
                                 <em>{status}</em>
                             </div>
                             <p>{copy}</p>
+                            <ul className={styles['roadmap-items']}>
+                                {items.map(([done, text]) => (
+                                    <li
+                                        key={text}
+                                        className={done ? styles.done : ''}
+                                    >
+                                        <span>{done ? 'Done' : 'Open'}</span>
+                                        <div>{text}</div>
+                                    </li>
+                                ))}
+                            </ul>
                         </div>
                     </article>
                 ))}
             </div>
+            <h2>Later</h2>
+            <ul>
+                <li>Event Modeling to code and back</li>
+                <li>Live process dashboard</li>
+                <li>
+                    Azure Service Bus and Kafka transports, and community
+                    adapters (Wolverine, MassTransit)
+                </li>
+            </ul>
+            <h2>Open decisions</h2>
+            <ul>
+                <li>State persistence: state-stored, event-sourced, or both</li>
+                <li>
+                    The full rules catalog (what &quot;correct&quot; means, rule
+                    by rule)
+                </li>
+            </ul>
             <Callout title="The roadmap is a living contract">
-                The repository roadmap is the source of truth. Features marked
-                as planned here are not claims about the current package.
+                The repository roadmap is the source of truth. Items marked Open
+                here are not claims about the current package. The planned
+                behaviour of v0.3 is described in{' '}
+                <a href="#/docs/semantics">How Wyrd behaves</a>.
             </Callout>
         </DocArticle>
     )
