@@ -109,8 +109,8 @@ modular monolith. Domain boundaries and deployment boundaries are separate choic
 
 Start with one meaningful behavior or bounded context. Wyrd is not a requirement to rewrite an application,
 and a simple CRUD screen may not benefit from a command/event/process model. Today the runtime is in memory
-and loses its data on restart; durable storage, transports and recorded-instance replay remain roadmap
-capabilities rather than production guarantees.
+and loses its data on restart; durable storage and transports remain roadmap capabilities
+rather than production guarantees.
 
 ## The three Norns
 
@@ -564,8 +564,7 @@ A history recorded with another process structure is reported up front instead o
 Most event-driven code will be written by AI agents. Wyrd is designed so they can't get it wrong quietly:
 a tiny pure surface, and diagnostics written for a feedback loop — *what* is wrong, *why* it matters and
 *how* to fix it, like `WYRD0201` above; the process rules (WYRD0011–0014) already ask for every retry, undo and
-time limit. Next: **Urd**, replaying a recorded instance as a test (`dotnet wyrd replay --as-test`), and an MCP
-server.
+time limit, and Urd turns a recorded instance into a test (`dotnet wyrd replay --as-test`). Next: an MCP server.
 
 ## What Wyrd guarantees — and what it doesn't
 

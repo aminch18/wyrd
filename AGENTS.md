@@ -80,14 +80,13 @@ into `main`. Merge the latest `main` into your branch right before opening the P
 
 | Work | Owner | Branch | In bounds |
 |---|---|---|---|
-| v0.4 Urd: instance history capture, replay as a test | Claude | `feature/v0.4-urd` | `src/Wyrd/Runtime/**`, `src/Wyrd.Testing/**`, `src/Wyrd.Tool/Commands/Replay*`, `docs/design/**` |
-| Verdandi on PostgreSQL (parked until v0.4 ships) | Claude | `feature/verdandi` | `src/Wyrd.PostgreSql/**`, `tests/Wyrd.PostgreSql.Tests/**` |
+| v0.5 Verdandi: the durable runtime on PostgreSQL | Claude | `feature/verdandi` | `src/Wyrd.PostgreSql/**`, `tests/Wyrd.PostgreSql.Tests/**`, `src/Wyrd/Runtime/**` (host ports), `docs/design/**` |
 | [009](docs/tasks/009-docs-site.md) — docs site: mental model first, API reference second | Codex | `codex/docs-site` | `src/Wyrd.Web/**` |
 | [010](docs/tasks/010-native-aot-end-to-end.md) — Native AOT verified end to end | Codex | `codex/aot-end-to-end` | `samples/Shop.Api/**`, AOT steps in `ci.yml` |
-| [011](docs/tasks/011-wyrd-mcp-server.md) — `dotnet wyrd mcp` for agents (**starts after v0.4 merges**) | Codex | `codex/wyrd-mcp` | `src/Wyrd.Tool/Mcp/**`, `tests/Wyrd.Tool.Tests/**` |
+| [011](docs/tasks/011-wyrd-mcp-server.md) — `dotnet wyrd mcp` for agents | Codex | `codex/wyrd-mcp` | `src/Wyrd.Tool/Mcp/**`, `tests/Wyrd.Tool.Tests/**` |
 | [012](docs/tasks/012-process-snapshots.md) — process snapshots: a changed process fails CI | Codex | `codex/process-snapshots` | `src/Wyrd.Tool/Processes*`, `samples/Shop/processes.wyrd.txt` |
-| [013](docs/tasks/013-opentelemetry-traces.md) — OpenTelemetry process traces (**starts after v0.4 merges**) | Codex | `codex/opentelemetry` | `src/Wyrd/Runtime/**` (tracing only) |
-| Next for Claude after v0.4: Verdandi (v0.5), then the migration of in-flight instances (v1.0 process versioning) | Claude | — | — |
+| [013](docs/tasks/013-opentelemetry-traces.md) — OpenTelemetry process traces | Codex | `codex/opentelemetry` | `src/Wyrd/Runtime/**` (tracing only) |
+| Next for Claude after Verdandi: migration of in-flight instances (v1.0 process versioning) | Claude | — | — |
 
 Each task file lists its exact bounds. **Tasks come only from open items in `docs/ROADMAP.md`**, in milestone order,
 except that an item of a later milestone may start early **when it doesn't depend on unfinished work**. A task that
