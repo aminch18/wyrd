@@ -4,7 +4,7 @@
 |---|---|
 | Branch | `codex/wyrd-mcp` |
 | Roadmap | v1.0 — "`dotnet wyrd` CLI + MCP server for agents" (the MCP half; the CLI exists) |
-| Starts after | v0.5 is done: the server exposes the finished CLI, `replay` included |
+| Starts after | v0.4 Urd is merged (#20): the server exposes `replay` too |
 
 Read first: `AGENTS.md` (review checklist), `src/Wyrd.Tool/**`, `tests/Wyrd.Tool.Tests/**`,
 `docs/tasks/001-wyrd-tool.md`, the [MCP specification](https://modelcontextprotocol.io/specification) and the
@@ -28,7 +28,7 @@ Rules:
 3. Use the official SDK; no hand-rolled JSON-RPC. Add the package to `Directory.Packages.props`.
 4. A short section in the tool's README part (`README.md`, your own section) showing how to register the server in
    an MCP client (`"command": "dotnet", "args": ["wyrd", "mcp"]`), with output copied from a real run.
-5. `replay` is not exposed: it arrives with v0.4 Urd; leave a clear place for it, don't stub it.
+5. `replay` is exposed too (timeline, and the test with `--as-test`), sharing `ReplayTest` with the CLI.
 
 ## Bounds
 
@@ -36,8 +36,8 @@ Rules:
   `src/Wyrd.Tool/Program.cs`, the shared functions in `src/Wyrd.Tool/*.cs` only as far as rule 1 needs,
   `tests/Wyrd.Tool.Tests/**`, `Directory.Packages.props` (one line), your section of `README.md`, your lines in
   `CHANGELOG.md`.
-- Out: `src/Wyrd/**`, `src/Wyrd.Tool/Commands/Replay*` (v0.4 Urd works there), the roadmap item (it stays open
-  until the CLI has `replay` too; say so in the PR).
+- Out: `src/Wyrd/**`, `src/Wyrd.Tool/Commands/Replay*` (use `ReplayTest`, don't change the command). Tick the
+  roadmap item: with `replay` in the CLI and the MCP server, it is done.
 
 ## Acceptance
 

@@ -4,7 +4,7 @@
 |---|---|
 | Branch | `codex/process-snapshots` |
 | Roadmap | v1.0 — "Process versioning: snapshot of every process; breaking changes fail the build until in-flight instances are migrated" (the snapshot and the failing check; migration comes later) |
-| Starts after | v0.5 is done and the migration of in-flight instances is designed: the snapshot format must fit it |
+| Starts | now: the snapshot and the check need only `Process.Fingerprint`. Migration of in-flight instances comes later and extends the file, so it starts with a format header (`# wyrd processes 1`) |
 
 Read first: `AGENTS.md` (review checklist), `docs/design/semantics.md` 3.1 (fingerprints), `Process.Fingerprint` in
 `src/Wyrd/Processes/Process.cs`, `src/Wyrd.Tool/**` (`Diagrams` already loads an assembly and finds its public

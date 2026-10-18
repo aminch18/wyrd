@@ -4,7 +4,7 @@
 |---|---|
 | Branch | `codex/opentelemetry` |
 | Roadmap | v0.5 — "OpenTelemetry with process-level traces" |
-| Starts after | v0.4 Urd is merged into `main` (it changes `src/Wyrd/Runtime/**`) |
+| Starts after | v0.4 Urd is merged (#20; it changes `src/Wyrd/Runtime/**`) |
 
 Read first: `AGENTS.md` (review checklist, determinism), `docs/design/semantics.md`, `src/Wyrd/Runtime/Engine.cs`,
 `InMemoryRuntime.cs`, `Messaging.cs`, the .NET guide to

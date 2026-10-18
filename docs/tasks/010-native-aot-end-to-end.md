@@ -4,7 +4,7 @@
 |---|---|
 | Branch | `codex/aot-end-to-end` |
 | Roadmap | v1.0 — "Native AOT verified end to end" |
-| Starts after | v0.5 is done: "end to end" includes the durable host (PostgreSQL, RabbitMQ), not only the in-memory one |
+| Starts | now: nothing it needs is unfinished. When Verdandi lands, its PR runs the same smoke script against the durable host |
 
 Read first: `AGENTS.md` (review checklist), `samples/Shop.Api/**`, `samples/Shop.Console/**`, `samples/Shop/ShopJson.cs`,
 `.github/workflows/ci.yml` (the existing "Native AOT smoke test" step).
