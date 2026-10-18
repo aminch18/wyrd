@@ -104,7 +104,7 @@ mental model matters as much as the code.
       `AddLine`, `CancelLine` and `CancelOrder` slices sharing invariants defined on the state; API endpoints
 - [x] Guidance: shared invariants live on the state or in pure domain policies, never duplicated across slices
       (covered in the DDD guide; an analyzer for state-module cohesion is still a possible future addition)
-- [ ] Guide: modelling read models (projections) for screens and reports
+- [x] Guide: modelling read models (projections) for screens and reports
 - [ ] Docs site with the mental model first, API reference second
 
 ## v1.0 — Production ready

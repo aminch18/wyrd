@@ -103,6 +103,7 @@ modular monolith. Domain boundaries and deployment boundaries are separate choic
 
 - [The Wyrd philosophy](https://github.com/aminch18/wyrd/blob/main/docs/guides/philosophy.md): why decisions, effects, and processes have distinct responsibilities; when that separation helps.
 - [From classic DDD to Wyrd](https://github.com/aminch18/wyrd/blob/main/docs/guides/from-ddd-to-wyrd.md): the same order-cancellation rule in both styles, with aggregates, entities, value objects, invariants, repositories, and events mapped one by one.
+- [Modelling read models](https://github.com/aminch18/wyrd/blob/main/docs/guides/read-models.md): projections for screens and reports, ordering guarantees, testing, and query endpoints.
 - [Quick start](#quick-start): see the concrete APIs after the architectural change makes sense.
 - [The Shop sample](https://github.com/aminch18/wyrd/tree/main/samples/Shop) and [business specifications](https://github.com/aminch18/wyrd/tree/main/samples/Shop.Tests): follow the model in working code.
 

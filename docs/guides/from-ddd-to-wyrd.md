@@ -187,6 +187,8 @@ Today, use the in-memory host to learn and validate the model. It loses its data
 
 ## Continue from the example
 
+Continue with [Modelling read models for screens and reports](read-models.md) to shape query views, handle facts from several owners, and test ordering rules without putting business decisions in endpoints.
+
 Read the actual [Shop cancellation slice](https://github.com/aminch18/wyrd/blob/main/samples/Shop/Orders/CancelOrder.cs), [order state](https://github.com/aminch18/wyrd/blob/main/samples/Shop/Orders/PlaceOrder.cs), and [business specifications](https://github.com/aminch18/wyrd/tree/main/samples/Shop.Tests). Then follow the site's messages, processes, contracts, and CLI chapters as implementation references.
 
 For the conventional aggregate and value-object background, see Microsoft's [domain-model guide](https://learn.microsoft.com/en-us/dotnet/architecture/microservices/microservice-ddd-cqrs-patterns/microservice-domain-model) and [value-object guide](https://learn.microsoft.com/en-us/dotnet/architecture/microservices/microservice-ddd-cqrs-patterns/implement-value-objects). Wyrd's functional expression is the project's architectural choice, not a prerequisite of DDD itself.
