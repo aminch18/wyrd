@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Breaking
+
+- The tool executable is now `dotnet-wyrd`, so the documented `dotnet wyrd` command works after a global
+  installation. Replace direct `wyrd` invocations with `dotnet wyrd` (or `dotnet-wyrd`).
+
 ### Added
 
 - `dotnet wyrd mcp`: an official-SDK stdio server exposing the existing Mermaid, AsyncAPI, contract parser and

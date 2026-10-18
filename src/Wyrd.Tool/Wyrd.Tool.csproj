@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <PackAsTool>true</PackAsTool>
-    <ToolCommandName>wyrd</ToolCommandName>
+    <ToolCommandName>dotnet-wyrd</ToolCommandName>
     <IsAotCompatible>false</IsAotCompatible>
     <Description>Generate AsyncAPI and Mermaid documentation from Wyrd contracts and processes.</Description>
   </PropertyGroup>
