@@ -29,6 +29,12 @@ public sealed class ProcessBuilder<TTrigger>
         where TCommand : ICommand =>
         Append(new StepNode(StepRef.Typed(step)));
 
+    /// <summary>
+    /// A step that also reads events earlier steps produced (or the process awaited), after the trigger:
+    /// <c>.Then(Shipping.Ship)</c> with <c>ShipOrder Ship(OrderPlaced order, PaymentCharged charged)</c>.
+    /// </summary>
+    public ProcessBuilder<TTrigger> Then(Delegate step) => Append(new StepNode(StepRef.Untyped(step)));
+
     /// <summary>Waits for an external event. <paramref name="key"/> must match the process key.</summary>
     public ProcessBuilder<TTrigger> Await<TEvent>(Func<TEvent, object> key)
         where TEvent : IEvent
@@ -45,9 +51,32 @@ public sealed class ProcessBuilder<TTrigger>
         where TCommand : ICommand =>
         Append(new CompensatedNode(StepRef.Typed(outcome)));
 
-    public ProcessBuilder<TTrigger> Undo<TCommand>(Func<TTrigger, TCommand> compensation)
+    /// <summary>
+    /// How the last step is undone if a later step fails. Undoing always insists — 10 retries by default —
+    /// because a compensation that gives up leaves the world inconsistent; adjust it with <paramref name="insist"/>.
+    /// </summary>
+    public ProcessBuilder<TTrigger> Undo<TCommand>(Func<TTrigger, TCommand> compensation, Attempts? insist = null, Backoff backoff = Backoff.Exponential)
         where TCommand : ICommand =>
-        ModifyLast(n => NodeModifiers.Undo(n, StepRef.Typed(compensation)));
+        ModifyLast(n => NodeModifiers.Undo(n, StepRef.Typed(compensation), insist is { } a ? new RetryPolicy(a, backoff) : null));
+
+    /// <summary>An undo that also reads events produced before its step, after the trigger.</summary>
+    public ProcessBuilder<TTrigger> Undo(Delegate compensation, Attempts? insist = null, Backoff backoff = Backoff.Exponential) =>
+        ModifyLast(n => NodeModifiers.Undo(n, StepRef.Untyped(compensation), insist is { } a ? new RetryPolicy(a, backoff) : null));
+
+    /// <summary>
+    /// When the last step's retries run out, compensate automatically instead of suspending the instance for a human.
+    /// Reads as "retry three times, or compensate": <c>.Retry(3.Times).OrCompensate()</c>.
+    /// </summary>
+    public ProcessBuilder<TTrigger> OrCompensate() => ModifyLast(NodeModifiers.OrCompensate);
+
+    /// <summary>Declares that the last step is not retried, and why (e.g. "the carrier retries on its side").</summary>
+    public ProcessBuilder<TTrigger> NoRetry(string reason) => ModifyLast(n => NodeModifiers.NoRetry(n, reason));
+
+    /// <summary>
+    /// Declares that the last step needs no undo if a later step fails, and why (e.g. "only sends an email").
+    /// Leaving it unsaid is reported by WYRD0011.
+    /// </summary>
+    public ProcessBuilder<TTrigger> NoCompensation(string reason) => ModifyLast(n => NodeModifiers.NoCompensation(n, reason));
 
     public ProcessBuilder<TTrigger> Retry(Attempts attempts, Backoff backoff = Backoff.Exponential) =>
         ModifyLast(n => NodeModifiers.Retry(n, attempts, backoff));
@@ -65,6 +94,7 @@ public sealed class ProcessBuilder<TTrigger>
     internal ProcessBuilder<TTrigger> Append(ProcessNode node)
     {
         NodeModifiers.EnsureAccepts(node, typeof(TTrigger));
+        node = NodeModifiers.Bind<TTrigger>(node);
         if (node is CompensatedNode outcome)
         {
             return _outcome is null
@@ -89,6 +119,7 @@ public sealed class ProcessBuilder<TTrigger>
 
         var modified = modify(_nodes[^1]);
         NodeModifiers.EnsureAccepts(modified, typeof(TTrigger));
+        modified = NodeModifiers.Bind<TTrigger>(modified);
         return new(_name, _keyOf, _nodes.SetItem(_nodes.Length - 1, modified), _outcome);
     }
 }

@@ -2,7 +2,7 @@ import styles from '../../styles/site.module.css'
 import { useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 
-const INSTALL_COMMAND = 'dotnet add package Wyrd --prerelease'
+const INSTALL_COMMAND = 'dotnet add package Wyrd'
 
 export function TerminalInstall() {
     const [copied, setCopied] = useState(false)
@@ -19,8 +19,7 @@ export function TerminalInstall() {
             <code>
                 <span className={styles['shell-command']}>dotnet</span>{' '}
                 <span className={styles['shell-verb']}>add package</span>{' '}
-                <span className={styles['shell-package']}>Wyrd</span>{' '}
-                <span className={styles['shell-option']}>--prerelease</span>
+                <span className={styles['shell-package']}>Wyrd</span>
             </code>
             <button
                 type="button"

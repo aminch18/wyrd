@@ -26,7 +26,24 @@ Before 1.0, minor versions may contain breaking changes; they are always called 
 4. CI builds, tests, packs and creates the GitHub Release with the packages and the changelog notes
    (marked as pre-release when the tag has a suffix).
 
-Publishing to nuget.org is prepared in `.github/workflows/ci.yml` and will be enabled when the repository goes public.
+## Publishing to nuget.org
+
+Packages are pushed with [Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing): nuget.org
+trusts the release job of this repository, and each run gets a short-lived API key. No key is stored anywhere.
+The job skips the push (with a notice in the log) while the repository variable `NUGET_USER` is not set.
+One-time setup by the owner:
+
+1. Sign in at [nuget.org](https://www.nuget.org/) and open *your user > Trusted Publishing > Create*:
+   repository owner `aminch18`, repository `wyrd`, workflow file `ci.yml`, environment empty.
+2. In GitHub, *Settings > Secrets and variables > Actions > Variables > New repository variable*: name `NUGET_USER`,
+   value your nuget.org **username** (not your email).
+   If Trusted Publishing can't be set up, a classic API key works too: create one scoped to `Wyrd*` with push
+   rights (*your user > API Keys*) and store it as the repository **secret** `NUGET_API_KEY`.
+3. Later, optional: ask for the `Wyrd` prefix reservation by email to account@nuget.org (prefix, nuget.org username,
+   repository URL). Reserved packages show as verified and nobody else can publish `Wyrd.*`; nuget.org reviews
+   requests by hand and expects some adoption first.
+4. Push a version tag as in the steps above. Packages appear on nuget.org after validation (a few minutes).
+   A published version can't be deleted, only unlisted.
 
 ## Packages
 
@@ -36,7 +53,7 @@ All packages are versioned in **lockstep**: one tag versions every package, so `
 | Package | Contents |
 |---|---|
 | `Wyrd` | Messages, slices, processes, projections, the engine and its in-memory host, analyzers and code fixes |
-| `Wyrd.Testing` | Given/When/Then scenarios for slices and projections; Skuld simulation *(planned)* |
+| `Wyrd.Testing` | Given/When/Then scenarios for slices and projections; Skuld failure simulation |
 | `Wyrd.Tool` | `dotnet wyrd` CLI: AsyncAPI and diagrams; Urd replay *(planned)* |
 | `Wyrd.PostgreSql` | Verdandi: the durable runtime on PostgreSQL |
 | `Wyrd.RabbitMq`, `Wyrd.AspNetCore` *(planned)* | Transports between services, hosting integration |

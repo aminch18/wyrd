@@ -5,6 +5,7 @@ using Shop.Orders;
 using Shop.Shipping;
 using Wyrd.Processes;
 using Wyrd.Runtime;
+using Wyrd.Testing;
 
 namespace Wyrd.PostgreSql.Tests;
 
@@ -36,6 +37,33 @@ public class PostgresRuntimeTests(PostgresFixture postgres)
 
         // Only the 15-minute timer is left: when it fires, the process is no longer waiting and it is ignored.
         Assert.Equal((1, 0), await shop.BacklogAsync());
+    }
+
+    [Fact]
+    public async Task an_instance_recorded_on_postgresql_replays_locally_with_urd()
+    {
+        var shop = await postgres.ShopAsync(postgres.NewSchema());
+        await shop.SendAsync(new Restock("KEYBOARD", 5));
+        await shop.SendAsync(new PlaceOrder("A-1", "KEYBOARD", 2, 2_500m)); // declined: compensated
+        await DrainAsync(shop);
+
+        // "Production" is PostgreSQL; the replay runs in memory, against the same code.
+        var history = InstanceHistory.FromJson((await shop.HistoryOfAsync(Fulfillment, "A-1"))!.ToJson());
+        Assert.Contains(history.Entries, e => e.Kind == HistoryKind.Compensated);
+
+        (await Urd.ReplayAsync(ShopModule.CreateRuntime, Fulfillment, history)).ThrowIfDiverged();
+    }
+
+    [Fact]
+    public async Task read_models_keep_their_stream_order_on_postgresql()
+    {
+        var shop = await postgres.ShopAsync(postgres.NewSchema());
+        await shop.SendAsync(new Restock("KEYBOARD", 5));
+        await shop.SendAsync(new PlaceOrder("A-1", "KEYBOARD", 1, 89m));
+        await shop.PublishAsync(new PaymentConfirmed("A-1"));
+        await DrainAsync(shop);
+
+        Assert.Equal("Shipped", (await shop.ViewAsync<OrderSummary>("A-1"))!.Status);
     }
 
     [Fact]

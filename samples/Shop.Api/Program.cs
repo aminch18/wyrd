@@ -2,6 +2,7 @@ using Npgsql;
 using Shop;
 using Shop.Api;
 using Shop.Contracts;
+using Shop.Fulfillment;
 using Shop.Inventory;
 using Shop.Orders;
 using Shop.Payments;
@@ -41,6 +42,18 @@ app.MapPost("/stock/{sku}", async (string sku, RestockRequest request, IWyrdRunt
 app.MapPost("/orders", async (PlaceOrderRequest request, IWyrdRuntime wyrd) =>
     ToHttp(await wyrd.SendAsync(new PlaceOrder(request.OrderId, request.Sku, request.Quantity, request.Amount)), $"/orders/{request.OrderId}"));
 
+app.MapPost("/orders/{orderId}/lines", async (string orderId, AddLineRequest request, IWyrdRuntime wyrd) =>
+    ToHttp(await wyrd.SendAsync(new AddLine(orderId, request.LineId, request.Sku, request.Quantity, request.Amount, request.Currency)), $"/orders/{orderId}"));
+
+app.MapDelete("/orders/{orderId}/lines/{lineId}", async (string orderId, string lineId, IWyrdRuntime wyrd) =>
+    ToHttp(await wyrd.SendAsync(new CancelLine(orderId, lineId)), $"/orders/{orderId}"));
+
+app.MapPost("/orders/{orderId}/submit", async (string orderId, IWyrdRuntime wyrd) =>
+    ToHttp(await wyrd.SendAsync(new SubmitOrder(orderId)), $"/orders/{orderId}"));
+
+app.MapPost("/orders/{orderId}/cancel", async (string orderId, IWyrdRuntime wyrd) =>
+    ToHttp(await wyrd.SendAsync(new CancelDraftOrder(orderId)), $"/orders/{orderId}"));
+
 // ── Facts from other systems: the payment provider's webhook ────────────────────────────────
 
 app.MapPost("/webhooks/payments", async (PaymentWebhook webhook, IWyrdRuntime wyrd) =>
@@ -53,9 +66,16 @@ app.MapPost("/webhooks/payments", async (PaymentWebhook webhook, IWyrdRuntime wy
 
 app.MapGet("/orders", (IWyrdRuntime wyrd) => wyrd.ViewsAsync<OrderSummary>());
 
+app.MapGet("/order-details", (IWyrdRuntime wyrd) => wyrd.ViewsAsync<OrderDetail>());
+
 app.MapGet("/orders/{orderId}", async (string orderId, IWyrdRuntime wyrd) =>
-    await wyrd.ViewAsync<OrderSummary>(orderId) is { } order
-        ? Results.Ok(new { order, fulfillment = (await wyrd.StatusOfAsync(Shop.Fulfillment.Processes.OrderFulfillment, orderId))?.ToString() })
+    await wyrd.ViewAsync<OrderDetail>(orderId) is { } details
+        ? Results.Ok(new
+        {
+            order = await wyrd.ViewAsync<OrderSummary>(orderId),
+            details,
+            fulfillment = (await wyrd.StatusOfAsync(Processes.OrderFulfillment, orderId))?.ToString(),
+        })
         : Results.NotFound());
 
 app.MapGet("/stock/{sku}", async (string sku, IWyrdRuntime wyrd) =>
@@ -74,6 +94,18 @@ if (connectionString is null)
     dev.MapPost("/payment-gateway/fail", (int times, InMemoryRuntime wyrd) =>
     {
         wyrd.FailNext<ChargePayment>(times);
+        return Results.NoContent();
+    });
+
+    dev.MapPost("/orders/{orderId}/resume", async (string orderId, InMemoryRuntime wyrd) =>
+    {
+        await wyrd.ResumeAsync(Processes.OrderFulfillment, orderId);
+        return Results.NoContent();
+    });
+
+    dev.MapPost("/orders/{orderId}/compensate", async (string orderId, InMemoryRuntime wyrd) =>
+    {
+        await wyrd.CompensateAsync(Processes.OrderFulfillment, orderId);
         return Results.NoContent();
     });
 

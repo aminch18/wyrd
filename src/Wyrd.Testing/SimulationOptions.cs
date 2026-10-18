@@ -21,6 +21,12 @@ public sealed record SimulationOptions
     /// <summary>How long the clock runs after the scenario, so every retry and timeout fires.</summary>
     public TimeSpan SettleFor { get; init; } = TimeSpan.FromDays(1);
 
+    /// <summary>Reduce broken futures by replaying them with fewer perturbations.</summary>
+    public bool Shrink { get; init; } = true;
+
+    /// <summary>Maximum replays per broken future, shared by its violated invariants. Zero skips replay.</summary>
+    public int ShrinkBudget { get; init; } = 200;
+
     /// <summary>Replays exactly one future.</summary>
     public SimulationOptions Only(int seed) => this with { Seed = seed, Runs = 1 };
 
@@ -38,6 +44,11 @@ public sealed record SimulationOptions
             {
                 throw new ArgumentOutOfRangeException(name, rate, "A rate is a probability between 0 and 1.");
             }
+        }
+
+        if (ShrinkBudget < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ShrinkBudget), ShrinkBudget, "A shrink budget can't be negative.");
         }
 
         if (SettleFor < TimeSpan.Zero)

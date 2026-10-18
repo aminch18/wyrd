@@ -42,6 +42,12 @@ internal sealed partial class Sql
         CREATE TABLE IF NOT EXISTS {S}.views (
             view_type text NOT NULL, key text NOT NULL, type text NOT NULL, payload text NOT NULL, created bigserial,
             PRIMARY KEY (view_type, key));
+        CREATE TABLE IF NOT EXISTS {S}.projected (
+            state_type text NOT NULL, key text NOT NULL, version bigint NOT NULL,
+            PRIMARY KEY (state_type, key));
+        CREATE TABLE IF NOT EXISTS {S}.held (
+            state_type text NOT NULL, key text NOT NULL, version bigint NOT NULL, type text NOT NULL, payload text NOT NULL,
+            PRIMARY KEY (state_type, key, version));
         CREATE TABLE IF NOT EXISTS {S}.queue (
             id bigserial PRIMARY KEY, envelope text NOT NULL, available_at timestamptz NOT NULL,
             attempts int NOT NULL DEFAULT 0, last_error text);

@@ -39,6 +39,18 @@ internal sealed class Application(MessageTypes types)
     public void Add(Process process)
     {
         Registry.Add(process);
+        RegisterTypesOf(process);
+    }
+
+    /// <summary>Replaces a process with a new definition of the same name, keeping its instances: a redeploy.</summary>
+    public void Redeploy(Process process)
+    {
+        Registry.Redeploy(process);
+        RegisterTypesOf(process);
+    }
+
+    private void RegisterTypesOf(Process process)
+    {
         Register(process.Trigger);
         foreach (var node in process.Nodes)
         {

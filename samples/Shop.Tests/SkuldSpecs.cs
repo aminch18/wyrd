@@ -11,11 +11,18 @@ public class SkuldSpecs
 {
     private const int Received = 5;
 
+    // A suspended order keeps its reservation on purpose, until someone resumes or compensates it.
     private static readonly Invariant StockIsConserved = new("stock is conserved", shop =>
     {
         var shipped = shop.Views<OrderSummary>().Where(o => o.Status == "Shipped").Sum(o => o.Quantity);
-        var available = shop.StateOf<StockItem>("KEYBOARD").Available;
-        return available == Received - shipped ? null : $"{available} keyboards available, expected {Received} received - {shipped} shipped";
+        var stock = shop.StateOf<StockItem>("KEYBOARD");
+        var heldBySuspended = stock.Reservations
+            .Where(r => shop.StatusOf(Shop.Fulfillment.Processes.OrderFulfillment, r.Key) == ProcessStatus.Suspended)
+            .Sum(r => r.Value);
+        var expected = Received - shipped - heldBySuspended;
+        return stock.Available == expected
+            ? null
+            : $"{stock.Available} keyboards available, expected {Received} received - {shipped} shipped - {heldBySuspended} held by suspended orders";
     });
 
     private static readonly Invariant EveryOrderEnds = new("every order ends shipped or cancelled", shop =>
@@ -28,7 +35,7 @@ public class SkuldSpecs
     {
         var open = shop.Views<OrderSummary>()
             .Where(o => o.Status is not ("Shipped" or "Cancelled"))
-            .Where(o => shop.StatusOf(Shop.Fulfillment.Processes.OrderFulfillment, o.OrderId) != ProcessStatus.Failed)
+            .Where(o => shop.StatusOf(Shop.Fulfillment.Processes.OrderFulfillment, o.OrderId) != ProcessStatus.Suspended)
             .ToList();
         return open.Count == 0 ? null : $"orders left open and unflagged: {string.Join(", ", open.Select(o => $"{o.OrderId} ({o.Status})"))}";
     });

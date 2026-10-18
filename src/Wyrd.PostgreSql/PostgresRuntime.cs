@@ -203,6 +203,19 @@ public sealed partial class PostgresRuntime : IWyrdBuilder<PostgresRuntime>, IWy
             : null;
     }
 
+    public async Task<InstanceHistory?> HistoryOfAsync(Process process, object key, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(key);
+        await using var command = _dataSource.CreateCommand($"SELECT data FROM {_sql.S}.instances WHERE process = @p AND key = @k");
+        command.Parameters.AddWithValue("p", process.Name);
+        command.Parameters.AddWithValue("k", Keys.Of(key));
+        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is string data
+            && JsonSerializer.Deserialize(data, WyrdJsonContext.Default.StoredInstance) is { } instance
+            ? new InstanceHistory(instance.Process, instance.Key, instance.Fingerprint, instance.History)
+            : null;
+    }
+
     public async Task<TState> StateOfAsync<TState>(object key, CancellationToken cancellationToken = default)
         where TState : IState<TState>
     {

@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Wyrd.PostgreSql\Wyrd.PostgreSql.csproj" />
     <ProjectReference Include="..\..\samples\Shop\Shop.csproj" />
+    <ProjectReference Include="..\..\src\Wyrd.Testing\Wyrd.Testing.csproj" />
   </ItemGroup>
 
 </Project>

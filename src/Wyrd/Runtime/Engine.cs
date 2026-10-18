@@ -22,6 +22,7 @@ internal sealed class Engine(
 
     public async ValueTask<Decision?> HandleAsync(Envelope envelope, CancellationToken cancellationToken)
     {
+        registry.Validate();
         switch (envelope.Kind)
         {
             case MessageKind.Command:
@@ -80,12 +81,13 @@ internal sealed class Engine(
         ReplyMessage reply;
         if (decision is Decision.Accepted accepted)
         {
+            var version = (current?.Version ?? 0) + 1;
             var (nextType, nextPayload) = types.Serialize(((IState)state).Apply(accepted.Event), slice.State);
-            changes.States.Add(new StoredState(stateType, key, nextType, nextPayload, (current?.Version ?? 0) + 1));
+            changes.States.Add(new StoredState(stateType, key, nextType, nextPayload, version));
 
             var (eventType, eventPayload) = types.Serialize(accepted.Event, slice.Event);
             changes.Events.Add(new StoredMessage(eventType, eventPayload));
-            changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, eventType, eventPayload));
+            changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, eventType, eventPayload, Stream: new StreamRef(stateType, key, version)));
 
             foreach (var publication in registry.PublicationsOf(accepted.Event.GetType()))
             {
@@ -140,10 +142,13 @@ internal sealed class Engine(
     {
         if (command.Process is not null)
         {
-            changes.Outbox.Add(new Envelope(
-                newId(), MessageKind.Reply, ReplyType, MessageTypes.SerializeReply(reply), command.Process, command.MessageId));
+            changes.Outbox.Add(ReplyTo(command, reply));
         }
     }
+
+    /// <summary>The reply envelope to a process command (also used by Urd to answer from a recording).</summary>
+    internal Envelope ReplyTo(Envelope command, ReplyMessage reply) =>
+        new(newId(), MessageKind.Reply, ReplyType, MessageTypes.SerializeReply(reply), command.Process, command.MessageId);
 
     // ── Events: start processes, resume waits, park early arrivals ─────────────────────────────
 
@@ -158,18 +163,9 @@ internal sealed class Engine(
         var changes = new Changes();
         changes.Handled.Add(envelope.MessageId);
 
-        foreach (var projection in registry.Projections)
-        {
-            foreach (var handled in projection.Events)
-            {
-                if (Accept(@event, handled) is { } projected)
-                {
-                    await ProjectAsync(projection, projected, changes, cancellationToken).ConfigureAwait(false);
-                }
-            }
-        }
+        await ProjectInOrderAsync(envelope, @event, changes, cancellationToken).ConfigureAwait(false);
 
-        foreach (var process in registry.Processes)
+        foreach (var process in registry.Active)
         {
             if (Accept(@event, process.Trigger) is { } trigger)
             {
@@ -186,6 +182,62 @@ internal sealed class Engine(
         }
 
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Read models get the events of one stream in the order they happened, whatever the delivery order: an event that
+    /// arrives before an earlier one of its stream is held, and projected once the gap is filled. Processes don't wait.
+    /// </summary>
+    private async ValueTask ProjectInOrderAsync(Envelope envelope, IEvent @event, Changes changes, CancellationToken cancellationToken)
+    {
+        if (registry.Projections.Count == 0)
+        {
+            return;
+        }
+
+        if (envelope.Stream is not { } stream)
+        {
+            await ProjectAsync(@event, changes, cancellationToken).ConfigureAwait(false); // From outside: no stream to order by.
+            return;
+        }
+
+        var projected = await store.LoadProjectedAsync(stream.StateType, stream.Key, cancellationToken).ConfigureAwait(false);
+        if (stream.Version <= projected)
+        {
+            return;
+        }
+
+        if (stream.Version > projected + 1)
+        {
+            log(External, stream.Key, $"{@event.GetType().Name} held for read models until earlier events of its stream arrive");
+            changes.Hold.Add(new StoredHeld(stream.StateType, stream.Key, stream.Version, envelope.Type, envelope.Payload));
+            return;
+        }
+
+        await ProjectAsync(@event, changes, cancellationToken).ConfigureAwait(false);
+        var version = stream.Version;
+        while (await store.FindHeldAsync(stream.StateType, stream.Key, version + 1, cancellationToken).ConfigureAwait(false) is { } held)
+        {
+            changes.Release.Add(held);
+            await ProjectAsync((IEvent)types.Deserialize(held.Type, held.Payload), changes, cancellationToken).ConfigureAwait(false);
+            version++;
+        }
+
+        changes.Projected[(stream.StateType, stream.Key)] = (projected, version);
+    }
+
+    private async ValueTask ProjectAsync(IEvent @event, Changes changes, CancellationToken cancellationToken)
+    {
+        foreach (var projection in registry.Projections)
+        {
+            foreach (var handled in projection.Events)
+            {
+                if (Accept(@event, handled) is { } projected)
+                {
+                    await ProjectAsync(projection, projected, changes, cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
     }
 
     private async ValueTask ProjectAsync(IProjectionHandler projection, IEvent @event, Changes changes, CancellationToken cancellationToken)
@@ -220,7 +272,8 @@ internal sealed class Engine(
 
         var (triggerType, triggerPayload) = types.Serialize(trigger, process.Trigger);
         var instance = new StoredInstance(
-            process.Name, key, triggerType, triggerPayload, 0, ProcessStatus.Running, [], ImmutableDictionary<int, Guid>.Empty, 0, null, false, null, 0);
+            process.Name, key, triggerType, triggerPayload, 0, ProcessStatus.Running, [], ImmutableDictionary<int, Guid>.Empty, [], 0, null, false, null,
+            process.Fingerprint, [new HistoryEntry(now(), HistoryKind.Started) { Type = triggerType, Payload = triggerPayload }], 0);
         log(process.Name, key, $"started by {trigger.GetType().Name}");
         changes.Save(await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false));
     }
@@ -232,21 +285,48 @@ internal sealed class Engine(
         var instance = changes.Find(process.Name, key)
             ?? await store.LoadInstanceAsync(process.Name, key, cancellationToken).ConfigureAwait(false);
 
-        if (instance is { Status: ProcessStatus.Awaiting } && instance.Position == step)
+        if (instance is { Status: ProcessStatus.Awaiting } && DefinitionChanged(process, instance) is { } changed)
+        {
+            // Kept at the step the instance waits at, in case it is what it waits for once its definition is back.
+            changes.Park.Add(Parked(process, key, instance.Position, wait, awaited));
+            changes.Save(changed);
+        }
+        else if (instance is { Status: ProcessStatus.Awaiting } && instance.Position == step)
         {
             log(process.Name, key, $"<- {awaited.GetType().Name}");
             var trigger = Trigger(instance);
-            instance = instance with { Position = step + 1, Status = ProcessStatus.Running, Deadline = null };
+            var fact = Parked(process, key, step, wait, awaited).AsFact();
+            instance = Record(instance, HistoryKind.Received, step: step, message: fact) with
+            {
+                Position = step + 1, Status = ProcessStatus.Running, Deadline = null, Facts = instance.Facts.Add(fact),
+            };
             changes.Save(await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false));
         }
-        else if (instance is null || (instance is { Status: ProcessStatus.Running, Compensating: false } && instance.Position < step))
+        else if (instance is null
+            || (instance is { Status: ProcessStatus.Running, Compensating: false } && instance.Position < step)
+            || (instance is { Status: ProcessStatus.Suspended, Compensating: false } && instance.Position <= step))
         {
-            // Arrived before the process was waiting for it (common in distributed systems): keep it.
+            // Arrived before the process was waiting for it (common in distributed systems), or while it is
+            // suspended: keep it for when the process gets there.
             log(process.Name, key, $"{awaited.GetType().Name} arrived early, parked");
-            var (type, payload) = types.Serialize(awaited, wait.Event);
-            changes.Park.Add(new StoredParked(process.Name, key, step, type, payload));
+            changes.Park.Add(Parked(process, key, step, wait, awaited));
         }
     }
+
+    private StoredParked Parked(Process process, string key, int step, AwaitNode wait, IEvent awaited)
+    {
+        var (type, payload) = types.Serialize(awaited, wait.Event);
+        return new StoredParked(process.Name, key, step, type, payload);
+    }
+
+    /// <summary>
+    /// The instance suspended, when the deployed definition's structure is not the one it started with: continuing
+    /// would run the wrong step. Null when it is the same.
+    /// </summary>
+    private StoredInstance? DefinitionChanged(Process process, StoredInstance instance) =>
+        instance.Fingerprint == process.Fingerprint
+            ? null
+            : Suspend(instance, $"definition changed (started as {instance.Fingerprint}, deployed {process.Fingerprint})");
 
     /// <summary>
     /// The form of a fact a subscriber understands: the exact type or, for integration events, the same contract
@@ -295,12 +375,13 @@ internal sealed class Engine(
                 case AwaitNode wait:
                     var parked = changes.Park.FirstOrDefault(p => p.Process == instance.Process && p.Key == instance.Key && p.Step == instance.Position)
                         ?? await store.FindParkedAsync(instance.Process, instance.Key, instance.Position, cancellationToken).ConfigureAwait(false);
-                    if (parked is not null)
+                    if (parked is not null && types.TypeOf(parked.Type) == wait.Event)
                     {
                         changes.Park.Remove(parked);
                         changes.Unpark.Add(parked);
                         log(instance.Process, instance.Key, $"<- {types.TypeOf(parked.Type).Name} (parked)");
-                        instance = instance with { Position = instance.Position + 1 };
+                        instance = Record(instance, HistoryKind.Received, step: instance.Position, message: parked.AsFact())
+                            with { Position = instance.Position + 1, Facts = instance.Facts.Add(parked.AsFact()) };
                         continue;
                     }
 
@@ -319,18 +400,19 @@ internal sealed class Engine(
         }
 
         log(instance.Process, instance.Key, "completed");
-        return instance with { Status = ProcessStatus.Completed, Pending = null };
+        return Record(instance, HistoryKind.Completed) with { Status = ProcessStatus.Completed, Pending = null };
     }
 
     private StoredInstance SendStep(StoredInstance instance, IEvent trigger, StepRef step, int index, bool compensating, Changes changes)
     {
-        var command = step.Invoke!(trigger);
+        var command = Command(step, instance, trigger);
         var (type, payload) = types.Serialize(command, step.Output ?? command.GetType());
         var id = newId();
         var fences = compensating && instance.Uncertain.TryGetValue(index, out var original) ? original : (Guid?)null;
         changes.Outbox.Add(new Envelope(id, MessageKind.Command, type, payload, new ProcessRef(instance.Process, instance.Key, index, compensating), Fences: fences));
         log(instance.Process, instance.Key, $"-> {command.GetType().Name}");
-        return instance with { Status = ProcessStatus.Running, Pending = id, Attempt = 1 };
+        return Record(instance, HistoryKind.Sent, index, compensating, attempt: 1, message: new StoredMessage(type, payload))
+            with { Status = ProcessStatus.Running, Pending = id, Attempt = 1 };
     }
 
     // ── Replies: advance, retry or compensate ─────────────────────────────────────────────────
@@ -354,6 +436,23 @@ internal sealed class Engine(
         var trigger = Trigger(instance);
         var changes = new Changes();
 
+        // The reply stays in the owner's inbox: resuming re-sends the command with the same id and gets it again.
+        if (instance.Status != ProcessStatus.Suspended && DefinitionChanged(process, instance) is { } changed)
+        {
+            changes.Save(changed);
+            await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (instance.Fingerprint != process.Fingerprint)
+        {
+            log(target.Process, target.Key, "reply kept for later: the definition changed");
+            return;
+        }
+
+        instance = Record(instance, HistoryKind.Replied, target.Step, target.Compensating, target.Attempt,
+            reply.Type is null ? null : new StoredMessage(reply.Type, reply.Payload!), outcome: reply.Outcome);
+
         if (target.Step == process.Nodes.Length)
         {
             changes.Save(Conclude(instance, process.Outcome!, target, trigger, reply, changes));
@@ -369,7 +468,13 @@ internal sealed class Engine(
                 log(instance.Process, instance.Key, $"ok {types.TypeOf(reply.Type!).Name}");
                 instance = target.Compensating
                     ? ContinueCompensation(process, instance with { Completed = instance.Completed.RemoveAt(instance.Completed.Count - 1) }, trigger, changes)
-                    : await AdvanceAsync(process, instance with { Completed = instance.Completed.Add(target.Step), Position = target.Step + 1, Pending = null }, trigger, changes, cancellationToken).ConfigureAwait(false);
+                    : await AdvanceAsync(process, instance with
+                    {
+                        Completed = instance.Completed.Add(target.Step),
+                        Position = target.Step + 1,
+                        Pending = null,
+                        Facts = instance.Facts.Add(new StoredMessage(reply.Type!, reply.Payload!)),
+                    }, trigger, changes, cancellationToken).ConfigureAwait(false);
                 break;
 
             case ReplyOutcome.NothingToUndo:
@@ -381,7 +486,7 @@ internal sealed class Engine(
             case ReplyOutcome.Rejected:
                 log(instance.Process, instance.Key, $"rejected {types.Deserialize(reply.Type!, reply.Payload!)}");
                 instance = target.Compensating
-                    ? Fail(instance, step.Compensation!)
+                    ? Suspend(instance, $"undo {step.Compensation} was rejected: {types.Deserialize(reply.Type!, reply.Payload!)}")
                     : StartCompensation(process, instance, trigger, changes);
                 break;
 
@@ -398,24 +503,38 @@ internal sealed class Engine(
         Process process, StoredInstance instance, StepNode step, ProcessRef target, IEvent trigger, Changes changes)
     {
         var retried = target.Compensating ? step.Compensation! : step.Action;
-        if (Retry(instance, retried, step.Retry, target, trigger, changes) is { } retrying)
+        var policy = target.Compensating ? step.UndoPolicy : step.Retry;
+        if (Retry(instance, retried, policy, target, trigger, changes) is { } retrying)
         {
             return retrying;
         }
 
         if (target.Compensating)
         {
-            return Fail(instance, retried);
+            return Suspend(instance, $"undo {retried} failed after {Attempts(instance.Attempt)}");
         }
 
-        // We give up without knowing whether the command ran: a delayed copy may still execute. Its undo fences it.
+        if (!step.CompensateWhenExhausted)
+        {
+            return Suspend(instance, $"{retried} failed after {Attempts(instance.Attempt)}");
+        }
+
+        return CompensateUncertain(process, instance, step, target.Step, trigger, changes);
+    }
+
+    /// <summary>
+    /// Compensates a process that gave up on a step without knowing whether it ran: a delayed copy may still execute,
+    /// so the step joins the undo list and its undo fences the original command.
+    /// </summary>
+    private StoredInstance CompensateUncertain(Process process, StoredInstance instance, StepNode step, int index, IEvent trigger, Changes changes)
+    {
         if (step.Compensation is not null)
         {
             log(instance.Process, instance.Key, $"outcome of {step.Action} unknown: its undo will fence it");
             instance = instance with
             {
-                Completed = instance.Completed.Add(target.Step),
-                Uncertain = instance.Uncertain.SetItem(target.Step, instance.Pending!.Value),
+                Completed = instance.Completed.Add(index),
+                Uncertain = instance.Uncertain.SetItem(index, instance.Pending!.Value),
             };
         }
 
@@ -436,13 +555,14 @@ internal sealed class Engine(
         log(instance.Process, instance.Key, $"transient failure, retry {instance.Attempt}/{retries} after {Durations.Format(delay)}");
 
         // Same message id: if an earlier attempt did go through, the owner's inbox replays its outcome.
-        var command = retried.Invoke!(trigger);
+        var command = Command(retried, instance, trigger);
         var (type, payload) = types.Serialize(command, retried.Output ?? command.GetType());
         var next = instance.Attempt + 1;
         var fences = target.Compensating && instance.Uncertain.TryGetValue(target.Step, out var original) ? original : (Guid?)null;
         changes.Schedule.Add(new Scheduled(now() + delay, new Envelope(
             instance.Pending!.Value, MessageKind.Command, type, payload, target with { Attempt = next }, Fences: fences)));
-        return instance with { Attempt = next };
+        return Record(instance, HistoryKind.Sent, target.Step, target.Compensating, next, new StoredMessage(type, payload), at: now() + delay)
+            with { Attempt = next };
     }
 
     private StoredInstance StartCompensation(Process process, StoredInstance instance, IEvent trigger, Changes changes)
@@ -471,7 +591,7 @@ internal sealed class Engine(
         }
 
         log(instance.Process, instance.Key, "compensated");
-        return instance with { Completed = completed, Status = ProcessStatus.Compensated, Pending = null };
+        return Record(instance, HistoryKind.Compensated) with { Completed = completed, Status = ProcessStatus.Compensated, Pending = null };
     }
 
     /// <summary>The reply to the OnCompensated outcome command: the end of the compensation.</summary>
@@ -483,19 +603,113 @@ internal sealed class Engine(
             case ReplyOutcome.Accepted:
                 log(instance.Process, instance.Key, $"ok {types.TypeOf(reply.Type!).Name}");
                 log(instance.Process, instance.Key, "compensated");
-                return instance with { Status = ProcessStatus.Compensated, Pending = null };
+                return Record(instance, HistoryKind.Compensated) with { Status = ProcessStatus.Compensated, Pending = null };
             case ReplyOutcome.Rejected:
                 log(instance.Process, instance.Key, $"rejected {types.Deserialize(reply.Type!, reply.Payload!)}");
-                return Fail(instance, outcome.Action);
+                return Suspend(instance, $"outcome {outcome.Action} was rejected: {types.Deserialize(reply.Type!, reply.Payload!)}");
             default:
-                return Retry(instance, outcome.Action, outcome.Retry, target, trigger, changes) ?? Fail(instance, outcome.Action);
+                return Retry(instance, outcome.Action, outcome.Policy, target, trigger, changes)
+                    ?? Suspend(instance, $"outcome {outcome.Action} failed after {Attempts(instance.Attempt)}");
         }
     }
 
-    private StoredInstance Fail(StoredInstance instance, StepRef undo)
+    /// <summary>
+    /// Stops instead of guessing. The instance keeps where it was — position, completed steps, pending command — so an
+    /// operator can resume or compensate it; a late success of the pending command still resumes it on its own.
+    /// </summary>
+    private StoredInstance Suspend(StoredInstance instance, string reason)
     {
-        log(instance.Process, instance.Key, $"FAILED: {undo} could not run, needs attention");
-        return instance with { Status = ProcessStatus.Failed, Pending = null };
+        log(instance.Process, instance.Key, $"SUSPENDED: {reason}, needs attention");
+        return instance with
+        {
+            Status = ProcessStatus.Suspended,
+            Reason = reason,
+            History = instance.History.Add(new HistoryEntry(now(), HistoryKind.Suspended) { Reason = reason }),
+        };
+    }
+
+    // ── Operators: resume or compensate a suspended instance ─────────────────────────────────
+
+    /// <summary>Re-sends what the suspended instance was doing, with the same message id (the owner's inbox makes it safe).</summary>
+    public async ValueTask ResumeAsync(string processName, string key, CancellationToken cancellationToken)
+    {
+        var (process, instance) = await SuspendedAsync(processName, key, cancellationToken).ConfigureAwait(false);
+        var trigger = Trigger(instance);
+        var changes = new Changes();
+        log(instance.Process, instance.Key, "resumed by an operator");
+        instance = Record(instance, HistoryKind.Resumed);
+
+        instance = instance with { Status = ProcessStatus.Running, Reason = null };
+        if (!instance.Compensating && process.Nodes[instance.Position] is AwaitNode)
+        {
+            // Waits again, with a fresh time limit; an event that arrived meanwhile was parked and is taken now.
+            instance = await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false);
+        }
+        else if (!instance.Compensating)
+        {
+            var step = (StepNode)process.Nodes[instance.Position];
+            instance = Resend(instance, trigger, step.Action, instance.Position, compensating: false, changes);
+        }
+        else if (instance.Completed.Count > 0)
+        {
+            var index = instance.Completed[^1];
+            instance = Resend(instance, trigger, ((StepNode)process.Nodes[index]).Compensation!, index, compensating: true, changes);
+        }
+        else
+        {
+            instance = Resend(instance, trigger, process.Outcome!.Action, process.Nodes.Length, compensating: true, changes);
+        }
+
+        changes.Save(instance);
+        await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Undoes a suspended instance that was going forward; the step it gave up on is fenced, like any unknown outcome.</summary>
+    public async ValueTask CompensateAsync(string processName, string key, CancellationToken cancellationToken)
+    {
+        var (process, instance) = await SuspendedAsync(processName, key, cancellationToken).ConfigureAwait(false);
+        if (instance.Compensating)
+        {
+            throw new InvalidOperationException(
+                $"{processName} '{key}' was already compensating when it was suspended: resume it to finish the compensation.");
+        }
+
+        var changes = new Changes();
+        log(instance.Process, instance.Key, "compensation requested by an operator");
+        instance = Record(instance, HistoryKind.CompensationRequested);
+        instance = instance with { Status = ProcessStatus.Running, Reason = null, Deadline = null };
+        changes.Save(process.Nodes[instance.Position] is StepNode step
+            ? CompensateUncertain(process, instance, step, instance.Position, Trigger(instance), changes)
+            : StartCompensation(process, instance, Trigger(instance), changes));
+        await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask<(Process Process, StoredInstance Instance)> SuspendedAsync(string processName, string key, CancellationToken cancellationToken)
+    {
+        var instance = await store.LoadInstanceAsync(processName, key, cancellationToken).ConfigureAwait(false);
+        if (instance is not { Status: ProcessStatus.Suspended })
+        {
+            throw new InvalidOperationException($"{processName} '{key}' is not suspended (it is {instance?.Status.ToString() ?? "unknown"}).");
+        }
+
+        var process = registry.ProcessNamed(processName);
+        return instance.Fingerprint == process.Fingerprint
+            ? (process, instance)
+            : throw new InvalidOperationException(
+                $"{processName} '{key}' started with another definition ({instance.Fingerprint}; deployed: {process.Fingerprint}). "
+                + "Deploy the definition it started with to resume or compensate it; migrating instances comes with process versioning.");
+    }
+
+    private StoredInstance Resend(StoredInstance instance, IEvent trigger, StepRef step, int index, bool compensating, Changes changes)
+    {
+        var command = Command(step, instance, trigger);
+        var (type, payload) = types.Serialize(command, step.Output ?? command.GetType());
+        var id = instance.Pending ?? newId();
+        var fences = compensating && instance.Uncertain.TryGetValue(index, out var original) ? original : (Guid?)null;
+        changes.Outbox.Add(new Envelope(id, MessageKind.Command, type, payload, new ProcessRef(instance.Process, instance.Key, index, compensating), Fences: fences));
+        log(instance.Process, instance.Key, $"-> {command.GetType().Name} (again)");
+        return Record(instance, HistoryKind.Sent, index, compensating, attempt: 1, message: new StoredMessage(type, payload))
+            with { Pending = id, Attempt = 1 };
     }
 
     // ── Timeouts ──────────────────────────────────────────────────────────────────────────────
@@ -510,12 +724,57 @@ internal sealed class Engine(
         }
 
         var process = registry.ProcessNamed(target.Process);
-        var wait = (AwaitNode)process.Nodes[target.Step];
         var changes = new Changes();
+        if (DefinitionChanged(process, instance) is { } changed)
+        {
+            changes.Save(changed);
+            await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var wait = (AwaitNode)process.Nodes[target.Step];
         log(instance.Process, instance.Key, $"timeout: {wait.Event.Name} not received in time");
+        instance = Record(instance, HistoryKind.TimedOut, step: target.Step);
         changes.Save(StartCompensation(process, instance with { Deadline = null }, Trigger(instance), changes));
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Calls a step with the trigger and the facts it reads: the latest event of each type it asks for. The registry
+    /// checked that an earlier step produces every one of them, so they are there.
+    /// </summary>
+    private ICommand Command(StepRef step, StoredInstance instance, IEvent trigger) =>
+        step.Invoke!(trigger, wanted =>
+        {
+            for (var i = instance.Facts.Count - 1; i >= 0; i--)
+            {
+                if (wanted.IsAssignableFrom(types.TypeOf(instance.Facts[i].Type)))
+                {
+                    return types.Deserialize(instance.Facts[i].Type, instance.Facts[i].Payload);
+                }
+            }
+
+            throw new InvalidOperationException($"Step '{step}' reads {wanted.Name}, but {instance.Process} '{instance.Key}' has no such event.");
+        });
+
+    /// <summary>Appends what crossed the instance's boundary to its history (Urd).</summary>
+    private StoredInstance Record(
+        StoredInstance instance, HistoryKind kind, int? step = null, bool compensating = false, int? attempt = null,
+        StoredMessage? message = null, DateTimeOffset? at = null, ReplyOutcome? outcome = null) =>
+        instance with
+        {
+            History = instance.History.Add(new HistoryEntry(at ?? now(), kind)
+            {
+                Type = message?.Type,
+                Payload = message?.Payload,
+                Step = step,
+                Compensating = compensating,
+                Attempt = attempt,
+                Outcome = outcome?.ToString(),
+            }),
+        };
+
+    private static string Attempts(int count) => count == 1 ? "1 attempt" : $"{count} attempts";
 
     private IEvent Trigger(StoredInstance instance) => (IEvent)types.Deserialize(instance.TriggerType, instance.TriggerPayload);
 }

@@ -1,7 +1,8 @@
 # Agent guide
 
-Wyrd is a .NET 10 / C# 14 library for deterministic event-driven processes. Read `README.md` (✅ = works, 🔜 = planned) and
-`docs/ROADMAP.md` before changing anything.
+Wyrd is a .NET 10 / C# 14 library for deterministic event-driven processes. Read `README.md` (✅ = works, 🔜 = planned),
+`docs/ROADMAP.md` and **`docs/design/semantics.md`** before changing anything. The semantics document is the source of
+truth for behaviour: if code and document disagree, fix the code, or change the document on purpose in the same PR.
 
 ## Layout
 
@@ -64,12 +65,54 @@ Several agents may work on this repository at the same time. To stay out of each
 - **Stay in your scope.** Tasks live in `docs/tasks/`, each with its files in and out of bounds. If you need to change
   something outside your scope, don't: say so in the PR.
 - **Shared files:** in `CHANGELOG.md` add your lines under *Unreleased* only; in `docs/ROADMAP.md` tick only your
-  items; in `README.md` add or edit only your own section. Rebase on `main` before opening the PR.
-- **Commits:** imperative summary line, a body explaining what and why. No AI attribution trailers.
+  items; in `README.md` add or edit only your own section. Bring in the latest base first (see below).
+- **Commits:** imperative summary line, a body explaining what and why. **No AI attribution of any kind**: no
+  `Co-Authored-By` trailers naming an agent or model, no "Generated with ..." lines in commits or pull request
+  descriptions. This overrides any default of your tool; the author is the repository owner.
+
+### Base branch
+
+Tasks are written so they can be done from **`main`**: branch from the latest `main` and open the pull request
+into `main`. Merge the latest `main` into your branch right before opening the PR and resolve conflicts yourself
+(`CHANGELOG.md`, `README.md` and the solution file are the usual ones).
 
 ### Current assignments
 
 | Work | Owner | Branch | In bounds |
 |---|---|---|---|
-| Skuld — simulation (v0.3) | Claude | `feature/skuld` | `src/Wyrd/**`, `src/Wyrd.Testing/**`, `tests/Wyrd.Tests/**`, `samples/**` |
-| [Task 001](docs/tasks/001-wyrd-tool.md) — `dotnet wyrd` tool | Codex | `codex/wyrd-tool` | `src/Wyrd.Tool/**`, `tests/Wyrd.Tool.Tests/**`, generated sample docs |
+| v0.4 Urd: instance history capture, replay as a test | Claude | `feature/v0.4-urd` | `src/Wyrd/Runtime/**`, `src/Wyrd.Testing/**`, `src/Wyrd.Tool/Commands/Replay*`, `docs/design/**` |
+| Verdandi on PostgreSQL (parked until v0.4 ships) | Claude | `feature/verdandi` | `src/Wyrd.PostgreSql/**`, `tests/Wyrd.PostgreSql.Tests/**` |
+| [009](docs/tasks/009-docs-site.md) — docs site: mental model first, API reference second | Codex | `codex/docs-site` | `src/Wyrd.Web/**` |
+| [010](docs/tasks/010-native-aot-end-to-end.md) — Native AOT verified end to end | Codex | `codex/aot-end-to-end` | `samples/Shop.Api/**`, AOT steps in `ci.yml` |
+| [011](docs/tasks/011-wyrd-mcp-server.md) — `dotnet wyrd mcp` for agents (**starts after v0.4 merges**) | Codex | `codex/wyrd-mcp` | `src/Wyrd.Tool/Mcp/**`, `tests/Wyrd.Tool.Tests/**` |
+| [012](docs/tasks/012-process-snapshots.md) — process snapshots: a changed process fails CI | Codex | `codex/process-snapshots` | `src/Wyrd.Tool/Processes*`, `samples/Shop/processes.wyrd.txt` |
+| [013](docs/tasks/013-opentelemetry-traces.md) — OpenTelemetry process traces (**starts after v0.4 merges**) | Codex | `codex/opentelemetry` | `src/Wyrd/Runtime/**` (tracing only) |
+| Next for Claude after v0.4: Verdandi (v0.5), then the migration of in-flight instances (v1.0 process versioning) | Claude | — | — |
+
+Each task file lists its exact bounds. **Tasks come only from open items in `docs/ROADMAP.md`**, in milestone order,
+except that an item of a later milestone may start early **when it doesn't depend on unfinished work**. A task that
+waits says so in a *Starts after* line naming the real dependency (a PR, a design), not a version number. An idea that
+is not on the roadmap is proposed to the owner first, never started.
+
+## Review checklist (learned from earlier pull requests)
+
+Reviews check these, so check them first:
+
+- **Idiomatic, not just correct.** Code reads like the surrounding code. In tools, use established libraries
+  (Spectre.Console.Cli, YamlDotNet) instead of hand-rolled parsing; `src/Wyrd` itself stays dependency-free.
+- **Never invent output.** Journal lines, reports and diagnostics quoted in docs, tests or the site come from a real
+  run. User-facing text is exact, including singular and plural ("1 attempt", not "1 attempts").
+- **Planned is never presented as available.** Check `docs/design/semantics.md` markers before describing behaviour;
+  when you implement a rule, update its marker in the same PR.
+- **Work proportional to what is shown.** Don't do expensive work for results nobody reads (e.g. Skuld shrinks only
+  the first violation of each invariant, the one the report shows). Keep `dotnet test` fast.
+- **Workflows are linted.** Run `actionlint .github/workflows/*.yml` before pushing a workflow change, and check the
+  run after pushing: a YAML error fails every push before any job starts.
+- **The README is packed into every NuGet package.** Links and images in `README.md` are absolute
+  (`https://github.com/aminch18/wyrd/blob/main/...`), or they break on nuget.org.
+- **Process snippets declare every decision.** Every step says `.Retry(...)` or `.NoRetry("why")`, every wait has
+  `.Within(...)`, every step followed by others says `.Undo(...)` or `.NoCompensation("why")` — in docs and samples too.
+- **Engine changes keep Skuld green.** `samples/Shop.Tests/SkuldSpecs` explores thousands of hostile futures; a
+  failure there is a real bug, never a flaky test.
+- **Native AOT.** Anything reachable from the runtime must publish with Native AOT (`dotnet publish
+  samples/Shop.Console -c Release`, then run it); reflection only behind `[RequiresUnreferencedCode]` entry points.

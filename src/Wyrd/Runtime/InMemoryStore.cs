@@ -13,6 +13,8 @@ internal sealed class InMemoryStore : IWyrdStore
     private readonly List<(DateTimeOffset At, long Sequence, Envelope Envelope)> _scheduled = [];
     private readonly Dictionary<(string ViewType, string Key), StoredView> _views = [];
     private readonly HashSet<Guid> _handled = [];
+    private readonly Dictionary<(string StateType, string Key), long> _projected = [];
+    private readonly List<StoredHeld> _held = [];
     private long _sequence;
 
     public IReadOnlyList<StoredMessage> Events => _events;
@@ -47,6 +49,12 @@ internal sealed class InMemoryStore : IWyrdStore
     public ValueTask<StoredParked?> FindParkedAsync(string process, string key, int step, CancellationToken cancellationToken) =>
         ValueTask.FromResult(_parked.FirstOrDefault(p => p.Process == process && p.Key == key && p.Step == step));
 
+    public ValueTask<long> LoadProjectedAsync(string stateType, string key, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(_projected.GetValueOrDefault((stateType, key)));
+
+    public ValueTask<StoredHeld?> FindHeldAsync(string stateType, string key, long version, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(_held.FirstOrDefault(h => h.StateType == stateType && h.Key == key && h.Version == version));
+
     public ValueTask CommitAsync(Changes changes, CancellationToken cancellationToken)
     {
         // Check every expected version first: all or nothing, like a transaction.
@@ -68,10 +76,26 @@ internal sealed class InMemoryStore : IWyrdStore
             }
         }
 
+        foreach (var ((stateType, key), (read, _)) in changes.Projected)
+        {
+            if (_projected.GetValueOrDefault((stateType, key)) != read)
+            {
+                throw new InvalidOperationException($"Concurrency conflict projecting {stateType} '{key}'.");
+            }
+        }
+
         foreach (var state in changes.States)
         {
             _states[(state.StateType, state.Key)] = state;
         }
+
+        foreach (var ((stateType, key), (_, version)) in changes.Projected)
+        {
+            _projected[(stateType, key)] = version;
+        }
+
+        _held.AddRange(changes.Hold);
+        _held.RemoveAll(changes.Release.Contains);
 
         foreach (var instance in changes.Instances.Values)
         {

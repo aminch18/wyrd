@@ -16,6 +16,9 @@ public interface IWyrdRuntime
 
     Task<ProcessStatus?> StatusOfAsync(Process process, object key, CancellationToken cancellationToken = default);
 
+    /// <summary>What the instance received and sent (Urd), or null if there is no such instance.</summary>
+    Task<InstanceHistory?> HistoryOfAsync(Process process, object key, CancellationToken cancellationToken = default);
+
     Task<TState> StateOfAsync<TState>(object key, CancellationToken cancellationToken = default)
         where TState : IState<TState>;
 

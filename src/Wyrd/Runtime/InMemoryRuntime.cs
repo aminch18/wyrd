@@ -99,6 +99,9 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         return this;
     }
 
+    /// <summary>Replaces a process with a new definition of the same name, keeping its instances: a redeploy.</summary>
+    internal void Redeploy(Process process) => _application.Redeploy(process);
+
     public InMemoryRuntime AddProcess(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
@@ -185,6 +188,54 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         }
     }
 
+    /// <summary>
+    /// Resumes a suspended instance (after fixing what made it stop): what it was doing is sent again with the same
+    /// message id, so a command that did run in the meantime is not run twice.
+    /// </summary>
+    public Task ResumeAsync(Process process, object key, CancellationToken cancellationToken = default) =>
+        OperateAsync(process, key, (name, k, ct) => _engine.ResumeAsync(name, k, ct), cancellationToken);
+
+    /// <summary>Compensates a suspended instance that was going forward: what it completed is undone, and the step it gave up on is fenced.</summary>
+    public Task CompensateAsync(Process process, object key, CancellationToken cancellationToken = default) =>
+        OperateAsync(process, key, (name, k, ct) => _engine.CompensateAsync(name, k, ct), cancellationToken);
+
+    /// <summary>
+    /// Everything the instance received and sent, in order (Urd): export it with <see cref="InstanceHistory.ToJson"/>
+    /// and replay it as a test with <c>Urd.ReplayAsync</c>.
+    /// </summary>
+    public InstanceHistory HistoryOf(Process process, object key)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(key);
+        return Read(() => _store.Instance(process.Name, Keys.Of(key)) is { } instance
+            ? new InstanceHistory(instance.Process, instance.Key, instance.Fingerprint, instance.History)
+            : throw new InvalidOperationException($"{process.Name} has no instance '{Keys.Of(key)}'."));
+    }
+
+    /// <summary>The reason an instance is suspended, or null.</summary>
+    public string? ReasonOf(Process process, object key)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(key);
+        return Read(() => _store.Instance(process.Name, Keys.Of(key))?.Reason);
+    }
+
+    private async Task OperateAsync(Process process, object key, Func<string, string, CancellationToken, ValueTask> operation, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(key);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await operation(process.Name, Keys.Of(key), cancellationToken).ConfigureAwait(false);
+            await DrainAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     /// <summary>Makes the next <paramref name="times"/> executions of a command, sent by a process, fail transiently.</summary>
     public void FailNext<TCommand>(int times = 1)
         where TCommand : ICommand
@@ -211,6 +262,15 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
 
     Task<ProcessStatus?> IWyrdRuntime.StatusOfAsync(Process process, object key, CancellationToken cancellationToken) =>
         Task.FromResult(StatusOf(process, key));
+
+    Task<InstanceHistory?> IWyrdRuntime.HistoryOfAsync(Process process, object key, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(key);
+        return Task.FromResult(Read(() => _store.Instance(process.Name, Keys.Of(key)) is { } instance
+            ? new InstanceHistory(instance.Process, instance.Key, instance.Fingerprint, instance.History)
+            : null));
+    }
 
     Task<TState> IWyrdRuntime.StateOfAsync<TState>(object key, CancellationToken cancellationToken) =>
         Task.FromResult(StateOf<TState>(key));
@@ -250,6 +310,16 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
                 _queue.Add(envelope); // the broker will deliver it again, later
             }
 
+            if (Responder is not null && envelope is { Kind: MessageKind.Command, Process: not null })
+            {
+                if (Responder(envelope) is { } reply)
+                {
+                    _queue.Add(_engine.ReplyTo(envelope, reply));
+                }
+
+                continue;
+            }
+
             await _engine.HandleAsync(envelope, cancellationToken).ConfigureAwait(false);
             await RelayAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -265,6 +335,30 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     }
 
     public void Dispose() => _gate.Dispose();
+
+    /// <summary>
+    /// Urd: answers the commands processes send instead of their owners (a null answer leaves the command unanswered,
+    /// as it was when the history was recorded).
+    /// </summary>
+    internal Func<Envelope, ReplyMessage?>? Responder { get; set; }
+
+    /// <summary>Urd: only this process reacts to events.</summary>
+    internal void ReplayOnly(string process) => _application.Registry.Only = process;
+
+    /// <summary>Urd: delivers a recorded event (a trigger or an awaited event) as it was stored.</summary>
+    internal async Task InjectAsync(string type, string payload, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload));
+            await DrainAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
     /// <summary>The simulator perturbing delivery (Skuld), if any.</summary>
     internal ISimulation? Simulation { get; set; }

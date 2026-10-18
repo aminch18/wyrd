@@ -7,6 +7,9 @@ public enum ProcessStatus
     Completed,
     Compensated,
 
-    /// <summary>A compensation failed: the instance needs human attention.</summary>
-    Failed,
+    /// <summary>
+    /// Wyrd couldn't resolve something — retries exhausted, an undo that never succeeded — and stopped instead of
+    /// guessing. Visible and recoverable: resume it (after a fix) or compensate it. See <c>Reason</c>.
+    /// </summary>
+    Suspended,
 }

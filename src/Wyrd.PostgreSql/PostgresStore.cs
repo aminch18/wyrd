@@ -70,6 +70,26 @@ internal sealed class PostgresStore(NpgsqlConnection connection, NpgsqlTransacti
             : null;
     }
 
+    public async ValueTask<long> LoadProjectedAsync(string stateType, string key, CancellationToken cancellationToken)
+    {
+        await using var command = Command($"SELECT version FROM {_s}.projected WHERE state_type = @t AND key = @k");
+        command.Parameters.AddWithValue("t", stateType);
+        command.Parameters.AddWithValue("k", key);
+        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is long version ? version : 0;
+    }
+
+    public async ValueTask<StoredHeld?> FindHeldAsync(string stateType, string key, long version, CancellationToken cancellationToken)
+    {
+        await using var command = Command($"SELECT type, payload FROM {_s}.held WHERE state_type = @t AND key = @k AND version = @v");
+        command.Parameters.AddWithValue("t", stateType);
+        command.Parameters.AddWithValue("k", key);
+        command.Parameters.AddWithValue("v", version);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+            ? new StoredHeld(stateType, key, version, reader.GetString(0), reader.GetString(1))
+            : null;
+    }
+
     public async ValueTask<bool> WasHandledAsync(Guid messageId, CancellationToken cancellationToken)
     {
         await using var command = Command($"SELECT EXISTS (SELECT 1 FROM {_s}.handled WHERE message_id = @id)");
@@ -142,6 +162,35 @@ internal sealed class PostgresStore(NpgsqlConnection connection, NpgsqlTransacti
                     cancellationToken,
                     ("v", view.ViewType), ("k", view.Key), ("t", view.Type!), ("p", view.Payload)).ConfigureAwait(false);
             }
+        }
+
+        // Ordered read models: the last version of each stream projected, checked like any other version (two workers
+        // projecting the same stream: one commits, the other is retried and finds the event already projected or held).
+        foreach (var ((stateType, key), (read, version)) in changes.Projected)
+        {
+            var rows = read == 0
+                ? await ExecuteAsync($"INSERT INTO {_s}.projected (state_type, key, version) VALUES (@t, @k, @v) ON CONFLICT DO NOTHING",
+                    cancellationToken, ("t", stateType), ("k", key), ("v", version)).ConfigureAwait(false)
+                : await ExecuteAsync($"UPDATE {_s}.projected SET version = @v WHERE state_type = @t AND key = @k AND version = @read",
+                    cancellationToken, ("t", stateType), ("k", key), ("v", version), ("read", read)).ConfigureAwait(false);
+            if (rows != 1)
+            {
+                throw new ConcurrencyConflictException($"Concurrency conflict projecting {stateType} '{key}'.");
+            }
+        }
+
+        foreach (var held in changes.Hold)
+        {
+            await ExecuteAsync(
+                $"INSERT INTO {_s}.held (state_type, key, version, type, payload) VALUES (@t, @k, @v, @ty, @p) ON CONFLICT DO NOTHING",
+                cancellationToken,
+                ("t", held.StateType), ("k", held.Key), ("v", held.Version), ("ty", held.Type), ("p", held.Payload)).ConfigureAwait(false);
+        }
+
+        foreach (var held in changes.Release)
+        {
+            await ExecuteAsync($"DELETE FROM {_s}.held WHERE state_type = @t AND key = @k AND version = @v", cancellationToken,
+                ("t", held.StateType), ("k", held.Key), ("v", held.Version)).ConfigureAwait(false);
         }
 
         // The outbox and the timers are the queue: committed with everything else, delivered by the workers.
