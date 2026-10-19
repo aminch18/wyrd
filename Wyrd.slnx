@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Wyrd.Benchmarks/Wyrd.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Shop.Api/Shop.Api.csproj" />
     <Project Path="samples/Shop.Console/Shop.Console.csproj" />
