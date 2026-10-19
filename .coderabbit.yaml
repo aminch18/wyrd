@@ -17,7 +17,7 @@ reviews:
     drafts: false
     # Long-lived feature branches (e.g. feature/verdandi) collect sub-branches before main.
     base_branches:
-      - "feature/.*"
+      - "^feature/.*$"
   path_filters:
     - "!**/bin/**"
     - "!**/obj/**"
