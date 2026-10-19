@@ -272,6 +272,100 @@ public abstract class EfCoreRuntimeTests(Database database)
         await Assert.ThrowsAsync<InvalidOperationException>(() => shop.SendAsync(new Restock("KEYBOARD", 5), db));
     }
 
+    [Fact]
+    public async Task what_one_service_publishes_reaches_another_through_the_outbox()
+    {
+        var transport = new InMemoryTransport();
+        var shop = Database.Shop(await database.NewAsync()).UseTransport(transport);
+        var shipping = Receiver(await database.NewAsync());
+        transport.Subscribe(shipping);
+
+        await ShipAsync(shop, "A-1");
+        var relayed = await shop.RelayPendingAsync();
+        await DrainAsync(shipping);
+
+        Assert.Equal(2, relayed); // PaymentChargedV1, OrderShippedV1
+        Assert.Equal(new Shipment("A-1", 1), await shipping.ViewAsync<Shipment>("A-1"));
+        Assert.Equal(0, await shop.RelayPendingAsync());
+    }
+
+    [Fact]
+    public async Task a_message_delivered_twice_is_handled_once()
+    {
+        var transport = new RecordingTransport();
+        var shop = Database.Shop(await database.NewAsync()).UseTransport(transport);
+        var shipping = Receiver(await database.NewAsync());
+        await ShipAsync(shop, "A-1");
+        await shop.RelayPendingAsync();
+
+        foreach (var message in transport.Sent.Concat(transport.Sent))
+        {
+            await shipping.ReceiveAsync(message);
+        }
+
+        await DrainAsync(shipping);
+        Assert.Equal(new Shipment("A-1", 1), await shipping.ViewAsync<Shipment>("A-1"));
+    }
+
+    [Fact]
+    public async Task while_the_transport_is_down_published_messages_wait_in_the_outbox()
+    {
+        var transport = new RecordingTransport { Down = true };
+        var shop = Database.Shop(await database.NewAsync()).UseTransport(transport);
+        await ShipAsync(shop, "A-1");
+
+        await Assert.ThrowsAsync<IOException>(() => shop.RelayPendingAsync());
+        transport.Down = false;
+
+        Assert.Equal(2, await shop.RelayPendingAsync());
+        Assert.Equal(2, transport.Sent.Select(m => m.MessageId).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task relays_in_several_workers_send_each_message_once()
+    {
+        var transport = new RecordingTransport();
+        var contexts = await database.NewAsync();
+        var shop = Database.Shop(contexts);
+        foreach (var order in Enumerable.Range(1, 10))
+        {
+            await ShipAsync(shop, $"A-{order}");
+        }
+
+        var small = Database.Options with { RelayBatchSize = 3 };
+        var relays = Enumerable.Range(0, 4).Select(_ =>
+            ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(contexts, ShopJson.Default, small)).UseTransport(transport).RelayPendingAsync());
+        var relayed = await Task.WhenAll(relays);
+
+        Assert.Equal(20, relayed.Sum());
+        Assert.Equal(20, transport.Sent.Select(m => m.MessageId).Distinct().Count());
+        Assert.Equal(20, transport.Sent.Count);
+    }
+
+    [Fact]
+    public async Task a_contract_nobody_uses_here_is_ignored()
+    {
+        var shipping = Receiver(await database.NewAsync());
+        var message = new TransportMessage(Guid.CreateVersion7(), "payments.refund-issued v1", "{}");
+
+        await shipping.ReceiveAsync(message);
+
+        Assert.Equal((0, 0), await shipping.BacklogAsync());
+    }
+
+    private static EfCoreRuntime<WyrdDbContext> Receiver(IDbContextFactory<WyrdDbContext> contexts) =>
+        new EfCoreRuntime<WyrdDbContext>(contexts, Database.Options).AddProjection(new Shipments());
+
+    /// <summary>Places, pays and ships an order (the shop publishes PaymentChargedV1 and OrderShippedV1).</summary>
+    private static async Task ShipAsync(EfCoreRuntime<WyrdDbContext> shop, string orderId)
+    {
+        await shop.SendAsync(new Restock("KEYBOARD", 1));
+        await shop.SendAsync(new PlaceOrder(orderId, "KEYBOARD", 1, 89m));
+        await DrainAsync(shop);
+        await shop.PublishAsync(new PaymentConfirmed(orderId));
+        await DrainAsync(shop);
+    }
+
     /// <summary>Processes until the queue has nothing due, waiting a little for short redelivery delays.</summary>
     private static async Task DrainAsync<TContext>(EfCoreRuntime<TContext> runtime, TimeSpan? settle = null, CancellationToken cancellationToken = default)
         where TContext : DbContext

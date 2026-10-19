@@ -260,39 +260,55 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     private async Task<int> RelayBatchAsync(int size, CancellationToken cancellationToken)
     {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await TryRelayBatchAsync(size, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (attempt < _options.MaxConflictRetries && IsConflict(ex))
+            {
+                // Lost a race with another relay (a deadlock victim on SQL Server): its transaction rolled back, so
+                // nothing it claimed stays marked, and claiming again is safe.
+                LogConflictRetry("the relay", attempt);
+            }
+        }
+    }
+
+    private async Task<int> TryRelayBatchAsync(int size, CancellationToken cancellationToken)
+    {
         await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         var dialect = DialectOf(db);
         var published = db.Model.FindEntityType(typeof(PublishedRow))!;
-        var pending = await db.Set<PublishedRow>()
-            .FromSqlRaw(dialect.ClaimPublished(dialect.Table(published.GetSchema()!, published.GetTableName()!)), size)
+        var claimed = await db.Set<PublishedRow>()
+            .FromSqlRaw(dialect.ClaimPublished(dialect.Table(published.GetSchema()!, published.GetTableName()!)), size, _time.GetUtcNow())
             .AsNoTracking()
             .ToListAsync(cancellationToken).ConfigureAwait(false);
+        claimed.Sort((a, b) => a.Seq.CompareTo(b.Seq));
 
-        var sent = new List<long>(pending.Count);
-        try
+        for (var sent = 0; sent < claimed.Count; sent++)
         {
-            foreach (var row in pending)
+            try
             {
+                var row = claimed[sent];
                 await _transport!.SendAsync(
                     new TransportMessage(row.MessageId, row.Type, row.Payload) { TraceParent = row.TraceParent, TraceState = row.TraceState },
                     cancellationToken).ConfigureAwait(false);
-                sent.Add(row.Seq);
             }
-        }
-        finally
-        {
-            // What the transport took is marked even when a later send fails, so it isn't sent again needlessly.
-            if (sent.Count > 0)
+            catch
             {
-                var at = _time.GetUtcNow();
-                await db.Set<PublishedRow>().Where(r => sent.Contains(r.Seq))
-                    .ExecuteUpdateAsync(s => s.SetProperty(r => r.RelayedAt, at), CancellationToken.None).ConfigureAwait(false);
+                // What the transport took stays relayed; the rest waits for the next relay.
+                var unsent = claimed.Skip(sent).Select(r => r.Seq).ToList();
+                await db.Set<PublishedRow>().Where(r => unsent.Contains(r.Seq))
+                    .ExecuteUpdateAsync(s => s.SetProperty(r => r.RelayedAt, (DateTimeOffset?)null), CancellationToken.None).ConfigureAwait(false);
                 await transaction.CommitAsync(CancellationToken.None).ConfigureAwait(false);
+                throw;
             }
         }
 
-        return sent.Count;
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return claimed.Count;
     }
 
     /// <summary>

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Wyrd.Processes;
+using Wyrd.Runtime;
 
 namespace Wyrd.EntityFrameworkCore.Tests;
 
@@ -72,4 +73,35 @@ public static class Jobs
 {
     public static Process Process { get; } = Wyrd.Processes.Process.StartOn<JobStarted>(e => e.Id, "Job")
         .Then(JobSteps.Run).Retry(2.Times, Backoff.Immediate);
+}
+
+// Another service: it hears that orders were shipped, and counts every delivery it handles.
+
+public sealed record Shipment(string OrderId, int Deliveries);
+
+public sealed class Shipments : Projection<Shipment>
+{
+    public Shipments() =>
+        On<Shop.Contracts.OrderShippedV1>(e => e.OrderId, (view, e) => (view ?? new Shipment(e.OrderId, 0)) with { Deliveries = (view?.Deliveries ?? 0) + 1 });
+}
+
+/// <summary>Records what it is given; thread-safe, so concurrent relays can share it. Fails while <see cref="Down"/>.</summary>
+public sealed class RecordingTransport : IWyrdTransport
+{
+    private readonly System.Collections.Concurrent.ConcurrentQueue<TransportMessage> _sent = new();
+
+    public bool Down { get; set; }
+
+    public IReadOnlyList<TransportMessage> Sent => [.. _sent];
+
+    public Task SendAsync(TransportMessage message, CancellationToken cancellationToken = default)
+    {
+        if (Down)
+        {
+            throw new IOException("broker unreachable");
+        }
+
+        _sent.Enqueue(message);
+        return Task.CompletedTask;
+    }
 }

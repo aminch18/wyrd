@@ -22,7 +22,10 @@ internal abstract class Dialect
     /// <summary>The next due message, locked for this transaction and skipped by the others. <c>{0}</c> is now.</summary>
     public abstract string Dequeue(string table);
 
-    /// <summary>Up to <c>{0}</c> published messages waiting for the relay, oldest first, locked and skipped by other relays.</summary>
+    /// <summary>
+    /// Claims up to <c>{0}</c> published messages waiting for the relay, oldest first, and marks them relayed at <c>{1}</c>
+    /// in the same statement: relays in other workers skip them, and a claim never deadlocks after something was sent.
+    /// </summary>
     public abstract string ClaimPublished(string table);
 
     /// <summary>The quoted name of a table.</summary>
@@ -52,7 +55,7 @@ internal abstract class Dialect
             $"SELECT id, envelope, available_at, attempts, last_error FROM {table} WHERE available_at <= {{0}} ORDER BY available_at, id LIMIT 1 FOR UPDATE SKIP LOCKED";
 
         public override string ClaimPublished(string table) =>
-            $"SELECT {PublishedColumns} FROM {table} WHERE relayed_at IS NULL ORDER BY seq LIMIT {{0}} FOR UPDATE SKIP LOCKED";
+            $"UPDATE {table} SET relayed_at = {{1}} WHERE seq IN (SELECT seq FROM {table} WHERE relayed_at IS NULL ORDER BY seq LIMIT {{0}} FOR UPDATE SKIP LOCKED) RETURNING {PublishedColumns}";
 
         public override string Table(string schema, string name) => $"\"{schema}\".\"{name}\"";
 
@@ -68,7 +71,8 @@ internal abstract class Dialect
             $"SELECT TOP (1) id, envelope, available_at, attempts, last_error FROM {table} WITH (UPDLOCK, READPAST, ROWLOCK) WHERE available_at <= {{0}} ORDER BY available_at, id";
 
         public override string ClaimPublished(string table) =>
-            $"SELECT TOP ({{0}}) {PublishedColumns} FROM {table} WITH (UPDLOCK, READPAST, ROWLOCK) WHERE relayed_at IS NULL ORDER BY seq";
+            $"WITH pending AS (SELECT TOP ({{0}}) * FROM {table} WITH (UPDLOCK, READPAST, ROWLOCK) WHERE relayed_at IS NULL ORDER BY seq) " +
+            $"UPDATE pending SET relayed_at = {{1}} OUTPUT {string.Join(", ", PublishedColumns.Split(", ").Select(c => "inserted." + c))}";
 
         public override string Table(string schema, string name) => $"[{schema}].[{name}]";
 
