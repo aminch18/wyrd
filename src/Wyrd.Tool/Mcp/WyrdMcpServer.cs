@@ -16,6 +16,7 @@ internal static class WyrdMcpServer
         ToolCollection = new McpServerPrimitiveCollection<McpServerTool>
         {
             McpServerTool.Create(WyrdMcpTools.Diagram),
+            McpServerTool.Create(WyrdMcpTools.Processes),
             McpServerTool.Create(WyrdMcpTools.AsyncApi),
             McpServerTool.Create(WyrdMcpTools.Contracts),
             McpServerTool.Create(WyrdMcpTools.Replay),

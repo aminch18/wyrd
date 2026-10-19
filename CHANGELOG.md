@@ -18,6 +18,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   Urd replay implementations. Contracts include structured content; failures preserve CLI messages without ending
   the session, and process-discovery diagnostics stay on stderr.
 - Add `dotnet wyrd processes --output/--check` with versioned, readable process snapshots and a Shop CI check; structural, added and removed definitions require review, while retry and time-limit changes remain compatible.
+- `processes` MCP tool: an agent can snapshot process structure or check it against `processes.wyrd.txt` before
+  opening a pull request, with the same output as `dotnet wyrd processes`.
 - Native AOT HTTP verification for `Shop.Api`: generated request delegates and JSON metadata, named response
   records, and a reusable `curl`/`jq` smoke script covering checkout, rich drafts, cancellation and published events.
   Ubuntu CI publishes and runs the native API alongside the existing native console walkthrough.

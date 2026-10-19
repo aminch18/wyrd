@@ -23,6 +23,21 @@ internal static class WyrdMcpTools
         return Diagrams.Generate(assemblyPath);
     });
 
+    [McpServerTool(Name = "processes", ReadOnly = true, OpenWorld = false)]
+    [Description("Snapshot the structure of every public static Wyrd process in a trusted compiled .NET assembly, or compare it with a reviewed processes.wyrd.txt. Use this after changing a process and before opening a pull request: a changed structure suspends in-flight instances. Returns the same output as dotnet wyrd processes; a mismatch is reported in the text, not as a tool error.")]
+    public static CallToolResult Processes(
+        [Description("Path to the compiled assembly, with its dependencies alongside it; for example samples/Shop/bin/Release/net10.0/Shop.dll.")] string assemblyPath,
+        [Description("Path to a reviewed processes.wyrd.txt to check against. Omit it to get a new snapshot.")] string? snapshotPath = null,
+        CancellationToken cancellationToken = default) => Document(() =>
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Validate(new ProcessesCommand.Settings { AssemblyPath = assemblyPath, CheckPath = snapshotPath });
+        var current = Wyrd.Tool.Processes.Discover(assemblyPath);
+        return snapshotPath is null
+            ? Wyrd.Tool.Processes.Generate(current)
+            : Wyrd.Tool.Processes.Check(Wyrd.Tool.Processes.Parse(File.ReadAllText(snapshotPath)), current).Report;
+    });
+
     [McpServerTool(Name = "asyncapi", ReadOnly = true, OpenWorld = false)]
     [Description("Generate AsyncAPI 3.0 YAML from the reviewed integration-event contract snapshot. Use this to document public messages without guessing from internal domain events; returns the same document as dotnet wyrd asyncapi.")]
     public static CallToolResult AsyncApi(
