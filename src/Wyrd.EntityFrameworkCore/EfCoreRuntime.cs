@@ -115,6 +115,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         return this;
     }
 
+    /// <inheritdoc />
     public EfCoreRuntime<TContext> AddProcess(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
@@ -339,10 +340,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             {
                 return;
             }
-            catch (DbException ex)
+            catch (Exception ex)
             {
-                // The database is unreachable: wait and try again; queued messages are safe.
-                LogDatabaseUnavailable(ex);
+                // The database is unreachable, or recording a failure failed: wait and try again. Every change is
+                // transactional, so queued messages are safe and nothing is half done.
+                LogWorkerFailed(ex);
                 await Task.Delay(_options.PollInterval, _time, cancellationToken).ConfigureAwait(false);
             }
         }
@@ -408,46 +410,65 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             return;
         }
 
+        // The rollback released the row lock, so another worker may have claimed the message meanwhile. Every branch
+        // first takes the row back, unchanged since this attempt, and writes the failure only when that succeeded; if
+        // the other worker still holds it, the statement waits for its commit and then finds nothing.
         await using var db = await _contexts.CreateDbContextAsync(CancellationToken.None).ConfigureAwait(false);
+        await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None).ConfigureAwait(false);
+        var unchanged = db.Set<QueueRow>().Where(r => r.Id == message.Id && r.Attempts == message.Attempts);
 
         // One retry layer: a process command that can't be handled goes back to its process as a failure, and the
         // step's retry policy decides. The host never retries it on its own (semantics 3.3).
         var envelope = JsonSerializer.Deserialize(message.Envelope, WyrdJsonContext.Default.Envelope)!;
+        var failed = message.Attempts + 1;
         if (envelope is { Kind: MessageKind.Command, Process: not null })
         {
+            if (await unchanged.ExecuteDeleteAsync(CancellationToken.None).ConfigureAwait(false) == 0)
+            {
+                LogTakenMeanwhile(message.Id);
+                return;
+            }
+
             LogProcessCommandFailed(message.Id, envelope.Process.Process, envelope.Process.Key, error);
-            await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None).ConfigureAwait(false);
             new EfCoreStore(db, now).Enqueue(Wyrd.Runtime.Engine.Faulted(envelope, Guid.CreateVersion7()), now);
             await db.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
-            await db.Set<QueueRow>().Where(r => r.Id == message.Id).ExecuteDeleteAsync(CancellationToken.None).ConfigureAwait(false);
-            await transaction.CommitAsync(CancellationToken.None).ConfigureAwait(false);
-            return;
         }
-
-        var failed = message.Attempts + 1;
-        if (failed >= _options.MaxDeliveryAttempts)
+        else if (failed >= _options.MaxDeliveryAttempts)
         {
+            if (await unchanged.ExecuteDeleteAsync(CancellationToken.None).ConfigureAwait(false) == 0)
+            {
+                LogTakenMeanwhile(message.Id);
+                return;
+            }
+
             LogDeadLetter(message.Id, failed, error);
-            await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None).ConfigureAwait(false);
             db.Add(new DeadLetterRow { Id = message.Id, Envelope = message.Envelope, Attempts = failed, Error = error.ToString(), FailedAt = now });
             await db.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
-            await db.Set<QueueRow>().Where(r => r.Id == message.Id).ExecuteDeleteAsync(CancellationToken.None).ConfigureAwait(false);
-            await transaction.CommitAsync(CancellationToken.None).ConfigureAwait(false);
-            return;
+        }
+        else
+        {
+            var delay = TimeSpan.FromTicks(Math.Min(_options.RedeliveryDelay.Ticks * (1L << Math.Min(failed - 1, 20)), TimeSpan.FromMinutes(1).Ticks));
+            if (await unchanged.ExecuteUpdateAsync(
+                    s => s.SetProperty(r => r.Attempts, failed).SetProperty(r => r.AvailableAt, now + delay).SetProperty(r => r.LastError, error.Message),
+                    CancellationToken.None).ConfigureAwait(false) == 0)
+            {
+                LogTakenMeanwhile(message.Id);
+                return;
+            }
+
+            LogRedelivery(message.Id, failed, delay, error);
         }
 
-        var delay = TimeSpan.FromTicks(Math.Min(_options.RedeliveryDelay.Ticks * (1L << Math.Min(failed - 1, 20)), TimeSpan.FromMinutes(1).Ticks));
-        LogRedelivery(message.Id, failed, delay, error);
-        await db.Set<QueueRow>().Where(r => r.Id == message.Id).ExecuteUpdateAsync(
-            s => s.SetProperty(r => r.Attempts, failed).SetProperty(r => r.AvailableAt, now + delay).SetProperty(r => r.LastError, error.Message),
-            CancellationToken.None).ConfigureAwait(false);
+        await transaction.CommitAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     // ── Operators ────────────────────────────────────────────────────────────────────────────
 
+    /// <inheritdoc />
     public Task ResumeAsync(Process process, object key, CancellationToken cancellationToken = default) =>
         OperateAsync(process, key, (engine, name, k) => engine.ResumeAsync(name, k, cancellationToken), cancellationToken);
 
+    /// <inheritdoc />
     public Task CompensateAsync(Process process, object key, CancellationToken cancellationToken = default) =>
         OperateAsync(process, key, (engine, name, k) => engine.CompensateAsync(name, k, cancellationToken), cancellationToken);
 
@@ -463,6 +484,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     // ── Queries ──────────────────────────────────────────────────────────────────────────────
 
+    /// <inheritdoc />
     public async Task<ProcessStatus?> StatusOfAsync(Process process, object key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(process);
@@ -475,6 +497,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         return status is null ? null : Enum.Parse<ProcessStatus>(status);
     }
 
+    /// <inheritdoc />
     public async Task<InstanceHistory?> HistoryOfAsync(Process process, object key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(process);
@@ -492,6 +515,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         return new InstanceHistory(instance.Process, instance.Key, instance.Fingerprint, instance.History);
     }
 
+    /// <inheritdoc />
     public async Task<TState> StateOfAsync<TState>(object key, CancellationToken cancellationToken = default)
         where TState : IState<TState>
     {
@@ -504,6 +528,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         return row is null ? TState.Initial : (TState)_application.Types.Deserialize(row.Type, row.Payload);
     }
 
+    /// <inheritdoc />
     public async Task<TView?> ViewAsync<TView>(object key, CancellationToken cancellationToken = default)
         where TView : class
     {
@@ -585,6 +610,9 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     [LoggerMessage(Level = LogLevel.Warning, Message = "Transport unavailable; published messages wait in the outbox, retrying")]
     private partial void LogTransportUnavailable(Exception error);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Database unavailable; queued messages are safe, retrying")]
-    private partial void LogDatabaseUnavailable(Exception error);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Worker failed (database unavailable?); queued messages are safe, retrying")]
+    private partial void LogWorkerFailed(Exception error);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Message {Id} was taken by another worker meanwhile: its failure is not recorded twice")]
+    private partial void LogTakenMeanwhile(long id);
 }

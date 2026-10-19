@@ -149,7 +149,7 @@ namespace Shop.Api.Durable.Migrations
                     recorded_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     relayed_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     trace_parent = table.Column<string>(type: "character varying(55)", maxLength: 55, nullable: true),
-                    trace_state = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: true)
+                    trace_state = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>
                 {
