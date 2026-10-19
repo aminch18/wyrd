@@ -475,6 +475,7 @@ Each handled message has a consumer span with its kind, type, key, attempt and o
 waits, timeouts and compensation carry the instance context; later webhooks and operator actions link their caller
 context while continuing that story. Trace metadata does not enter the journal, domain state or Urd replay history.
 Your own OpenTelemetry host enables collection with `.AddSource("Wyrd")`; the library has no exporter dependency.
+Design and the full list of tags: [process traces](https://github.com/aminch18/wyrd/blob/main/docs/design/tracing.md).
 
 ## Native AOT, source-generated JSON ✅
 
