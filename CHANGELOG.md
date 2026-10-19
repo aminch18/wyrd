@@ -37,7 +37,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   message id (`TransportMessage`); `IWyrdRuntime.ReceiveAsync` delivers one from another service, ignores contracts
   the service doesn't use and handles a redelivery once. Only integration events cross service boundaries: commands
   have one owner inside one service. `InMemoryTransport` connects in-memory runtimes (`UseTransport`, `Subscribe`);
-  the durable relay comes with the EF Core host.
+  the durable relay comes with the EF Core host. Traces cross with the message (`TraceParent`, `TraceState`), and an
+  integration's call to the outside world is a client span under its command.
 - `IWyrdBuilder<T>`: register a module the same way on any host (`ShopModule.Register(runtime)`).
 - `IWyrdRuntime`: what application code needs (send, publish, query), implemented by both hosts.
 - `samples/Shop.Api` runs on PostgreSQL when a `Wyrd` connection string is configured (`compose.yaml` included).

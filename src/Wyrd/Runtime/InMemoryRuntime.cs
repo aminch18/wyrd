@@ -408,7 +408,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
                 return;
             }
 
-            _queue.Add(new Envelope(message.MessageId, MessageKind.Event, message.Type, message.Payload));
+            _queue.Add(new Envelope(message.MessageId, MessageKind.Event, message.Type, message.Payload, Trace: Tracing.Received(message)));
             await DrainAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -450,7 +450,10 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         {
             try
             {
-                await _transport.SendAsync(new TransportMessage(pending[sent].Id, pending[sent].Type, pending[sent].Payload), cancellationToken).ConfigureAwait(false);
+                var message = pending[sent];
+                await _transport.SendAsync(
+                    new TransportMessage(message.Id, message.Type, message.Payload) { TraceParent = message.Trace?.Parent, TraceState = message.Trace?.State },
+                    cancellationToken).ConfigureAwait(false);
             }
             catch
             {

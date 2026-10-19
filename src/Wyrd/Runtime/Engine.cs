@@ -90,12 +90,14 @@ internal sealed class Engine(
         {
             // The only I/O: outside world first, then the outcome is recorded like any decision. A crash in between
             // redelivers the command with the same id — the idempotency key — so the other system doesn't repeat it.
+            using var call = Tracing.Integration(envelope);
             try
             {
                 decision = await integration.ExecuteAsync(command, new IntegrationContext(envelope.MessageId, envelope.Process?.Attempt ?? 1), cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (envelope.Process is not null && ex is not OperationCanceledException)
             {
+                Tracing.Failed(call, ex);
                 log(External, key, $"{command.GetType().Name} failed: {ex.GetType().Name}: {ex.Message}");
                 Tracing.Outcome(ReplyOutcome.Faulted);
                 Reply(envelope, new ReplyMessage(ReplyOutcome.Faulted), changes);
@@ -155,8 +157,9 @@ internal sealed class Engine(
             var published = publication.Map(@event);
             var (publishedType, publishedPayload) = types.Serialize(published, published.GetType());
             var id = newId();
-            changes.Published.Add(new PublishedMessage(id, publishedType, publishedPayload));
-            changes.Outbox.Add(new Envelope(id, MessageKind.Event, publishedType, publishedPayload, Trace: Tracing.Capture()));
+            var trace = Tracing.Capture();
+            changes.Published.Add(new PublishedMessage(id, publishedType, publishedPayload, trace));
+            changes.Outbox.Add(new Envelope(id, MessageKind.Event, publishedType, publishedPayload, Trace: trace));
             log(External, key, $"published {types.TypeOf(publishedType).Name}");
         }
     }

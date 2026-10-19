@@ -30,7 +30,16 @@ started with, so later webhooks, timeouts and operator actions continue its trac
 - a test compares the Shop's journal, state, histories and message ids with and without a listener, and Skuld runs
   with tracing enabled.
 
-### 4. Other traces are links, not parents
+### 4. Integration calls and other services
+
+- An integration's call to the outside world is a `Client` activity, `wyrd integration <Type>`, under its command's
+  activity, tagged with `wyrd.idempotency_key` and `wyrd.attempt`; a call that throws has status `Error`. The other
+  system's own instrumentation (HTTP, SDKs) nests under it.
+- A published integration event keeps the context it was published in. `TransportMessage.TraceParent` /
+  `TraceState` carry it (a broker adapter maps them to the W3C headers), and the receiving service continues the
+  publisher's trace, as an event inside one service does. Without a listener they stay empty.
+
+### 5. Other traces are links, not parents
 
 A caller from another trace (an HTTP request, a webhook) becomes an `ActivityLink`. An event that feeds several
 instances creates one activity and links the other instances' contexts; each command it sends stays in its own
@@ -46,6 +55,7 @@ instance's trace. Operator resume and compensate are `Internal` activities.
 | `wyrd.key` | slice or event-stream key, when there is one |
 | `wyrd.process.name`, `wyrd.process.key`, `wyrd.process.status` | the correlated instance and its status |
 | `wyrd.step`, `wyrd.attempt`, `wyrd.compensating` | the envelope's process reference |
+| `wyrd.idempotency_key` | on an integration call: the command's message id, stable across retries |
 | `wyrd.outcome`, `wyrd.reply.outcome` | how the envelope was handled, including duplicate, stale, fenced and timeout |
 | `wyrd.started`, `wyrd.waiting`, `wyrd.retry`, `wyrd.compensating`, `wyrd.suspended` | activity events for transitions |
 | `wyrd.received`, `wyrd.timed_out`, `wyrd.completed`, `wyrd.compensated`, `wyrd.resumed`, `wyrd.compensation_requested` | activity events for recorded history entries |
@@ -59,4 +69,4 @@ records every activity costs about 32–33 KB per order and 15–27% of throughp
 ## Not yet
 
 - Pending-step age and queue-depth metrics come with the hardened queue ([semantics](semantics.md) 3.5).
-- Spans for integration calls and context across transports between services come with those features (Verdandi).
+- The durable relay carries the context to the broker with the EF Core host (Verdandi); in memory it travels today.

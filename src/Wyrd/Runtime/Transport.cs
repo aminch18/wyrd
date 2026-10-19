@@ -4,7 +4,17 @@ namespace Wyrd.Runtime;
 /// An integration event on its way to or from another service: its contract (as registered, e.g.
 /// <c>payments.payment-charged v1</c>), its payload, and the id it keeps end to end so a redelivery is recognised.
 /// </summary>
-public sealed record TransportMessage(Guid MessageId, string Type, string Payload);
+public sealed record TransportMessage(Guid MessageId, string Type, string Payload)
+{
+    /// <summary>
+    /// The W3C <c>traceparent</c> it was published in, if traced: a broker carries it as a header, and the receiving
+    /// service continues the trace. Diagnostic only, never part of the message's identity.
+    /// </summary>
+    public string? TraceParent { get; init; }
+
+    /// <summary>The W3C <c>tracestate</c> that goes with <see cref="TraceParent"/>.</summary>
+    public string? TraceState { get; init; }
+}
 
 /// <summary>
 /// Carries integration events between services (RabbitMQ, or <see cref="InMemoryTransport"/> in tests). Only

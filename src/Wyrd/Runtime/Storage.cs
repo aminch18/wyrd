@@ -6,8 +6,11 @@ internal sealed record StoredState(string StateType, string Key, string Type, st
 
 internal sealed record StoredMessage(string Type, string Payload);
 
-/// <summary>An integration event this service published, with the id it keeps when it travels to other services.</summary>
-internal sealed record PublishedMessage(Guid Id, string Type, string Payload);
+/// <summary>
+/// An integration event this service published, with the id it keeps when it travels to other services and the trace
+/// context it was published in (diagnostic only).
+/// </summary>
+internal sealed record PublishedMessage(Guid Id, string Type, string Payload, TraceContext? Trace = null);
 
 internal sealed record StoredParked(string Process, string Key, int Step, string Type, string Payload)
 {
