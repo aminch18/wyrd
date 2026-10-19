@@ -28,7 +28,7 @@ public abstract class Database : IAsyncLifetime
         return contexts;
     }
 
-    public Task<IDbContextFactory<WyrdDbContext>> NewAsync() => NewAsync(options => new WyrdDbContext(options));
+    public Task<IDbContextFactory<WyrdDbContext>> NewAsync() => NewAsync<WyrdDbContext>(options => new(options));
 
     /// <summary>The sample shop on this database, with source-generated JSON.</summary>
     public static EfCoreRuntime<WyrdDbContext> Shop(IDbContextFactory<WyrdDbContext> contexts, TimeProvider? time = null) =>

@@ -26,6 +26,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
     private Dialect? _dialect;
+    private IWyrdTransport? _transport;
 
     /// <summary>Source-generated JSON from your <c>[WyrdJsonContext]</c>.</summary>
     public EfCoreRuntime(
@@ -121,6 +122,17 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         return this;
     }
 
+    /// <summary>
+    /// Sends what this service publishes (integration events) to other services through <paramref name="transport"/>:
+    /// the workers relay the outbox after each commit, at least once.
+    /// </summary>
+    public EfCoreRuntime<TContext> UseTransport(IWyrdTransport transport)
+    {
+        ArgumentNullException.ThrowIfNull(transport);
+        _transport = transport;
+        return this;
+    }
+
     // ── Commands and facts ───────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -173,7 +185,27 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         var (type, payload) = _application.Types.Serialize(integrationEvent, integrationEvent.GetType());
         await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var now = _time.GetUtcNow();
-        new EfCoreStore(db, now).Enqueue(new Envelope(Guid.CreateVersion7(), MessageKind.Event, type, payload), now);
+        new EfCoreStore(db, now).Enqueue(new Envelope(Guid.CreateVersion7(), MessageKind.Event, type, payload, Trace: Tracing.Capture()), now);
+        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Queues an integration event another service published (from a transport), keeping its message id: a redelivery
+    /// is handled once. A contract nobody uses here is ignored. Acknowledge the message to the broker after this returns.
+    /// </summary>
+    public async Task ReceiveAsync(TransportMessage message, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        if (!_application.Uses(message))
+        {
+            LogIgnored(message.Type, message.MessageId);
+            return;
+        }
+
+        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var now = _time.GetUtcNow();
+        new EfCoreStore(db, now).Enqueue(
+            new Envelope(message.MessageId, MessageKind.Event, message.Type, message.Payload, Trace: Tracing.Received(message)), now);
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -199,14 +231,83 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         return handled;
     }
 
-    /// <summary>A worker: handles messages as they become due, until cancelled. Run as many as you like.</summary>
+    /// <summary>
+    /// The outbox relay: hands published integration events to the transport, oldest first, in batches, and marks them
+    /// relayed. Relays in other workers skip the rows this one holds. A message sent but not yet marked when the process
+    /// stops is sent again: the receiver discards the duplicate. Returns how many were relayed.
+    /// </summary>
+    public async Task<int> RelayPendingAsync(int max = 1_000, CancellationToken cancellationToken = default)
+    {
+        if (_transport is null)
+        {
+            return 0;
+        }
+
+        var relayed = 0;
+        while (relayed < max)
+        {
+            var batch = await RelayBatchAsync(Math.Min(_options.RelayBatchSize, max - relayed), cancellationToken).ConfigureAwait(false);
+            if (batch == 0)
+            {
+                break;
+            }
+
+            relayed += batch;
+        }
+
+        return relayed;
+    }
+
+    private async Task<int> RelayBatchAsync(int size, CancellationToken cancellationToken)
+    {
+        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var dialect = DialectOf(db);
+        var published = db.Model.FindEntityType(typeof(PublishedRow))!;
+        var pending = await db.Set<PublishedRow>()
+            .FromSqlRaw(dialect.ClaimPublished(dialect.Table(published.GetSchema()!, published.GetTableName()!)), size)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        var sent = new List<long>(pending.Count);
+        try
+        {
+            foreach (var row in pending)
+            {
+                await _transport!.SendAsync(
+                    new TransportMessage(row.MessageId, row.Type, row.Payload) { TraceParent = row.TraceParent, TraceState = row.TraceState },
+                    cancellationToken).ConfigureAwait(false);
+                sent.Add(row.Seq);
+            }
+        }
+        finally
+        {
+            // What the transport took is marked even when a later send fails, so it isn't sent again needlessly.
+            if (sent.Count > 0)
+            {
+                var at = _time.GetUtcNow();
+                await db.Set<PublishedRow>().Where(r => sent.Contains(r.Seq))
+                    .ExecuteUpdateAsync(s => s.SetProperty(r => r.RelayedAt, at), CancellationToken.None).ConfigureAwait(false);
+                await transaction.CommitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+
+        return sent.Count;
+    }
+
+    /// <summary>
+    /// A worker: handles messages as they become due and relays what was published, until cancelled. Run as many as you
+    /// like.
+    /// </summary>
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                if (await ProcessPendingAsync(cancellationToken: cancellationToken).ConfigureAwait(false) == 0)
+                var handled = await ProcessPendingAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                var relayed = await RelayOrWaitAsync(cancellationToken).ConfigureAwait(false);
+                if (handled == 0 && relayed == 0)
                 {
                     await Task.Delay(_options.PollInterval, _time, cancellationToken).ConfigureAwait(false);
                 }
@@ -259,6 +360,20 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         }
 
         return true;
+    }
+
+    /// <summary>A transport that is down doesn't stop the worker: the outbox keeps the messages until it is back.</summary>
+    private async Task<int> RelayOrWaitAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await RelayPendingAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not DbException)
+        {
+            LogTransportUnavailable(ex);
+            return 0;
+        }
     }
 
     private async Task RedeliverLaterAsync(QueueRow message, Exception error, DateTimeOffset now)
@@ -440,6 +555,12 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Message {Id} moved to the dead letters after {Attempts} attempts")]
     private partial void LogDeadLetter(long id, int attempts, Exception error);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "{Type} ({Id}) is not used here, ignored")]
+    private partial void LogIgnored(string type, Guid id);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Transport unavailable; published messages wait in the outbox, retrying")]
+    private partial void LogTransportUnavailable(Exception error);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Database unavailable; queued messages are safe, retrying")]
     private partial void LogDatabaseUnavailable(Exception error);

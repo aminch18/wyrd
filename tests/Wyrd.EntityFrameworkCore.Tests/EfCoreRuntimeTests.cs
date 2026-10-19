@@ -238,7 +238,7 @@ public abstract class EfCoreRuntimeTests(Database database)
     [Fact]
     public async Task wyrd_commits_together_with_the_applications_own_tables()
     {
-        var contexts = await database.NewAsync(options => new AppDbContext(options));
+        var contexts = await database.NewAsync<AppDbContext>(options => new(options));
         var shop = ShopModule.Register(new EfCoreRuntime<AppDbContext>(contexts, ShopJson.Default, Database.Options));
 
         await using (var db = contexts.CreateDbContext())
@@ -265,7 +265,7 @@ public abstract class EfCoreRuntimeTests(Database database)
     [Fact]
     public async Task sending_into_a_context_needs_its_transaction()
     {
-        var contexts = await database.NewAsync(options => new AppDbContext(options));
+        var contexts = await database.NewAsync<AppDbContext>(options => new(options));
         var shop = ShopModule.Register(new EfCoreRuntime<AppDbContext>(contexts, ShopJson.Default, Database.Options));
         await using var db = contexts.CreateDbContext();
 

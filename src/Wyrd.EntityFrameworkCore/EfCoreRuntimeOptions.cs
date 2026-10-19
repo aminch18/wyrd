@@ -12,6 +12,9 @@ public sealed record EfCoreRuntimeOptions
     /// <summary>The delay before a failed delivery is tried again (doubled on every attempt, capped at one minute).</summary>
     public TimeSpan RedeliveryDelay { get; init; } = TimeSpan.FromSeconds(1);
 
+    /// <summary>How many published messages the relay sends per transaction.</summary>
+    public int RelayBatchSize { get; init; } = 100;
+
     /// <summary>How many times a command sent from outside is retried on a concurrency conflict.</summary>
     public int MaxConflictRetries { get; init; } = 5;
 }

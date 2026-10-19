@@ -46,15 +46,26 @@ internal sealed class EventRow
     public DateTimeOffset RecordedAt { get; set; }
 }
 
+/// <summary>An integration event this service published: the outbox to other services, until it is relayed.</summary>
 internal sealed class PublishedRow
 {
     public long Seq { get; set; }
+
+    /// <summary>The id it keeps end to end, so a receiving service handles a redelivery once.</summary>
+    public Guid MessageId { get; set; }
 
     public string Type { get; set; } = "";
 
     public string Payload { get; set; } = "";
 
     public DateTimeOffset RecordedAt { get; set; }
+
+    /// <summary>When the relay handed it to the transport; null while pending.</summary>
+    public DateTimeOffset? RelayedAt { get; set; }
+
+    public string? TraceParent { get; set; }
+
+    public string? TraceState { get; set; }
 }
 
 internal sealed class InboxRow
@@ -192,9 +203,16 @@ public static class WyrdModelBuilderExtensions
         {
             e.ToTable("published", schema).HasKey(r => r.Seq);
             e.Property(r => r.Seq).HasColumnName("seq").ValueGeneratedOnAdd();
+            e.Property(r => r.MessageId).HasColumnName("message_id");
             Text(e.Property(r => r.Type), "type");
             Text(e.Property(r => r.Payload), "payload");
             e.Property(r => r.RecordedAt).HasColumnName("recorded_at");
+            e.Property(r => r.RelayedAt).HasColumnName("relayed_at");
+            e.Property(r => r.TraceParent).HasColumnName("trace_parent").HasMaxLength(55);
+            e.Property(r => r.TraceState).HasColumnName("trace_state").HasMaxLength(512);
+            e.HasIndex(r => r.MessageId).IsUnique().HasDatabaseName("ix_published_message_id");
+            // Only what is waiting for the relay: the index stays as small as the backlog.
+            e.HasIndex(r => r.Seq).HasFilter("relayed_at IS NULL").HasDatabaseName("ix_published_pending");
         });
 
         modelBuilder.Entity<InboxRow>(e =>

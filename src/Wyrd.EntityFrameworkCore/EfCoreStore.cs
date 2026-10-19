@@ -92,7 +92,10 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
 
         foreach (var e in changes.Published)
         {
-            db.Add(new PublishedRow { Type = e.Type, Payload = e.Payload, RecordedAt = now });
+            db.Add(new PublishedRow
+            {
+                MessageId = e.Id, Type = e.Type, Payload = e.Payload, RecordedAt = now, TraceParent = e.Trace?.Parent, TraceState = e.Trace?.State,
+            });
         }
 
         foreach (var parked in changes.Park)

@@ -22,6 +22,9 @@ internal abstract class Dialect
     /// <summary>The next due message, locked for this transaction and skipped by the others. <c>{0}</c> is now.</summary>
     public abstract string Dequeue(string table);
 
+    /// <summary>Up to <c>{0}</c> published messages waiting for the relay, oldest first, locked and skipped by other relays.</summary>
+    public abstract string ClaimPublished(string table);
+
     /// <summary>The quoted name of a table.</summary>
     public abstract string Table(string schema, string name);
 
@@ -41,10 +44,15 @@ internal abstract class Dialect
 
     protected abstract bool IsConflict(DbException exception);
 
+    private const string PublishedColumns = "seq, message_id, type, payload, recorded_at, relayed_at, trace_parent, trace_state";
+
     private sealed class PostgreSql : Dialect
     {
         public override string Dequeue(string table) =>
             $"SELECT id, envelope, available_at, attempts, last_error FROM {table} WHERE available_at <= {{0}} ORDER BY available_at, id LIMIT 1 FOR UPDATE SKIP LOCKED";
+
+        public override string ClaimPublished(string table) =>
+            $"SELECT {PublishedColumns} FROM {table} WHERE relayed_at IS NULL ORDER BY seq LIMIT {{0}} FOR UPDATE SKIP LOCKED";
 
         public override string Table(string schema, string name) => $"\"{schema}\".\"{name}\"";
 
@@ -58,6 +66,9 @@ internal abstract class Dialect
 
         public override string Dequeue(string table) =>
             $"SELECT TOP (1) id, envelope, available_at, attempts, last_error FROM {table} WITH (UPDLOCK, READPAST, ROWLOCK) WHERE available_at <= {{0}} ORDER BY available_at, id";
+
+        public override string ClaimPublished(string table) =>
+            $"SELECT TOP ({{0}}) {PublishedColumns} FROM {table} WITH (UPDLOCK, READPAST, ROWLOCK) WHERE relayed_at IS NULL ORDER BY seq";
 
         public override string Table(string schema, string name) => $"[{schema}].[{name}]";
 
