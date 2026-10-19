@@ -145,8 +145,9 @@ internal sealed class Engine(
         {
             var published = publication.Map(@event);
             var (publishedType, publishedPayload) = types.Serialize(published, published.GetType());
-            changes.Published.Add(new StoredMessage(publishedType, publishedPayload));
-            changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, publishedType, publishedPayload));
+            var id = newId();
+            changes.Published.Add(new PublishedMessage(id, publishedType, publishedPayload));
+            changes.Outbox.Add(new Envelope(id, MessageKind.Event, publishedType, publishedPayload));
             log(External, key, $"published {types.TypeOf(publishedType).Name}");
         }
     }

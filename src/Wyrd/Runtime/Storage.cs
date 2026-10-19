@@ -6,6 +6,9 @@ internal sealed record StoredState(string StateType, string Key, string Type, st
 
 internal sealed record StoredMessage(string Type, string Payload);
 
+/// <summary>An integration event this service published, with the id it keeps when it travels to other services.</summary>
+internal sealed record PublishedMessage(Guid Id, string Type, string Payload);
+
 internal sealed record StoredParked(string Process, string Key, int Step, string Type, string Payload)
 {
     public StoredMessage AsFact() => new(Type, Payload);
@@ -57,7 +60,7 @@ internal sealed class Changes
 
     public List<StoredMessage> Events { get; } = [];
 
-    public List<StoredMessage> Published { get; } = [];
+    public List<PublishedMessage> Published { get; } = [];
 
     public Dictionary<Guid, ReplyMessage> Replies { get; } = [];
 

@@ -22,6 +22,8 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     private readonly Engine _engine;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private DateTimeOffset _now = Epoch;
+    private IWyrdTransport? _transport;
+    private int _relayed;
     private long _ids;
 
     /// <summary>Reflection-based JSON: convenient for development and tests. Use a <c>[WyrdJsonContext]</c> for AOT.</summary>
@@ -127,15 +129,19 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     public async Task<Decision> SendAsync(ICommand command, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
+        Decision decision;
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return await SendCoreAsync(command, cancellationToken).ConfigureAwait(false);
+            decision = await SendCoreAsync(command, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             _gate.Release();
         }
+
+        await RelayAsync(cancellationToken).ConfigureAwait(false);
+        return decision;
     }
 
     private async Task<Decision> SendCoreAsync(ICommand command, CancellationToken cancellationToken)
@@ -174,6 +180,8 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         {
             _gate.Release();
         }
+
+        await RelayAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Moves the virtual clock forward, delivering every timer and scheduled retry that falls due, in order.</summary>
@@ -197,6 +205,8 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         {
             _gate.Release();
         }
+
+        await RelayAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -245,6 +255,8 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         {
             _gate.Release();
         }
+
+        await RelayAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Makes the next <paramref name="times"/> executions of a command, sent by a process, fail transiently.</summary>
@@ -310,7 +322,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
 
     private async Task DrainAsync(CancellationToken cancellationToken)
     {
-        await RelayAsync(cancellationToken).ConfigureAwait(false);
+        await TakeOutboxAsync(cancellationToken).ConfigureAwait(false);
         while (_queue.Count > 0)
         {
             var index = Simulation?.PickNext(_queue) ?? 0;
@@ -332,12 +344,12 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
             }
 
             await _engine.HandleAsync(envelope, cancellationToken).ConfigureAwait(false);
-            await RelayAsync(cancellationToken).ConfigureAwait(false);
+            await TakeOutboxAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
     /// <summary>The outbox relay: committed messages are handed to the transport.</summary>
-    private async Task RelayAsync(CancellationToken cancellationToken)
+    private async Task TakeOutboxAsync(CancellationToken cancellationToken)
     {
         foreach (var envelope in await _store.TakeOutboxAsync(cancellationToken).ConfigureAwait(false))
         {
@@ -346,6 +358,55 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     }
 
     public void Dispose() => _gate.Dispose();
+
+    /// <summary>Sends what this runtime publishes (integration events) to other services through <paramref name="transport"/>.</summary>
+    public InMemoryRuntime UseTransport(IWyrdTransport transport)
+    {
+        ArgumentNullException.ThrowIfNull(transport);
+        _transport = transport;
+        return this;
+    }
+
+    public async Task ReceiveAsync(TransportMessage message, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        if (!typeof(IIntegrationEvent).IsAssignableFrom(_types.TypeOf(message.Type)))
+        {
+            throw new InvalidOperationException($"{message.Type} is not an integration event: only integration events cross service boundaries.");
+        }
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _queue.Add(new Envelope(message.MessageId, MessageKind.Event, message.Type, message.Payload));
+            await DrainAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        await RelayAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The outbox relay to other services: what was published since the last relay goes to the transport, after the
+    /// commit and outside the gate (a transport may deliver to another runtime). At least once.
+    /// </summary>
+    private async Task RelayAsync(CancellationToken cancellationToken)
+    {
+        if (_transport is null)
+        {
+            return;
+        }
+
+        var pending = Read(() => _store.Published.Skip(_relayed).ToList());
+        foreach (var message in pending)
+        {
+            await _transport.SendAsync(new TransportMessage(message.Id, message.Type, message.Payload), cancellationToken).ConfigureAwait(false);
+            _relayed++;
+        }
+    }
 
     /// <summary>
     /// Urd: answers the commands processes send instead of their owners (a null answer leaves the command unanswered,
@@ -369,6 +430,8 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         {
             _gate.Release();
         }
+
+        await RelayAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The simulator perturbing delivery (Skuld), if any.</summary>

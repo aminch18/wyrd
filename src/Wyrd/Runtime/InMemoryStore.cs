@@ -7,7 +7,7 @@ internal sealed class InMemoryStore : IWyrdStore
     private readonly Dictionary<(string Process, string Key), StoredInstance> _instances = [];
     private readonly Dictionary<Guid, ReplyMessage> _replies = [];
     private readonly List<StoredMessage> _events = [];
-    private readonly List<StoredMessage> _published = [];
+    private readonly List<PublishedMessage> _published = [];
     private readonly List<StoredParked> _parked = [];
     private readonly List<Envelope> _outbox = [];
     private readonly List<(DateTimeOffset At, long Sequence, Envelope Envelope)> _scheduled = [];
@@ -19,7 +19,7 @@ internal sealed class InMemoryStore : IWyrdStore
 
     public IReadOnlyList<StoredMessage> Events => _events;
 
-    public IReadOnlyList<StoredMessage> Published => _published;
+    public IReadOnlyList<PublishedMessage> Published => _published;
 
     public StoredState? State(string stateType, string key) => _states.GetValueOrDefault((stateType, key));
 
