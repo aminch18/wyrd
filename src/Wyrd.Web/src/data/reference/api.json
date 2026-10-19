@@ -1,0 +1,899 @@
+[
+  {
+    "name": "ICommand",
+    "group": "Messages",
+    "source": "src/Wyrd/Messages/Messages.cs",
+    "description": "An intention sent to exactly one owning slice.",
+    "signatures": ["public interface ICommand;"],
+    "example": "public sealed record CancelOrder(string OrderId) : ICommand;",
+    "members": []
+  },
+  {
+    "name": "IEvent",
+    "group": "Messages",
+    "source": "src/Wyrd/Messages/Messages.cs",
+    "description": "The common marker accepted as a process trigger or projection fact.",
+    "signatures": ["public interface IEvent;"],
+    "example": "Process.StartOn<OrderPlaced>(e => e.OrderId);",
+    "members": []
+  },
+  {
+    "name": "IDomainEvent",
+    "group": "Messages",
+    "source": "src/Wyrd/Messages/Messages.cs",
+    "description": "An internal accepted fact produced by a slice.",
+    "signatures": ["public interface IDomainEvent : IEvent;"],
+    "example": "public sealed record OrderCancelled(string OrderId) : IDomainEvent;",
+    "members": []
+  },
+  {
+    "name": "IIntegrationEvent",
+    "group": "Messages",
+    "source": "src/Wyrd/Messages/Messages.cs",
+    "description": "A public fact that can cross a context boundary.",
+    "signatures": ["public interface IIntegrationEvent : IEvent;"],
+    "example": "public sealed record PaymentConfirmed(string OrderId) : IIntegrationEvent;",
+    "members": []
+  },
+  {
+    "name": "IntegrationEventAttribute",
+    "group": "Messages",
+    "source": "src/Wyrd/Messages/Messages.cs",
+    "description": "Gives an integration contract its stable name and positive version.",
+    "signatures": [
+      "public sealed class IntegrationEventAttribute(string name) : Attribute",
+      "public string Name { get; } = name;",
+      "public int Version { get; set; } = 1;"
+    ],
+    "example": "[IntegrationEvent(\"payments.payment-charged\", Version = 1)]\npublic sealed record PaymentChargedV1(string OrderId, decimal Amount, string Currency) : IIntegrationEvent;",
+    "members": []
+  },
+  {
+    "name": "Pipeline",
+    "group": "Processes",
+    "source": "src/Wyrd/Pipe/Pipeline.cs",
+    "description": "Creates pipe fragments and appends them with the >> extension operator.",
+    "signatures": [
+      "public static class Pipeline",
+      "public static Fragment Step(Delegate action)",
+      "public static Fragment OnCompensated(Delegate outcome)",
+      "public static Fragment Await<TEvent>(Func<TEvent, object> key)",
+      "public static ProcessBuilder<TTrigger> operator >>(ProcessBuilder<TTrigger> process, Fragment next)"
+    ],
+    "example": "using Wyrd.Pipe;\nusing static Wyrd.Pipe.Pipeline;\n\nProcess flow = Start.On<OrderPlaced>(e => e.OrderId)\n    >> Step(Stock.Reserve).Retry(3.Times).Undo(Stock.Release)\n    >> Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)\n    >> OnCompensated(Orders.Cancel).Retry(10.Times);",
+    "members": [
+      {
+        "signature": "public static Fragment Step(Delegate action)",
+        "description": "Creates a command fragment; its function accepts the trigger and optionally earlier events.",
+        "example": "Step(Stock.Reserve).Retry(3.Times).Undo(Stock.Release)"
+      },
+      {
+        "signature": "public static Fragment OnCompensated(Delegate outcome)",
+        "description": "Sets the single outcome command run after compensation; it insists like an undo.",
+        "example": "OnCompensated(Orders.Cancel).Retry(10.Times)"
+      },
+      {
+        "signature": "public static Fragment Await<TEvent>(Func<TEvent, object> key)",
+        "description": "Waits for a correlated event; declare a business deadline with Within.",
+        "example": "Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)"
+      },
+      {
+        "signature": "public static ProcessBuilder<TTrigger> operator >>(ProcessBuilder<TTrigger> process, Fragment next)",
+        "description": "Appends a fragment to a typed builder; both syntaxes produce the same Process.",
+        "example": "Start.On<OrderPlaced>(e => e.OrderId) >> Step(Shipping.Ship).Retry(3.Times)"
+      }
+    ]
+  },
+  {
+    "name": "Start",
+    "group": "Processes",
+    "source": "src/Wyrd/Pipe/Pipeline.cs",
+    "description": "Starts a pipe process with the same typed trigger and correlation key as StartOn.",
+    "signatures": [
+      "public static class Start",
+      "public static ProcessBuilder<TEvent> On<TEvent>(Func<TEvent, object> key, [CallerMemberName] string name = \"\")"
+    ],
+    "example": "var builder = Start.On<OrderPlaced>(e => e.OrderId, \"Checkout\");",
+    "members": []
+  },
+  {
+    "name": "Fragment",
+    "group": "Processes",
+    "source": "src/Wyrd/Pipe/Pipeline.cs",
+    "description": "Applies the same retry, undo and timeout policies as the fluent builder to a pipe stage.",
+    "signatures": [
+      "public sealed class Fragment",
+      "public Fragment Undo(Delegate compensation, Attempts? insist = null, Backoff backoff = Backoff.Exponential)",
+      "public Fragment OrCompensate()",
+      "public Fragment NoRetry(string reason)",
+      "public Fragment NoCompensation(string reason)",
+      "public Fragment Retry(Attempts attempts, Backoff backoff = Backoff.Exponential)",
+      "public Fragment Within(TimeSpan timeout)"
+    ],
+    "example": "var reserve = Step(Stock.Reserve).Retry(3.Times).Undo(Stock.Release);\nvar notify = Step(Notifications.Send).NoRetry(\"delivery is handled by its owner\")\n    .NoCompensation(\"a notification cannot be recalled\");",
+    "members": [
+      {
+        "signature": "public Fragment Undo(Delegate compensation, Attempts? insist = null, Backoff backoff = Backoff.Exponential)",
+        "description": "Associates the last step with its reversal and optional insistence policy; an undo cannot disable retries.",
+        "example": "Step(Stock.Reserve).Retry(3.Times).Undo(Stock.Release, 20.Times)"
+      },
+      {
+        "signature": "public Fragment OrCompensate()",
+        "description": "Opts into compensation after forward retries are exhausted; the default is suspension.",
+        "example": "Step(Shipping.Ship).Retry(3.Times).OrCompensate()"
+      },
+      {
+        "signature": "public Fragment NoRetry(string reason)",
+        "description": "Records why the last forward step must not retry.",
+        "example": "Step(Shipping.Ship).NoRetry(\"the carrier retries on its side\")"
+      },
+      {
+        "signature": "public Fragment NoCompensation(string reason)",
+        "description": "Records why a step followed by more steps has nothing to undo.",
+        "example": "Step(Notifications.Send).Retry(3.Times).NoCompensation(\"a notification cannot be recalled\")"
+      },
+      {
+        "signature": "public Fragment Retry(Attempts attempts, Backoff backoff = Backoff.Exponential)",
+        "description": "Declares the number of retries and backoff of the last forward step or outcome.",
+        "example": "Step(Stock.Reserve).Retry(3.Times, Backoff.Linear).Undo(Stock.Release)"
+      },
+      {
+        "signature": "public Fragment Within(TimeSpan timeout)",
+        "description": "Sets an Await deadline whose expiration starts compensation.",
+        "example": "Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)"
+      }
+    ]
+  },
+  {
+    "name": "Process",
+    "group": "Processes",
+    "source": "src/Wyrd/Processes/Process.cs",
+    "description": "Stores the trigger, ordered nodes, compensation outcome and structural fingerprint as data.",
+    "signatures": [
+      "public sealed class Process : IEquatable<Process>",
+      "public string Name { get; }",
+      "public Type Trigger { get; }",
+      "public ImmutableArray<ProcessNode> Nodes { get; }",
+      "public CompensatedNode? Outcome { get; }",
+      "public StepRef? OnCompensated",
+      "public static ProcessBuilder<TEvent> StartOn<TEvent>(Func<TEvent, object> key, [CallerMemberName] string name = \"\")",
+      "public string Fingerprint",
+      "public bool Equals(Process? other)",
+      "public string ToMermaid()"
+    ],
+    "example": "Process flow = Process.StartOn<OrderPlaced>(e => e.OrderId, \"Checkout\")\n    .Then(Shipping.Ship).NoRetry(\"the carrier retries on its side\");\nstring diagram = flow.ToMermaid();\nstring fingerprint = flow.Fingerprint;",
+    "members": []
+  },
+  {
+    "name": "ProcessBuilder",
+    "group": "Processes",
+    "source": "src/Wyrd/Processes/ProcessBuilder.cs",
+    "description": "Builds an immutable fluent process; every modifier applies to the last node or outcome.",
+    "signatures": [
+      "public sealed class ProcessBuilder<TTrigger>",
+      "public ProcessBuilder<TTrigger> Then<TCommand>(Func<TTrigger, TCommand> step)",
+      "public ProcessBuilder<TTrigger> Then(Delegate step)",
+      "public ProcessBuilder<TTrigger> Await<TEvent>(Func<TEvent, object> key)",
+      "public ProcessBuilder<TTrigger> OnCompensated<TCommand>(Func<TTrigger, TCommand> outcome)",
+      "public ProcessBuilder<TTrigger> Undo<TCommand>(Func<TTrigger, TCommand> compensation, Attempts? insist = null, Backoff backoff = Backoff.Exponential)",
+      "public ProcessBuilder<TTrigger> Undo(Delegate compensation, Attempts? insist = null, Backoff backoff = Backoff.Exponential)",
+      "public ProcessBuilder<TTrigger> OrCompensate()",
+      "public ProcessBuilder<TTrigger> NoRetry(string reason)",
+      "public ProcessBuilder<TTrigger> NoCompensation(string reason)",
+      "public ProcessBuilder<TTrigger> Retry(Attempts attempts, Backoff backoff = Backoff.Exponential)",
+      "public ProcessBuilder<TTrigger> Within(TimeSpan timeout)",
+      "public Process ToProcess()",
+      "public static implicit operator Process(ProcessBuilder<TTrigger> builder)"
+    ],
+    "example": "Process flow = Process.StartOn<OrderPlaced>(e => e.OrderId)\n    .Then(Stock.Reserve).Retry(3.Times).Undo(Stock.Release, 20.Times)\n    .Then(Payments.Charge).Retry(3.Times, Backoff.Exponential).OrCompensate().Undo(Payments.Refund)\n    .Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)\n    .Then(Shipping.Ship).NoRetry(\"the carrier retries on its side\")\n    .OnCompensated(Orders.Cancel).Retry(10.Times);",
+    "members": [
+      {
+        "signature": "public ProcessBuilder<TTrigger> Then<TCommand>(Func<TTrigger, TCommand> step)",
+        "description": "Appends a pure command step; the Delegate overload can read earlier event types after the trigger.",
+        "example": ".Then(Shipping.Ship).Retry(3.Times)"
+      },
+      {
+        "signature": "public ProcessBuilder<TTrigger> Then(Delegate step)",
+        "description": "Appends a pure command step; the Delegate overload can read earlier event types after the trigger.",
+        "example": ".Then(Shipping.Ship).Retry(3.Times)"
+      },
+      {
+        "signature": "public ProcessBuilder<TTrigger> Await<TEvent>(Func<TEvent, object> key)",
+        "description": "Waits for a correlated event; declare a business deadline with Within.",
+        "example": ".Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)"
+      },
+      {
+        "signature": "public ProcessBuilder<TTrigger> OnCompensated<TCommand>(Func<TTrigger, TCommand> outcome)",
+        "description": "Sets the single outcome command run after compensation; it insists like an undo.",
+        "example": ".OnCompensated(Orders.Cancel).Retry(10.Times)"
+      },
+      {
+        "signature": "public ProcessBuilder<TTrigger> Undo<TCommand>(Func<TTrigger, TCommand> compensation, Attempts? insist = null, Backoff backoff = Backoff.Exponential)",
+        "description": "Associates the last step with its reversal and optional insistence policy; an undo cannot disable retries.",
+        "example": ".Then(Stock.Reserve).Retry(3.Times).Undo(Stock.Release, 20.Times)"
+      },
+      {
+        "signature": "public ProcessBuilder<TTrigger> Undo(Delegate compensation, Attempts? insist = null, Backoff backoff = Backoff.Exponential)",
+        "description": "Associates the last step with its reversal and optional insistence policy; an undo cannot disable retries.",
+        "example": ".Then(Stock.Reserve).Retry(3.Times).Undo(Stock.Release, 20.Times)"
+      },
+      {
+        "signature": "public ProcessBuilder<TTrigger> OrCompensate()",
+        "description": "Opts into compensation after forward retries are exhausted; the default is suspension.",
+        "example": ".Then(Shipping.Ship).Retry(3.Times).OrCompensate()"
+      },
+      {
+        "signature": "public ProcessBuilder<TTrigger> NoRetry(string reason)",
+        "description": "Records why the last forward step must not retry.",
+        "example": ".Then(Shipping.Ship).NoRetry(\"the carrier retries on its side\")"
+      },
+      {
+        "signature": "public ProcessBuilder<TTrigger> NoCompensation(string reason)",
+        "description": "Records why a step followed by more steps has nothing to undo.",
+        "example": ".Then(Notifications.Send).Retry(3.Times).NoCompensation(\"a notification cannot be recalled\")"
+      },
+      {
+        "signature": "public ProcessBuilder<TTrigger> Retry(Attempts attempts, Backoff backoff = Backoff.Exponential)",
+        "description": "Declares the number of retries and backoff of the last forward step or outcome.",
+        "example": ".Then(Stock.Reserve).Retry(3.Times, Backoff.Linear).Undo(Stock.Release)"
+      },
+      {
+        "signature": "public ProcessBuilder<TTrigger> Within(TimeSpan timeout)",
+        "description": "Sets an Await deadline whose expiration starts compensation.",
+        "example": ".Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)"
+      },
+      {
+        "signature": "public Process ToProcess()",
+        "description": "Materializes the immutable model; implicit conversion to Process does the same.",
+        "example": "Process flow = builder.ToProcess();"
+      },
+      {
+        "signature": "public static implicit operator Process(ProcessBuilder<TTrigger> builder)",
+        "description": "Implicitly materializes a builder as its process model.",
+        "example": "Process flow = builder;"
+      }
+    ]
+  },
+  {
+    "name": "Backoff",
+    "group": "Processes",
+    "source": "src/Wyrd/Processes/ProcessNode.cs",
+    "description": "Selects immediate, linear or exponential retry delays, capped at one minute.",
+    "signatures": ["public enum Backoff"],
+    "example": "var retry = new RetryPolicy(3.Times, Backoff.Linear);",
+    "members": []
+  },
+  {
+    "name": "RetryPolicy",
+    "group": "Processes",
+    "source": "src/Wyrd/Processes/ProcessNode.cs",
+    "description": "Describes retries and calculates their delay; Undo supplies the default insistence policy.",
+    "signatures": [
+      "public sealed record RetryPolicy(Attempts Attempts, Backoff Backoff)",
+      "public static RetryPolicy Undo { get; } = new(new Attempts(10), Backoff.Exponential);",
+      "public TimeSpan DelayBefore(int retry)"
+    ],
+    "example": "TimeSpan firstDelay = RetryPolicy.Undo.DelayBefore(1);",
+    "members": []
+  },
+  {
+    "name": "StepRef",
+    "group": "Processes",
+    "source": "src/Wyrd/Processes/ProcessNode.cs",
+    "description": "Names a pure command-producing function and lists any earlier event types it reads.",
+    "signatures": [
+      "public sealed record StepRef(string Name)",
+      "public IReadOnlyList<Type> Reads { get; init; } = [];",
+      "public static StepRef From(Delegate step)",
+      "public bool Equals(StepRef? other)"
+    ],
+    "example": "StepRef step = StepRef.From(Stock.Reserve);\nstring name = step.Name;",
+    "members": []
+  },
+  {
+    "name": "ProcessNode",
+    "group": "Processes",
+    "source": "src/Wyrd/Processes/ProcessNode.cs",
+    "description": "The common record for a command step, wait or compensation outcome.",
+    "signatures": ["public abstract record ProcessNode;"],
+    "example": "foreach (ProcessNode node in flow.Nodes) Console.WriteLine(node);",
+    "members": []
+  },
+  {
+    "name": "StepNode",
+    "group": "Processes",
+    "source": "src/Wyrd/Processes/ProcessNode.cs",
+    "description": "Holds a step, its undo, explicit policy reasons and behavior after retries run out.",
+    "signatures": [
+      "public sealed record StepNode(StepRef Action, StepRef? Compensation = null, RetryPolicy? Retry = null) : ProcessNode",
+      "public string? NoCompensationReason { get; init; }",
+      "public string? NoRetryReason { get; init; }",
+      "public bool CompensateWhenExhausted { get; init; }",
+      "public RetryPolicy? CompensationRetry { get; init; }",
+      "public RetryPolicy UndoPolicy"
+    ],
+    "example": "foreach (var step in flow.Nodes.OfType<StepNode>())\n    Console.WriteLine(step.UndoPolicy.Attempts.Count);",
+    "members": []
+  },
+  {
+    "name": "CompensatedNode",
+    "group": "Processes",
+    "source": "src/Wyrd/Processes/ProcessNode.cs",
+    "description": "Stores the command sent after reverse compensation and its insistence policy.",
+    "signatures": [
+      "public sealed record CompensatedNode(StepRef Action, RetryPolicy? Retry = null) : ProcessNode",
+      "public RetryPolicy Policy"
+    ],
+    "example": "RetryPolicy? policy = flow.Outcome?.Policy;",
+    "members": []
+  },
+  {
+    "name": "AwaitNode",
+    "group": "Processes",
+    "source": "src/Wyrd/Processes/ProcessNode.cs",
+    "description": "Stores the awaited event type and optional declared timeout.",
+    "signatures": [
+      "public sealed record AwaitNode(Type Event, TimeSpan? Timeout = null) : ProcessNode",
+      "public bool Equals(AwaitNode? other)"
+    ],
+    "example": "var waits = flow.Nodes.OfType<AwaitNode>().Select(wait => wait.Timeout);",
+    "members": []
+  },
+  {
+    "name": "Result",
+    "group": "Decisions",
+    "source": "src/Wyrd/Result.cs",
+    "description": "Represents success or a business error through implicit conversions and Match.",
+    "signatures": [
+      "public readonly record struct Result<TOk, TError>",
+      "public bool IsOk { get; }",
+      "public TResult Match<TResult>(Func<TOk, TResult> ok, Func<TError, TResult> error)",
+      "public static implicit operator Result<TOk, TError>(TOk value)",
+      "public static implicit operator Result<TOk, TError>(TError error)"
+    ],
+    "example": "Result<PaymentCharged, PaymentError> result = new PaymentCharged(\"A-1\", 89m);\nvar accepted = result.IsOk;\nvar text = result.Match(e => e.OrderId, error => error.ToString());",
+    "members": []
+  },
+  {
+    "name": "InMemoryRuntime",
+    "group": "Runtime",
+    "source": "src/Wyrd/Runtime/InMemoryRuntime.cs",
+    "description": "Hosts the deterministic engine with JSON boundaries, an in-memory store and a virtual clock.",
+    "signatures": [
+      "public sealed class InMemoryRuntime : IDisposable",
+      "public InMemoryRuntime()",
+      "public InMemoryRuntime(JsonSerializerContext json)",
+      "public TimeSpan Now",
+      "public IReadOnlyList<JournalEntry> Journal",
+      "public IReadOnlyList<IDomainEvent> History",
+      "public IReadOnlyList<IIntegrationEvent> Published",
+      "public InMemoryRuntime AddSlice<TCommand, TState, TEvent, TError>(Slice<TCommand, TState, TEvent, TError> slice)",
+      "public InMemoryRuntime AddPublication<TDomainEvent, TIntegrationEvent>(Publication<TDomainEvent, TIntegrationEvent> publication)",
+      "public InMemoryRuntime AddUpcaster<TFrom, TTo>(Upcaster<TFrom, TTo> upcaster)",
+      "public InMemoryRuntime AddProjection<TView>(Projection<TView> projection)",
+      "public InMemoryRuntime AddProcess(Process process)",
+      "public async Task<Decision> SendAsync(ICommand command, CancellationToken cancellationToken = default)",
+      "public async Task PublishAsync(IIntegrationEvent @event, CancellationToken cancellationToken = default)",
+      "public async Task AdvanceAsync(TimeSpan by, CancellationToken cancellationToken = default)",
+      "public Task ResumeAsync(Process process, object key, CancellationToken cancellationToken = default)",
+      "public Task CompensateAsync(Process process, object key, CancellationToken cancellationToken = default)",
+      "public InstanceHistory HistoryOf(Process process, object key)",
+      "public string? ReasonOf(Process process, object key)",
+      "public void FailNext<TCommand>(int times = 1)",
+      "public ProcessStatus? StatusOf(Process process, object key)",
+      "public TState StateOf<TState>(object key)",
+      "public TView? View<TView>(object key)",
+      "public IReadOnlyList<TView> Views<TView>()",
+      "public void Dispose()"
+    ],
+    "example": "using var shop = ShopModule.CreateRuntime();\nawait shop.SendAsync(new PlaceOrder(\"A-1\", \"KEYBOARD\", 1, 89m));\nawait shop.PublishAsync(new PaymentConfirmed(\"A-1\"));\nawait shop.AdvanceAsync(15.Minutes);\nvar order = shop.View<OrderSummary>(\"A-1\");",
+    "members": [
+      {
+        "signature": "public InMemoryRuntime()",
+        "description": "Constructs the host; the parameterless reflection entry point is for development, while the JSON-context overload supports Native AOT.",
+        "example": "using var shop = new InMemoryRuntime(ShopJson.Default);"
+      },
+      {
+        "signature": "public InMemoryRuntime(JsonSerializerContext json)",
+        "description": "Constructs the host; the parameterless reflection entry point is for development, while the JSON-context overload supports Native AOT.",
+        "example": "using var shop = new InMemoryRuntime(ShopJson.Default);"
+      },
+      {
+        "signature": "public TimeSpan Now",
+        "description": "Reads elapsed virtual time from the host epoch.",
+        "example": "TimeSpan elapsed = shop.Now;"
+      },
+      {
+        "signature": "public IReadOnlyList<JournalEntry> Journal",
+        "description": "Returns a snapshot of readable observations.",
+        "example": "foreach (var entry in shop.Journal) Console.WriteLine(entry);"
+      },
+      {
+        "signature": "public IReadOnlyList<IDomainEvent> History",
+        "description": "Returns the domain events produced by all slices; this differs from one process boundary history.",
+        "example": "var acceptedFacts = shop.History;"
+      },
+      {
+        "signature": "public IReadOnlyList<IIntegrationEvent> Published",
+        "description": "Returns the integration events mapped by publications.",
+        "example": "var publicFacts = shop.Published;"
+      },
+      {
+        "signature": "public InMemoryRuntime AddSlice<TCommand, TState, TEvent, TError>(Slice<TCommand, TState, TEvent, TError> slice)",
+        "description": "Registers the authoritative command owner before handling messages.",
+        "example": "shop.AddSlice(new ChargePaymentSlice());"
+      },
+      {
+        "signature": "public InMemoryRuntime AddPublication<TDomainEvent, TIntegrationEvent>(Publication<TDomainEvent, TIntegrationEvent> publication)",
+        "description": "Registers the domain-to-contract mapping.",
+        "example": "shop.AddPublication(new PaymentChargedPublication());"
+      },
+      {
+        "signature": "public InMemoryRuntime AddUpcaster<TFrom, TTo>(Upcaster<TFrom, TTo> upcaster)",
+        "description": "Registers a mapping to the contract version a subscriber understands.",
+        "example": "shop.AddUpcaster(new ChargedUpcaster());"
+      },
+      {
+        "signature": "public InMemoryRuntime AddProjection<TView>(Projection<TView> projection)",
+        "description": "Registers pure view handlers and their serialized view type.",
+        "example": "shop.AddProjection(new OrderSummaries());"
+      },
+      {
+        "signature": "public InMemoryRuntime AddProcess(Process process)",
+        "description": "Registers and validates a process definition before delivery.",
+        "example": "shop.AddProcess(Processes.OrderFulfillment);"
+      },
+      {
+        "signature": "public async Task<Decision> SendAsync(ICommand command, CancellationToken cancellationToken = default)",
+        "description": "Sends a command, drains its queued consequences and returns its accepted or rejected decision.",
+        "example": "Decision outcome = await shop.SendAsync(new ChargePayment(\"A-1\", 89m));"
+      },
+      {
+        "signature": "public async Task PublishAsync(IIntegrationEvent @event, CancellationToken cancellationToken = default)",
+        "description": "Delivers an external integration event; domain events cannot be published through this API.",
+        "example": "await shop.PublishAsync(new PaymentConfirmed(\"A-1\"));"
+      },
+      {
+        "signature": "public async Task AdvanceAsync(TimeSpan by, CancellationToken cancellationToken = default)",
+        "description": "Moves the virtual clock and fires due retries and timeouts.",
+        "example": "await shop.AdvanceAsync(15.Minutes);"
+      },
+      {
+        "signature": "public Task ResumeAsync(Process process, object key, CancellationToken cancellationToken = default)",
+        "description": "Resends a suspended instance's pending action with the same message ID; a resumed wait starts its deadline again.",
+        "example": "await shop.ResumeAsync(Processes.OrderFulfillment, \"A-1\");"
+      },
+      {
+        "signature": "public Task CompensateAsync(Process process, object key, CancellationToken cancellationToken = default)",
+        "description": "Requests compensation of a forward-suspended instance and fences its uncertain pending step.",
+        "example": "await shop.CompensateAsync(Processes.OrderFulfillment, \"A-1\");"
+      },
+      {
+        "signature": "public InstanceHistory HistoryOf(Process process, object key)",
+        "description": "Returns one existing process instance's recorded boundary history; an unknown instance throws.",
+        "example": "InstanceHistory history = shop.HistoryOf(Processes.OrderFulfillment, \"A-1\");"
+      },
+      {
+        "signature": "public string? ReasonOf(Process process, object key)",
+        "description": "Returns the instance's suspension reason, or null.",
+        "example": "string? reason = shop.ReasonOf(Processes.OrderFulfillment, \"A-1\");"
+      },
+      {
+        "signature": "public void FailNext<TCommand>(int times = 1)",
+        "description": "Injects transient failures for the next matching command deliveries in this in-memory host.",
+        "example": "shop.FailNext<ChargePayment>(2);"
+      },
+      {
+        "signature": "public ProcessStatus? StatusOf(Process process, object key)",
+        "description": "Returns the process instance status, or null if it does not exist.",
+        "example": "ProcessStatus? status = shop.StatusOf(Processes.OrderFulfillment, \"A-1\");"
+      },
+      {
+        "signature": "public TState StateOf<TState>(object key)",
+        "description": "Returns the keyed domain snapshot, or that state's Initial value when absent.",
+        "example": "Payment state = shop.StateOf<Payment>(\"A-1\");"
+      },
+      {
+        "signature": "public TView? View<TView>(object key)",
+        "description": "Returns one stored view, or null for a missing key.",
+        "example": "OrderSummary? row = shop.View<OrderSummary>(\"A-1\");"
+      },
+      {
+        "signature": "public IReadOnlyList<TView> Views<TView>()",
+        "description": "Returns stored rows in creation order; apply an explicit display sort when needed.",
+        "example": "var rows = shop.Views<OrderSummary>();"
+      },
+      {
+        "signature": "public void Dispose()",
+        "description": "Disposes the host's synchronization gate.",
+        "example": "using var shop = ShopModule.CreateRuntime();"
+      }
+    ]
+  },
+  {
+    "name": "HistoryKind",
+    "group": "Replay (Urd)",
+    "source": "src/Wyrd/Runtime/InstanceHistory.cs",
+    "description": "Identifies starts, sends, replies, received facts, timeouts, operator actions and final states.",
+    "signatures": ["public enum HistoryKind"],
+    "example": "var commands = history.Entries.Where(e => e.Kind == HistoryKind.Sent);",
+    "members": []
+  },
+  {
+    "name": "HistoryEntry",
+    "group": "Replay (Urd)",
+    "source": "src/Wyrd/Runtime/InstanceHistory.cs",
+    "description": "Records one boundary observation with its stored payload, step, attempt and outcome or reason.",
+    "signatures": [
+      "public sealed record HistoryEntry(DateTimeOffset At, HistoryKind Kind)",
+      "public string? Type { get; init; }",
+      "public string? Payload { get; init; }",
+      "public int? Step { get; init; }",
+      "public bool Compensating { get; init; }",
+      "public int? Attempt { get; init; }",
+      "public string? Outcome { get; init; }",
+      "public string? Reason { get; init; }"
+    ],
+    "example": "foreach (HistoryEntry entry in history.Entries)\n    Console.WriteLine($\"{entry.Kind}: {entry.Type}\");",
+    "members": []
+  },
+  {
+    "name": "InstanceHistory",
+    "group": "Replay (Urd)",
+    "source": "src/Wyrd/Runtime/InstanceHistory.cs",
+    "description": "Exports an ordered process-instance history with its key and structural fingerprint.",
+    "signatures": [
+      "public sealed record InstanceHistory(string Process, string Key, string Fingerprint, IReadOnlyList<HistoryEntry> Entries)",
+      "public string ToJson()",
+      "public static InstanceHistory FromJson(string json)"
+    ],
+    "example": "var history = shop.HistoryOf(Processes.OrderFulfillment, \"A-1\");\nstring json = history.ToJson();\nvar restored = InstanceHistory.FromJson(json);",
+    "members": []
+  },
+  {
+    "name": "JournalEntry",
+    "group": "Runtime",
+    "source": "src/Wyrd/Runtime/JournalEntry.cs",
+    "description": "A human-readable observation timestamped using the virtual clock.",
+    "signatures": [
+      "public sealed record JournalEntry(TimeSpan At, string Process, object? Key, string Message)"
+    ],
+    "example": "foreach (JournalEntry entry in shop.Journal) Console.WriteLine(entry);",
+    "members": []
+  },
+  {
+    "name": "ProcessStatus",
+    "group": "Runtime",
+    "source": "src/Wyrd/Runtime/ProcessStatus.cs",
+    "description": "Describes an instance as Running, Awaiting, Completed, Compensated or Suspended.",
+    "signatures": ["public enum ProcessStatus"],
+    "example": "if (shop.StatusOf(Processes.OrderFulfillment, \"A-1\") == ProcessStatus.Suspended)\n    Console.WriteLine(shop.ReasonOf(Processes.OrderFulfillment, \"A-1\"));",
+    "members": []
+  },
+  {
+    "name": "IState",
+    "group": "Decisions",
+    "source": "src/Wyrd/Slices/IState.cs",
+    "description": "The nongeneric marker identifies state; implement the generic contract in application code.",
+    "signatures": ["public interface IState"],
+    "example": "public abstract record Order : IState<Order> { /* Initial and Evolve */ }",
+    "members": []
+  },
+  {
+    "name": "IState<TSelf>",
+    "group": "Decisions",
+    "source": "src/Wyrd/Slices/IState.cs",
+    "description": "Provides the initial snapshot and a pure transition from each accepted domain event.",
+    "signatures": [
+      "public interface IState<TSelf> : IState",
+      "static abstract TSelf Initial { get; }",
+      "TSelf Evolve(IDomainEvent domainEvent);"
+    ],
+    "example": "public static Order Initial { get; } = new None();\npublic Order Evolve(IDomainEvent e) => e is OrderCancelled ? new Cancelled() : this;",
+    "members": []
+  },
+  {
+    "name": "Projection",
+    "group": "Projections",
+    "source": "src/Wyrd/Slices/Projection.cs",
+    "description": "Registers pure event-to-view updates; a null result deletes the selected view.",
+    "signatures": [
+      "public abstract class Projection<TView> : IProjectionHandler",
+      "protected void On<TEvent>(Func<TEvent, object> key, Func<TView?, TEvent, TView?> apply)"
+    ],
+    "example": "public sealed class OpenOrders : Projection<OrderSummary>\n{\n    public OpenOrders()\n    {\n        On<OrderPlaced>(e => e.OrderId, (_, e) => new(e.OrderId, e.Sku, e.Quantity, e.Amount, \"Placed\"));\n        On<OrderCancelled>(e => e.OrderId, (_, _) => null);\n    }\n}",
+    "members": []
+  },
+  {
+    "name": "Publication",
+    "group": "Messages",
+    "source": "src/Wyrd/Slices/Publication.cs",
+    "description": "Maps an internal domain fact to an explicit public contract.",
+    "signatures": [
+      "public abstract class Publication<TDomainEvent, TIntegrationEvent> : IPublicationHandler",
+      "public abstract TIntegrationEvent Map(TDomainEvent domainEvent);"
+    ],
+    "example": "public sealed class ChargedPublication : Publication<PaymentCharged, PaymentChargedV1>\n{\n    public override PaymentChargedV1 Map(PaymentCharged e) => new(e.OrderId, e.Amount, \"EUR\");\n}",
+    "members": []
+  },
+  {
+    "name": "Slice",
+    "group": "Decisions",
+    "source": "src/Wyrd/Slices/Slice.cs",
+    "description": "Owns a command and decides one event or rejection from its keyed state.",
+    "signatures": [
+      "public abstract class Slice<TCommand, TState, TEvent, TError> : ISliceHandler",
+      "public abstract object KeyOf(TCommand command);",
+      "public abstract Result<TEvent, TError> Decide(TCommand command, TState state);"
+    ],
+    "example": "public override object KeyOf(ChargePayment command) => command.OrderId;\npublic override Result<PaymentCharged, PaymentError> Decide(ChargePayment command, Payment state) =>\n    state is Payment.None ? new PaymentCharged(command.OrderId, command.Amount) : PaymentError.AlreadyCharged;",
+    "members": []
+  },
+  {
+    "name": "Decision",
+    "group": "Decisions",
+    "source": "src/Wyrd/Slices/Slice.cs",
+    "description": "The runtime returns an accepted domain event or a rejected business error.",
+    "signatures": [
+      "public abstract record Decision",
+      "public sealed record Accepted(IDomainEvent Event) : Decision;",
+      "public sealed record Rejected(object Error) : Decision;"
+    ],
+    "example": "var decision = await shop.SendAsync(new CancelOrder(\"A-1\"));\nif (decision is Decision.Rejected rejected) Console.WriteLine(rejected.Error);",
+    "members": []
+  },
+  {
+    "name": "Upcaster",
+    "group": "Messages",
+    "source": "src/Wyrd/Slices/Upcaster.cs",
+    "description": "Maps an older integration contract into the newer version a subscriber consumes.",
+    "signatures": [
+      "public abstract class Upcaster<TFrom, TTo> : IUpcasterHandler",
+      "public abstract TTo Map(TFrom previous);"
+    ],
+    "example": "public sealed class ChargedUpcaster : Upcaster<PaymentChargedV1, PaymentChargedV2>\n{\n    public override PaymentChargedV2 Map(PaymentChargedV1 e) => new(e.OrderId, e.Amount, e.Currency);\n}",
+    "members": []
+  },
+  {
+    "name": "Attempts",
+    "group": "Processes",
+    "source": "src/Wyrd/Time.cs",
+    "description": "A positive retry count expressed with the C# extension literal Times.",
+    "signatures": [
+      "public readonly record struct Attempts",
+      "public Attempts(int count)",
+      "public int Count { get; }"
+    ],
+    "example": "Attempts attempts = 3.Times;\nint count = attempts.Count;",
+    "members": []
+  },
+  {
+    "name": "Literals",
+    "group": "Processes",
+    "source": "src/Wyrd/Time.cs",
+    "description": "Adds readable TimeSpan and Attempts properties to integer expressions.",
+    "signatures": [
+      "public static class Literals",
+      "public TimeSpan Seconds",
+      "public TimeSpan Minutes",
+      "public TimeSpan Hours",
+      "public TimeSpan Days",
+      "public Attempts Times"
+    ],
+    "example": "TimeSpan deadline = 15.Minutes;\nTimeSpan settle = 1.Days;\nAttempts retries = 3.Times;",
+    "members": []
+  },
+  {
+    "name": "UnionAttribute",
+    "group": "Decisions",
+    "source": "src/Wyrd/UnionAttribute.cs",
+    "description": "Marks an abstract record whose nested sealed records are its closed cases.",
+    "signatures": ["public sealed class UnionAttribute : Attribute;"],
+    "example": "[Union]\npublic abstract record Payment\n{\n    public sealed record None : Payment;\n    public sealed record Charged(decimal Amount) : Payment;\n}",
+    "members": []
+  },
+  {
+    "name": "WyrdJsonContextAttribute",
+    "group": "Runtime",
+    "source": "src/Wyrd/WyrdJsonContextAttribute.cs",
+    "description": "Marks the source-generated application JSON context checked by the serialization analyzers.",
+    "signatures": ["public sealed class WyrdJsonContextAttribute : Attribute;"],
+    "example": "[WyrdJsonContext]\n[JsonSerializable(typeof(ChargePayment))]\n[JsonSerializable(typeof(Payment))]\npublic partial class ShopJson : JsonSerializerContext;\n\n// Register every reachable message, state, error, view and union case.\nvar shop = new InMemoryRuntime(ShopJson.Default);",
+    "members": []
+  },
+  {
+    "name": "Invariant",
+    "group": "Testing",
+    "source": "src/Wyrd.Testing/Invariant.cs",
+    "description": "Checks the settled runtime, returning null for success or a useful failure explanation.",
+    "signatures": [
+      "public sealed record Invariant(string Name, Func<InMemoryRuntime, string?> Check)",
+      "public static Invariant ProcessesSettle { get; }",
+      "public static Invariant NothingNeedsAttention { get; }",
+      "public static IReadOnlyList<Invariant> Defaults { get; } = [ProcessesSettle, NothingNeedsAttention];"
+    ],
+    "example": "Invariant conserved = new(\"stock is nonnegative\", shop =>\n    shop.StateOf<StockItem>(\"KEYBOARD\").Available >= 0 ? null : \"negative stock\");\nInvariant[] checks = [.. Invariant.Defaults, conserved];",
+    "members": []
+  },
+  {
+    "name": "ProjectionScenario",
+    "group": "Testing",
+    "source": "src/Wyrd.Testing/ProjectionScenario.cs",
+    "description": "Applies facts in the supplied order and compares a view as stored JSON.",
+    "signatures": [
+      "public sealed class ProjectionScenario<TView>",
+      "public ProjectionScenario<TView> Given(params IEvent[] events)",
+      "public ProjectionScenario<TView> Then(object key, TView? expected)"
+    ],
+    "example": "Scenario.For(new OrderSummaries())\n    .Given(new OrderPlaced(\"A-1\", \"KEYBOARD\", 1, 89m))\n    .Then(\"A-1\", new OrderSummary(\"A-1\", \"KEYBOARD\", 1, 89m, \"Placed\"));",
+    "members": []
+  },
+  {
+    "name": "ReplayReport",
+    "group": "Replay (Urd)",
+    "source": "src/Wyrd.Testing/ReplayReport.cs",
+    "description": "Exposes recorded and replayed entries, the first divergence, structural reason and replay error.",
+    "signatures": [
+      "public sealed class ReplayReport",
+      "public InstanceHistory Recorded { get; }",
+      "public IReadOnlyList<HistoryEntry> Replayed { get; }",
+      "public IReadOnlyList<JournalEntry> Journal { get; }",
+      "public ReplayDivergence? Divergence { get; }",
+      "public string? Reason { get; init; }",
+      "public Exception? Error { get; init; }",
+      "public bool Diverged",
+      "public void ThrowIfDiverged()"
+    ],
+    "example": "report.ThrowIfDiverged();\nif (report.Divergence is { } first) Console.WriteLine(first.Index);",
+    "members": []
+  },
+  {
+    "name": "ReplayDivergence",
+    "group": "Replay (Urd)",
+    "source": "src/Wyrd.Testing/ReplayReport.cs",
+    "description": "Points to the first unequal entry; a null side means that entry was absent.",
+    "signatures": [
+      "public sealed record ReplayDivergence(int Index, HistoryEntry? Recorded, HistoryEntry? Replayed);"
+    ],
+    "example": "HistoryEntry? expected = report.Divergence?.Recorded;\nHistoryEntry? actual = report.Divergence?.Replayed;",
+    "members": []
+  },
+  {
+    "name": "Scenario",
+    "group": "Testing",
+    "source": "src/Wyrd.Testing/Scenario.cs",
+    "description": "Starts a JSON-checked business specification for a slice or projection.",
+    "signatures": [
+      "public static class Scenario",
+      "public static SliceScenario<TCommand, TState, TEvent, TError> For<TCommand, TState, TEvent, TError>(\nSlice<TCommand, TState, TEvent, TError> slice)",
+      "public static ProjectionScenario<TView> For<TView>(Projection<TView> projection)"
+    ],
+    "example": "Scenario.For(new ChargePaymentSlice())\n    .Given(new PaymentCharged(\"A-1\", 89m))\n    .When(new ChargePayment(\"A-1\", 89m))\n    .ThenRejected(PaymentError.AlreadyCharged);",
+    "members": []
+  },
+  {
+    "name": "SimulationOptions",
+    "group": "Testing",
+    "source": "src/Wyrd.Testing/SimulationOptions.cs",
+    "description": "Configures runs, seed, hostile probabilities, settling time and bounded greedy shrinking.",
+    "signatures": [
+      "public sealed record SimulationOptions",
+      "public int Runs { get; init; } = 200;",
+      "public int Seed { get; init; } = 1;",
+      "public double FaultRate { get; init; } = 0.1;",
+      "public double DuplicateRate { get; init; } = 0.1;",
+      "public double ReorderRate { get; init; } = 0.3;",
+      "public TimeSpan SettleFor { get; init; } = TimeSpan.FromDays(1);",
+      "public bool Shrink { get; init; } = true;",
+      "public int ShrinkBudget { get; init; } = 200;",
+      "public SimulationOptions Only(int seed)"
+    ],
+    "example": "var options = new SimulationOptions { Runs = 200, Shrink = true, ShrinkBudget = 200 };\nvar replay = options.Only(9);",
+    "members": []
+  },
+  {
+    "name": "Violation",
+    "group": "Testing",
+    "source": "src/Wyrd.Testing/SimulationReport.cs",
+    "description": "Describes a failing seed, invariant, detail and journal, optionally with its reduced future.",
+    "signatures": [
+      "public sealed record Violation(int Seed, string Invariant, string Detail, IReadOnlyList<JournalEntry> Journal)",
+      "public ShrunkFuture? Shrunk { get; init; }"
+    ],
+    "example": "foreach (Violation failure in report.Violations)\n    Console.WriteLine($\"{failure.Invariant}: seed {failure.Seed}\");",
+    "members": []
+  },
+  {
+    "name": "ShrunkFuture",
+    "group": "Testing",
+    "source": "src/Wyrd.Testing/SimulationReport.cs",
+    "description": "Contains a smaller failure found within budget, without promising a global minimum.",
+    "signatures": [
+      "public sealed record ShrunkFuture(\nstring Detail, IReadOnlyList<string> Perturbations, IReadOnlyList<JournalEntry> Journal, int Replays);"
+    ],
+    "example": "var smallest = report.Violations.First().Shrunk;\nvar perturbations = smallest?.Perturbations;",
+    "members": []
+  },
+  {
+    "name": "SimulationReport",
+    "group": "Testing",
+    "source": "src/Wyrd.Testing/SimulationReport.cs",
+    "description": "Exposes explored runs, options and violations and can fail a test with the first case per invariant.",
+    "signatures": [
+      "public sealed class SimulationReport(int runs, SimulationOptions options, IReadOnlyList<Violation> violations)",
+      "public int Runs { get; } = runs;",
+      "public SimulationOptions Options { get; } = options;",
+      "public IReadOnlyList<Violation> Violations { get; } = violations;",
+      "public bool Passed",
+      "public void ThrowIfViolated()"
+    ],
+    "example": "report.ThrowIfViolated();\nbool passed = report.Passed;\nvar failures = report.Violations;",
+    "members": []
+  },
+  {
+    "name": "Skuld",
+    "group": "Testing",
+    "source": "src/Wyrd.Testing/Skuld.cs",
+    "description": "Explores seeded futures with faults, redelivery and reordering against explicit invariants.",
+    "signatures": [
+      "public static class Skuld",
+      "public static async Task<SimulationReport> SimulateAsync(\nFunc<InMemoryRuntime> system,\nFunc<InMemoryRuntime, Task> scenario,\nIReadOnlyList<Invariant> invariants,\nSimulationOptions? options = null)"
+    ],
+    "example": "var report = await Skuld.SimulateAsync(ShopModule.CreateRuntime,\n    shop => shop.SendAsync(new PlaceOrder(\"A-1\", \"KEYBOARD\", 1, 89m)),\n    Invariant.Defaults, new SimulationOptions { Runs = 200 });\nreport.ThrowIfViolated();",
+    "members": []
+  },
+  {
+    "name": "SliceScenario",
+    "group": "Testing",
+    "source": "src/Wyrd.Testing/SliceScenario.cs",
+    "description": "Supplies historical facts or an explicit state, then asks the slice to decide a command.",
+    "signatures": [
+      "public sealed class SliceScenario<TCommand, TState, TEvent, TError>",
+      "public SliceScenario<TCommand, TState, TEvent, TError> Given(params IDomainEvent[] history)",
+      "public SliceScenario<TCommand, TState, TEvent, TError> GivenState(TState state)",
+      "public SliceOutcome<TCommand, TState, TEvent, TError> When(TCommand command)"
+    ],
+    "example": "Scenario.For(new ChargePaymentSlice())\n    .GivenState(new Payment.None())\n    .When(new ChargePayment(\"A-1\", 89m))\n    .Then(new PaymentCharged(\"A-1\", 89m));",
+    "members": []
+  },
+  {
+    "name": "SliceOutcome",
+    "group": "Testing",
+    "source": "src/Wyrd.Testing/SliceScenario.cs",
+    "description": "Asserts the accepted event, business rejection or evolved state after a command.",
+    "signatures": [
+      "public sealed class SliceOutcome<TCommand, TState, TEvent, TError>",
+      "public SliceOutcome<TCommand, TState, TEvent, TError> Then(TEvent expected)",
+      "public SliceOutcome<TCommand, TState, TEvent, TError> ThenRejected(TError expected)",
+      "public SliceOutcome<TCommand, TState, TEvent, TError> ThenState(TState expected)"
+    ],
+    "example": "Scenario.For(new ChargePaymentSlice())\n    .When(new ChargePayment(\"A-1\", 89m))\n    .Then(new PaymentCharged(\"A-1\", 89m))\n    .ThenState(new Payment.Charged(89m));",
+    "members": []
+  },
+  {
+    "name": "Urd",
+    "group": "Replay (Urd)",
+    "source": "src/Wyrd.Testing/Urd.cs",
+    "description": "Runs the process against recorded replies and virtual time, checking the first difference.",
+    "signatures": [
+      "public static class Urd",
+      "public static async Task<ReplayReport>\n    ReplayAsync(Func<InMemoryRuntime> system,\n        Process process, InstanceHistory history)"
+    ],
+    "example": "var report = await Urd.ReplayAsync(ShopModule.CreateRuntime,\n    Processes.OrderFulfillment, history);\nreport.ThrowIfDiverged();",
+    "members": []
+  },
+  {
+    "name": "WyrdAssertionException",
+    "group": "Testing",
+    "source": "src/Wyrd.Testing/WyrdAssertionException.cs",
+    "description": "Signals a failed scenario, invariant or replay expectation to the test runner.",
+    "signatures": [
+      "public sealed class WyrdAssertionException : Exception",
+      "public WyrdAssertionException()",
+      "public WyrdAssertionException(string message)",
+      "public WyrdAssertionException(string message, Exception innerException)"
+    ],
+    "example": "report.ThrowIfViolated(); // throws WyrdAssertionException if any invariant failed",
+    "members": []
+  }
+]
