@@ -271,6 +271,21 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         }
 
         await using var db = await _contexts.CreateDbContextAsync(CancellationToken.None).ConfigureAwait(false);
+
+        // One retry layer: a process command that can't be handled goes back to its process as a failure, and the
+        // step's retry policy decides. The host never retries it on its own (semantics 3.3).
+        var envelope = JsonSerializer.Deserialize(message.Envelope, WyrdJsonContext.Default.Envelope)!;
+        if (envelope is { Kind: MessageKind.Command, Process: not null })
+        {
+            LogProcessCommandFailed(message.Id, envelope.Process.Process, envelope.Process.Key, error);
+            await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None).ConfigureAwait(false);
+            new EfCoreStore(db, now).Enqueue(Wyrd.Runtime.Engine.Faulted(envelope, Guid.CreateVersion7()), now);
+            await db.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+            await db.Set<QueueRow>().Where(r => r.Id == message.Id).ExecuteDeleteAsync(CancellationToken.None).ConfigureAwait(false);
+            await transaction.CommitAsync(CancellationToken.None).ConfigureAwait(false);
+            return;
+        }
+
         var failed = message.Attempts + 1;
         if (failed >= _options.MaxDeliveryAttempts)
         {
@@ -419,6 +434,9 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Message {Id} failed (attempt {Attempt}), redelivery in {Delay}")]
     private partial void LogRedelivery(long id, int attempt, TimeSpan delay, Exception error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Command {Id} of {Process} {Key} failed: its process decides whether to retry")]
+    private partial void LogProcessCommandFailed(long id, string process, string key, Exception error);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Message {Id} moved to the dead letters after {Attempts} attempts")]
     private partial void LogDeadLetter(long id, int attempts, Exception error);
