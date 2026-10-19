@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <PackAsTool>true</PackAsTool>
-    <ToolCommandName>wyrd</ToolCommandName>
+    <ToolCommandName>dotnet-wyrd</ToolCommandName>
     <IsAotCompatible>false</IsAotCompatible>
     <Description>Generate AsyncAPI and Mermaid documentation from Wyrd contracts and processes.</Description>
   </PropertyGroup>
@@ -12,6 +12,7 @@
     <PackageReference Include="Spectre.Console" />
     <PackageReference Include="Spectre.Console.Cli" />
     <PackageReference Include="YamlDotNet" />
+    <PackageReference Include="ModelContextProtocol" />
     <ProjectReference Include="..\Wyrd\Wyrd.csproj" />
   </ItemGroup>
 

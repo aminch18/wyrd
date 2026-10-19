@@ -7,6 +7,7 @@
     <PackageVersion Include="Spectre.Console" Version="0.57.2" />
     <PackageVersion Include="Spectre.Console.Cli" Version="0.57.2" />
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
+    <PackageVersion Include="ModelContextProtocol" Version="2.2.0" />
 
     <!-- Analyzers: target an old enough Roslyn to run on every supported SDK. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" />
@@ -16,6 +17,8 @@
     <!-- PostgreSQL host -->
     <PackageVersion Include="Npgsql" Version="10.0.3" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.13" />
+    <!-- Shop.Api diagnostic export -->
+    <PackageVersion Include="OpenTelemetry.Exporter.Console" Version="1.20.0" />
 
     <!-- Tests -->
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />

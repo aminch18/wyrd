@@ -91,6 +91,17 @@ public class TransportTests
     }
 
     [Fact]
+    public async Task runtimes_are_connected_before_they_handle_messages()
+    {
+        var payments = PaymentsService();
+        await payments.SendAsync(new ChargePayment("A-1", 50));
+
+        var ex = Assert.Throws<InvalidOperationException>(() => payments.UseTransport(new InMemoryTransport()));
+
+        Assert.Equal("Connect a runtime to one in-memory transport, before it handles messages.", ex.Message);
+    }
+
+    [Fact]
     public async Task what_a_failing_transport_did_not_take_is_sent_next_time()
     {
         var transport = new FlakyTransport();

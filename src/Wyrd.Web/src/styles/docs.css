@@ -349,3 +349,101 @@
 .app[data-theme='light'] .docs-side-note {
     background: rgba(255, 255, 255, 0.3);
 }
+
+.docs-nav-group {
+    display: grid;
+}
+.docs-nav-group h2 {
+    margin: 18px 10px 8px;
+    color: var(--muted);
+    font:
+        600 10px/1.4 'JetBrains Mono',
+        monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.api-controls {
+    display: grid;
+    grid-template-columns: minmax(120px, 1fr) minmax(0, 2fr);
+    gap: 16px;
+    margin-block: 30px;
+}
+.api-controls label {
+    display: grid;
+    gap: 8px;
+    color: var(--copy);
+    font-size: 12px;
+}
+.api-controls input,
+.api-controls select {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--heading);
+    padding: 12px;
+    font: inherit;
+}
+.api-entry {
+    margin-block: 14px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 18px;
+    color: var(--copy);
+    font-size: 14px;
+    line-height: 1.7;
+}
+.api-entry summary {
+    cursor: pointer;
+    color: var(--heading);
+}
+.api-entry summary span {
+    display: block;
+    margin-top: 8px;
+    color: var(--copy);
+}
+.api-entry a {
+    color: var(--cyan);
+    overflow-wrap: anywhere;
+}
+.api-entry [data-code-block] {
+    margin-block: 20px;
+}
+.api-example {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--heading);
+    font-size: 12px;
+}
+.doc-article p code,
+.doc-article h1,
+.doc-article h2,
+.doc-article h3,
+.doc-article a {
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+    .api-controls {
+        grid-template-columns: 1fr;
+    }
+    .api-entry {
+        padding: 14px;
+    }
+}
+.api-member {
+    margin-block: 24px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+}
+@media (min-width: 821px) {
+    .docs-sidebar {
+        max-height: calc(100dvh - 104px);
+        overflow-y: auto;
+        padding-bottom: 24px;
+    }
+}
+.docs-mobile-nav {
+    display: none;
+}

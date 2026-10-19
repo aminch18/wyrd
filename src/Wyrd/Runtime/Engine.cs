@@ -22,22 +22,31 @@ internal sealed class Engine(
 
     public async ValueTask<Decision?> HandleAsync(Envelope envelope, CancellationToken cancellationToken)
     {
-        registry.Validate();
-        switch (envelope.Kind)
+        using var trace = Tracing.Begin(envelope);
+        try
         {
-            case MessageKind.Command:
-                return await HandleCommandAsync(envelope, cancellationToken).ConfigureAwait(false);
-            case MessageKind.Event:
-                await HandleEventAsync(envelope, cancellationToken).ConfigureAwait(false);
-                return null;
-            case MessageKind.Reply:
-                await HandleReplyAsync(envelope, cancellationToken).ConfigureAwait(false);
-                return null;
-            case MessageKind.Timeout:
-                await HandleTimeoutAsync(envelope, cancellationToken).ConfigureAwait(false);
-                return null;
-            default:
-                throw new InvalidOperationException($"Unknown message kind {envelope.Kind}.");
+            registry.Validate();
+            switch (envelope.Kind)
+            {
+                case MessageKind.Command:
+                    return await HandleCommandAsync(envelope, cancellationToken).ConfigureAwait(false);
+                case MessageKind.Event:
+                    await HandleEventAsync(envelope, cancellationToken).ConfigureAwait(false);
+                    return null;
+                case MessageKind.Reply:
+                    await HandleReplyAsync(envelope, cancellationToken).ConfigureAwait(false);
+                    return null;
+                case MessageKind.Timeout:
+                    await HandleTimeoutAsync(envelope, cancellationToken).ConfigureAwait(false);
+                    return null;
+                default:
+                    throw new InvalidOperationException($"Unknown message kind {envelope.Kind}.");
+            }
+        }
+        catch (Exception exception)
+        {
+            trace?.Failed(exception);
+            throw;
         }
     }
 
@@ -48,6 +57,7 @@ internal sealed class Engine(
         var command = (ICommand)types.Deserialize(envelope.Type, envelope.Payload);
         var owner = registry.OwnerOf(command.GetType());
         var key = Keys.Of(owner.KeyOf(command));
+        Tracing.Key(key);
         var changes = new Changes();
 
         if (await store.FindReplyAsync(envelope.MessageId, cancellationToken).ConfigureAwait(false) is { } stored)
@@ -55,6 +65,7 @@ internal sealed class Engine(
             log(External, key, stored.Outcome == ReplyOutcome.Fenced
                 ? $"late {command.GetType().Name} arrived after being fenced: never executed"
                 : $"duplicate {command.GetType().Name} ignored, stored outcome replayed");
+            Tracing.Outcome(stored.Outcome == ReplyOutcome.Fenced ? "fenced" : "duplicate", stored.Outcome);
             Reply(envelope, stored, changes);
             await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
             return null;
@@ -62,6 +73,7 @@ internal sealed class Engine(
 
         if (envelope.Process is not null && fault(envelope, command.GetType()))
         {
+            Tracing.Outcome(ReplyOutcome.Faulted);
             Reply(envelope, new ReplyMessage(ReplyOutcome.Faulted), changes);
             await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
             return null;
@@ -85,6 +97,7 @@ internal sealed class Engine(
             catch (Exception ex) when (envelope.Process is not null && ex is not OperationCanceledException)
             {
                 log(External, key, $"{command.GetType().Name} failed: {ex.GetType().Name}: {ex.Message}");
+                Tracing.Outcome(ReplyOutcome.Faulted);
                 Reply(envelope, new ReplyMessage(ReplyOutcome.Faulted), changes);
                 await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
                 return null;
@@ -123,6 +136,7 @@ internal sealed class Engine(
             reply = new ReplyMessage(ReplyOutcome.Rejected, errorType, errorPayload);
         }
 
+        Tracing.Outcome(reply.Outcome);
         changes.Replies[envelope.MessageId] = reply;
         Reply(envelope, reply, changes);
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
@@ -134,7 +148,7 @@ internal sealed class Engine(
     {
         var (eventType, eventPayload) = types.Serialize(@event, owner.Event);
         changes.Events.Add(new StoredMessage(eventType, eventPayload));
-        changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, eventType, eventPayload, Stream: stream));
+        changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, eventType, eventPayload, Stream: stream, Trace: Tracing.Capture()));
 
         foreach (var publication in registry.PublicationsOf(@event.GetType()))
         {
@@ -142,7 +156,7 @@ internal sealed class Engine(
             var (publishedType, publishedPayload) = types.Serialize(published, published.GetType());
             var id = newId();
             changes.Published.Add(new PublishedMessage(id, publishedType, publishedPayload));
-            changes.Outbox.Add(new Envelope(id, MessageKind.Event, publishedType, publishedPayload));
+            changes.Outbox.Add(new Envelope(id, MessageKind.Event, publishedType, publishedPayload, Trace: Tracing.Capture()));
             log(External, key, $"published {types.TypeOf(publishedType).Name}");
         }
     }
@@ -167,6 +181,7 @@ internal sealed class Engine(
             log(External, key, $"{command.GetType().Name}: the original command never ran, fenced");
         }
 
+        Tracing.Outcome("NothingToUndo");
         var reply = new ReplyMessage(ReplyOutcome.NothingToUndo);
         changes.Replies[undo.MessageId] = reply;
         Reply(undo, reply, changes);
@@ -190,7 +205,7 @@ internal sealed class Engine(
 
     /// <summary>The reply envelope to a process command (also used by Urd to answer from a recording).</summary>
     internal Envelope ReplyTo(Envelope command, ReplyMessage reply) =>
-        new(newId(), MessageKind.Reply, ReplyType, MessageTypes.SerializeReply(reply), command.Process, command.MessageId);
+        new(newId(), MessageKind.Reply, ReplyType, MessageTypes.SerializeReply(reply), command.Process, command.MessageId, Trace: Tracing.ReplyContext(command));
 
     // ── Events: start processes, resume waits, park early arrivals ─────────────────────────────
 
@@ -198,6 +213,7 @@ internal sealed class Engine(
     {
         if (await store.WasHandledAsync(envelope.MessageId, cancellationToken).ConfigureAwait(false))
         {
+            Tracing.Outcome("duplicate");
             return; // Redelivery of a message we already handled.
         }
 
@@ -315,7 +331,9 @@ internal sealed class Engine(
         var (triggerType, triggerPayload) = types.Serialize(trigger, process.Trigger);
         var instance = new StoredInstance(
             process.Name, key, triggerType, triggerPayload, 0, ProcessStatus.Running, [], ImmutableDictionary<int, Guid>.Empty, [], 0, null, false, null,
-            process.Fingerprint, [new HistoryEntry(now(), HistoryKind.Started) { Type = triggerType, Payload = triggerPayload }], 0);
+            process.Fingerprint, [new HistoryEntry(now(), HistoryKind.Started) { Type = triggerType, Payload = triggerPayload }], 0, Trace: Tracing.Capture());
+        Tracing.Instance(instance);
+        Tracing.Event("wyrd.started", instance);
         log(process.Name, key, $"started by {trigger.GetType().Name}");
         changes.Save(await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false));
     }
@@ -326,6 +344,11 @@ internal sealed class Engine(
         var key = Keys.Of(wait.KeyOf!(awaited));
         var instance = changes.Find(process.Name, key)
             ?? await store.LoadInstanceAsync(process.Name, key, cancellationToken).ConfigureAwait(false);
+
+        if (instance is not null)
+        {
+            Tracing.Instance(instance);
+        }
 
         if (instance is { Status: ProcessStatus.Awaiting } && DefinitionChanged(process, instance) is { } changed)
         {
@@ -431,12 +454,13 @@ internal sealed class Engine(
                     if (deadline is { } at)
                     {
                         changes.Schedule.Add(new Scheduled(at, new Envelope(
-                            newId(), MessageKind.Timeout, TimeoutType, "{}", new ProcessRef(instance.Process, instance.Key, instance.Position, false))));
+                            newId(), MessageKind.Timeout, TimeoutType, "{}", new ProcessRef(instance.Process, instance.Key, instance.Position, false), Trace: Tracing.Capture(instance))));
                     }
 
                     log(instance.Process, instance.Key, wait.Timeout is { } t
                         ? $"awaiting {wait.Event.Name} (within {Durations.Format(t)})"
                         : $"awaiting {wait.Event.Name}");
+                    Tracing.Event("wyrd.waiting", instance, instance.Position);
                     return instance with { Status = ProcessStatus.Awaiting, Deadline = deadline };
             }
         }
@@ -451,7 +475,7 @@ internal sealed class Engine(
         var (type, payload) = types.Serialize(command, step.Output ?? command.GetType());
         var id = newId();
         var fences = compensating && instance.Uncertain.TryGetValue(index, out var original) ? original : (Guid?)null;
-        changes.Outbox.Add(new Envelope(id, MessageKind.Command, type, payload, new ProcessRef(instance.Process, instance.Key, index, compensating), Fences: fences));
+        changes.Outbox.Add(new Envelope(id, MessageKind.Command, type, payload, new ProcessRef(instance.Process, instance.Key, index, compensating), Fences: fences, Trace: Tracing.Capture(instance)));
         log(instance.Process, instance.Key, $"-> {command.GetType().Name}");
         return Record(instance, HistoryKind.Sent, index, compensating, attempt: 1, message: new StoredMessage(type, payload))
             with { Status = ProcessStatus.Running, Pending = id, Attempt = 1 };
@@ -464,12 +488,19 @@ internal sealed class Engine(
         var target = envelope.Process!;
         var reply = MessageTypes.DeserializeReply(envelope.Payload);
         var instance = await store.LoadInstanceAsync(target.Process, target.Key, cancellationToken).ConfigureAwait(false);
+        if (instance is not null)
+        {
+            Tracing.Instance(instance);
+        }
+
+        Tracing.Outcome(reply.Outcome);
 
         // A reply belongs to the pending command. A fault must also belong to the current attempt: a redelivered
         // fault of an earlier attempt must not consume another retry. A success is welcome whenever it arrives.
         if (instance is null || instance.Pending != envelope.ReplyTo
             || (reply.Outcome == ReplyOutcome.Faulted && target.Attempt != instance.Attempt))
         {
+            Tracing.Outcome("stale", reply.Outcome);
             log(target.Process, target.Key, "stale reply ignored");
             return;
         }
@@ -600,15 +631,17 @@ internal sealed class Engine(
         var command = Command(retried, instance, trigger);
         var (type, payload) = types.Serialize(command, retried.Output ?? command.GetType());
         var next = instance.Attempt + 1;
+        Tracing.Event("wyrd.retry", instance, target.Step, next);
         var fences = target.Compensating && instance.Uncertain.TryGetValue(target.Step, out var original) ? original : (Guid?)null;
         changes.Schedule.Add(new Scheduled(now() + delay, new Envelope(
-            instance.Pending!.Value, MessageKind.Command, type, payload, target with { Attempt = next }, Fences: fences)));
+            instance.Pending!.Value, MessageKind.Command, type, payload, target with { Attempt = next }, Fences: fences, Trace: Tracing.Capture(instance))));
         return Record(instance, HistoryKind.Sent, target.Step, target.Compensating, next, new StoredMessage(type, payload), at: now() + delay)
             with { Attempt = next };
     }
 
     private StoredInstance StartCompensation(Process process, StoredInstance instance, IEvent trigger, Changes changes)
     {
+        Tracing.Event("wyrd.compensating", instance);
         log(instance.Process, instance.Key, "compensating");
         return ContinueCompensation(process, instance with { Compensating = true, Status = ProcessStatus.Running, Pending = null }, trigger, changes);
     }
@@ -661,6 +694,7 @@ internal sealed class Engine(
     /// </summary>
     private StoredInstance Suspend(StoredInstance instance, string reason)
     {
+        Tracing.Event("wyrd.suspended", instance);
         log(instance.Process, instance.Key, $"SUSPENDED: {reason}, needs attention");
         return instance with
         {
@@ -676,6 +710,8 @@ internal sealed class Engine(
     public async ValueTask ResumeAsync(string processName, string key, CancellationToken cancellationToken)
     {
         var (process, instance) = await SuspendedAsync(processName, key, cancellationToken).ConfigureAwait(false);
+        using var operation = Tracing.Operator("resume", instance);
+        Tracing.Instance(instance);
         var trigger = Trigger(instance);
         var changes = new Changes();
         log(instance.Process, instance.Key, "resumed by an operator");
@@ -703,6 +739,7 @@ internal sealed class Engine(
         }
 
         changes.Save(instance);
+        operation?.SetTag("wyrd.process.status", instance.Status.ToString());
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
     }
 
@@ -710,12 +747,14 @@ internal sealed class Engine(
     public async ValueTask CompensateAsync(string processName, string key, CancellationToken cancellationToken)
     {
         var (process, instance) = await SuspendedAsync(processName, key, cancellationToken).ConfigureAwait(false);
+        using var operation = Tracing.Operator("compensate", instance);
         if (instance.Compensating)
         {
             throw new InvalidOperationException(
                 $"{processName} '{key}' was already compensating when it was suspended: resume it to finish the compensation.");
         }
 
+        Tracing.Instance(instance);
         var changes = new Changes();
         log(instance.Process, instance.Key, "compensation requested by an operator");
         instance = Record(instance, HistoryKind.CompensationRequested);
@@ -723,6 +762,7 @@ internal sealed class Engine(
         changes.Save(process.Nodes[instance.Position] is StepNode step
             ? CompensateUncertain(process, instance, step, instance.Position, Trigger(instance), changes)
             : StartCompensation(process, instance, Trigger(instance), changes));
+        operation?.SetTag("wyrd.process.status", changes.Find(processName, key)?.Status.ToString());
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
     }
 
@@ -748,7 +788,7 @@ internal sealed class Engine(
         var (type, payload) = types.Serialize(command, step.Output ?? command.GetType());
         var id = instance.Pending ?? newId();
         var fences = compensating && instance.Uncertain.TryGetValue(index, out var original) ? original : (Guid?)null;
-        changes.Outbox.Add(new Envelope(id, MessageKind.Command, type, payload, new ProcessRef(instance.Process, instance.Key, index, compensating), Fences: fences));
+        changes.Outbox.Add(new Envelope(id, MessageKind.Command, type, payload, new ProcessRef(instance.Process, instance.Key, index, compensating), Fences: fences, Trace: Tracing.Capture(instance)));
         log(instance.Process, instance.Key, $"-> {command.GetType().Name} (again)");
         return Record(instance, HistoryKind.Sent, index, compensating, attempt: 1, message: new StoredMessage(type, payload))
             with { Pending = id, Attempt = 1 };
@@ -760,8 +800,13 @@ internal sealed class Engine(
     {
         var target = envelope.Process!;
         var instance = await store.LoadInstanceAsync(target.Process, target.Key, cancellationToken).ConfigureAwait(false);
+        if (instance is not null)
+        {
+            Tracing.Instance(instance);
+        }
         if (instance is not { Status: ProcessStatus.Awaiting } || instance.Position != target.Step)
         {
+            Tracing.Outcome("stale");
             return; // The wait is over already.
         }
 
@@ -774,6 +819,7 @@ internal sealed class Engine(
             return;
         }
 
+        Tracing.Outcome("timeout");
         var wait = (AwaitNode)process.Nodes[target.Step];
         log(instance.Process, instance.Key, $"timeout: {wait.Event.Name} not received in time");
         instance = Record(instance, HistoryKind.TimedOut, step: target.Step);
@@ -802,8 +848,24 @@ internal sealed class Engine(
     /// <summary>Appends what crossed the instance's boundary to its history (Urd).</summary>
     private StoredInstance Record(
         StoredInstance instance, HistoryKind kind, int? step = null, bool compensating = false, int? attempt = null,
-        StoredMessage? message = null, DateTimeOffset? at = null, ReplyOutcome? outcome = null) =>
-        instance with
+        StoredMessage? message = null, DateTimeOffset? at = null, ReplyOutcome? outcome = null)
+    {
+        if (Tracing.IsEnabled && kind is (HistoryKind.Completed or HistoryKind.Compensated or HistoryKind.Resumed or HistoryKind.CompensationRequested
+            or HistoryKind.Received or HistoryKind.TimedOut))
+        {
+            var name = kind switch
+            {
+                HistoryKind.Completed => "wyrd.completed",
+                HistoryKind.Compensated => "wyrd.compensated",
+                HistoryKind.Resumed => "wyrd.resumed",
+                HistoryKind.CompensationRequested => "wyrd.compensation_requested",
+                HistoryKind.Received => "wyrd.received",
+                _ => "wyrd.timed_out",
+            };
+            Tracing.Event(name, instance, step, attempt);
+        }
+
+        return instance with
         {
             History = instance.History.Add(new HistoryEntry(at ?? now(), kind)
             {
@@ -815,6 +877,7 @@ internal sealed class Engine(
                 Outcome = outcome?.ToString(),
             }),
         };
+    }
 
     private static string Attempts(int count) => count == 1 ? "1 attempt" : $"{count} attempts";
 

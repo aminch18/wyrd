@@ -13,6 +13,8 @@ Before 1.0, minor versions may contain breaking changes; they are always called 
 
 ## Steps
 
+0. **Check the [quality bar](QUALITY.md)** (from 0.5.0 on): every rule ✅ and green on `main`, coverage not below the
+   previous release, and the benchmark results for the release notes (orders/s and KB/order per scenario, Q1.4).
 1. Move the `Unreleased` entries in `CHANGELOG.md` under a new `## [x.y.z] - YYYY-MM-DD` heading and update the
    compare links at the bottom.
 2. Commit: `Release x.y.z`.

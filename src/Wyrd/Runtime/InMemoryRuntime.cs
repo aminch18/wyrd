@@ -12,7 +12,6 @@ namespace Wyrd.Runtime;
 public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntime, IDisposable
 {
     private static readonly DateTimeOffset Epoch = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
-    private static long s_runtimes;
 
     private readonly Application _application;
     private readonly InMemoryStore _store = new();
@@ -26,7 +25,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     private readonly List<PublishedMessage> _unrelayed = [];
     private IWyrdTransport? _transport;
     private int _relayed;
-    private readonly long _runtime = Interlocked.Increment(ref s_runtimes);
+    private long _member;
     private long _ids;
 
     /// <summary>Reflection-based JSON: convenient for development and tests. Use a <c>[WyrdJsonContext]</c> for AOT.</summary>
@@ -153,7 +152,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         Log(Engine.External, key, $"-> {command.GetType().Name}");
 
         var (type, payload) = _types.Serialize(command, command.GetType());
-        var decision = (await _engine.HandleAsync(new Envelope(NextId(), MessageKind.Command, type, payload), cancellationToken).ConfigureAwait(false))!;
+        var decision = (await _engine.HandleAsync(new Envelope(NextId(), MessageKind.Command, type, payload, Trace: Tracing.Capture()), cancellationToken).ConfigureAwait(false))!;
         Log(Engine.External, key, decision switch
         {
             Decision.Accepted accepted => $"ok {accepted.Event.GetType().Name}",
@@ -176,7 +175,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         try
         {
             var (type, payload) = _types.Serialize(integrationEvent, integrationEvent.GetType());
-            _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload));
+            _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload, Trace: Tracing.Capture()));
             await DrainAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -362,12 +361,35 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
 
     public void Dispose() => _gate.Dispose();
 
-    /// <summary>Sends what this runtime publishes (integration events) to other services through <paramref name="transport"/>.</summary>
+    /// <summary>
+    /// Sends what this runtime publishes (integration events) to other services through <paramref name="transport"/>.
+    /// Connect runtimes before they handle messages.
+    /// </summary>
     public InMemoryRuntime UseTransport(IWyrdTransport transport)
     {
         ArgumentNullException.ThrowIfNull(transport);
+        (transport as InMemoryTransport)?.Join(this);
         _transport = transport;
         return this;
+    }
+
+    /// <summary>
+    /// Joins the runtimes connected by an <see cref="InMemoryTransport"/> as its <paramref name="member"/>-th member:
+    /// the number goes into every message id, so ids stay unique across runtimes and still deterministic.
+    /// </summary>
+    internal void JoinAs(long member)
+    {
+        if (_member == member)
+        {
+            return;
+        }
+
+        if (_member != 0 || Interlocked.Read(ref _ids) != 0)
+        {
+            throw new InvalidOperationException("Connect a runtime to one in-memory transport, before it handles messages.");
+        }
+
+        _member = member;
     }
 
     /// <summary>
@@ -410,28 +432,31 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
             return;
         }
 
-        var pending = Read(() =>
+        List<PublishedMessage> pending;
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
             _unrelayed.AddRange(_store.Published.Skip(_relayed));
             _relayed = _store.Published.Count;
-            List<PublishedMessage> claimed = [.. _unrelayed];
+            pending = [.. _unrelayed];
             _unrelayed.Clear();
-            return claimed;
-        });
+        }
+        finally
+        {
+            _gate.Release();
+        }
 
-        for (var i = 0; i < pending.Count; i++)
+        for (var sent = 0; sent < pending.Count; sent++)
         {
             try
             {
-                await _transport.SendAsync(new TransportMessage(pending[i].Id, pending[i].Type, pending[i].Payload), cancellationToken).ConfigureAwait(false);
+                await _transport.SendAsync(new TransportMessage(pending[sent].Id, pending[sent].Type, pending[sent].Payload), cancellationToken).ConfigureAwait(false);
             }
             catch
             {
-                Read(() =>
-                {
-                    _unrelayed.InsertRange(0, pending.Skip(i));
-                    return 0;
-                });
+                await _gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+                _unrelayed.InsertRange(0, pending.Skip(sent));
+                _gate.Release();
                 throw;
             }
         }
@@ -452,7 +477,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload));
+            _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload, Trace: Tracing.Capture()));
             await DrainAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -505,13 +530,13 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         }
     }
 
-    // Deterministic message ids: same inputs, same ids. The second half tells runtimes apart, so ids stay unique when
-    // runtimes exchange messages through a transport (ids never reach the journal or a history).
+    // Deterministic message ids: same inputs, same ids. The second half is the runtime's place on an in-memory
+    // transport (0 without one), so runtimes exchanging messages never share an id.
     private Guid NextId()
     {
         Span<byte> bytes = stackalloc byte[16];
         BitConverter.TryWriteBytes(bytes, ++_ids);
-        BitConverter.TryWriteBytes(bytes[8..], _runtime);
+        BitConverter.TryWriteBytes(bytes[8..], _member);
         return new Guid(bytes);
     }
 

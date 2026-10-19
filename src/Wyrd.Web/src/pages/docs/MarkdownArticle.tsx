@@ -1,6 +1,7 @@
 import { Children, isValidElement, type ReactNode } from 'react'
 import Markdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { guideLink } from './guideLinks'
 import { CodeBlock } from '../../components/common/CodeBlock'
 import { DocArticle } from './DocArticle'
 import styles from '../../styles/site.module.css'
@@ -30,11 +31,6 @@ function FencedCode({ children }: { children?: ReactNode }) {
     )
 }
 
-const GUIDE_LINKS: Record<string, string> = {
-    'from-ddd-to-wyrd.md': '#/docs/from-ddd',
-    'philosophy.md': '#/docs/overview',
-}
-
 export function MarkdownArticle({
     source,
     title,
@@ -46,9 +42,7 @@ export function MarkdownArticle({
         <DocArticle title={title} lead={lead} eyebrow={eyebrow}>
             <Markdown
                 remarkPlugins={[remarkGfm]}
-                urlTransform={(url) =>
-                    GUIDE_LINKS[url] ?? defaultUrlTransform(url)
-                }
+                urlTransform={(url) => defaultUrlTransform(guideLink(url))}
                 components={{
                     pre: FencedCode,
                     table: ({ children }) => (

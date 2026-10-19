@@ -24,6 +24,18 @@ public sealed record TestCommand(string Id) : ICommand;
 
 public static class TestProcesses
 {
-    public static Process First => Process.StartOn<TestEvent>(e => e.Id).Then(e => new TestCommand(e.Id));
+    public static Process First
+    {
+        get
+        {
+            // Only the stdio transport test opts into a noisy process getter.
+            if (Environment.GetEnvironmentVariable("WYRD_MCP_TEST_STDOUT") == "1")
+            {
+                Console.WriteLine("Process discovery diagnostic");
+            }
+
+            return Process.StartOn<TestEvent>(e => e.Id).Then(e => new TestCommand(e.Id));
+        }
+    }
     public static readonly Process Second = Process.StartOn<TestEvent>(e => e.Id).Then(e => new TestCommand(e.Id));
 }

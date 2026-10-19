@@ -38,7 +38,8 @@ internal sealed record StoredInstance(
     string Fingerprint,
     ImmutableList<HistoryEntry> History,
     long Version,
-    string? Reason = null);
+    string? Reason = null,
+    TraceContext? Trace = null);
 
 internal sealed record Scheduled(DateTimeOffset At, Envelope Envelope);
 
@@ -87,7 +88,11 @@ internal sealed class Changes
     public List<Guid> Handled { get; } = [];
 
     /// <summary>Saves an instance; its <c>Version</c> is the one read, checked on commit (optimistic concurrency).</summary>
-    public void Save(StoredInstance instance) => Instances[(instance.Process, instance.Key)] = instance;
+    public void Save(StoredInstance instance)
+    {
+        Tracing.Instance(instance);
+        Instances[(instance.Process, instance.Key)] = instance;
+    }
 
     public StoredInstance? Find(string process, string key) =>
         Instances.TryGetValue((process, key), out var instance) ? instance : null;

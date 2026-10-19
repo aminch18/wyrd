@@ -1,4 +1,7 @@
 using Npgsql;
+using OpenTelemetry;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Shop;
 using Shop.Api;
 using Shop.Contracts;
@@ -10,7 +13,23 @@ using Wyrd;
 using Wyrd.PostgreSql;
 using Wyrd.Runtime;
 
-var builder = WebApplication.CreateBuilder(args);
+// Export is opt-in; Wyrd itself only depends on the BCL ActivitySource APIs.
+using var traces = Environment.GetEnvironmentVariable("OTEL_EXPORTER") == "console"
+    ? Sdk.CreateTracerProviderBuilder()
+        .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("Shop.Api"))
+        .SetSampler(new AlwaysOnSampler()) // This opt-in console demo also records uninstrumented HTTP parents.
+        .AddSource("Wyrd")
+        .AddConsoleExporter()
+        .Build()
+    : null;
+
+var builder = WebApplication.CreateSlimBuilder(args);
+
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.TypeInfoResolverChain.Insert(0, ShopJson.Default);
+    options.SerializerOptions.TypeInfoResolverChain.Insert(1, ApiJson.Default);
+});
 
 // The host is configuration: with a connection string the shop is durable on PostgreSQL (Verdandi); without one it
 // runs in memory. The endpoints below and the whole domain are the same either way.
@@ -70,16 +89,12 @@ app.MapGet("/order-details", (IWyrdRuntime wyrd) => wyrd.ViewsAsync<OrderDetail>
 
 app.MapGet("/orders/{orderId}", async (string orderId, IWyrdRuntime wyrd) =>
     await wyrd.ViewAsync<OrderDetail>(orderId) is { } details
-        ? Results.Ok(new
-        {
-            order = await wyrd.ViewAsync<OrderSummary>(orderId),
-            details,
-            fulfillment = (await wyrd.StatusOfAsync(Processes.OrderFulfillment, orderId))?.ToString(),
-        })
+        ? Results.Ok(new OrderResponse(await wyrd.ViewAsync<OrderSummary>(orderId), details,
+            (await wyrd.StatusOfAsync(Processes.OrderFulfillment, orderId))?.ToString()))
         : Results.NotFound());
 
 app.MapGet("/stock/{sku}", async (string sku, IWyrdRuntime wyrd) =>
-    new { sku, available = (await wyrd.StateOfAsync<StockItem>(sku)).Available });
+    new StockResponse(sku, (await wyrd.StateOfAsync<StockItem>(sku)).Available));
 
 // ── Developer tools, in memory only: see what happened, break things on purpose, travel in time ──
 
@@ -87,9 +102,10 @@ if (connectionString is null)
 {
     var dev = app.MapGroup("/dev");
 
-    dev.MapGet("/journal", (InMemoryRuntime wyrd) => wyrd.Journal.Select(entry => entry.ToString()));
+    dev.MapGet("/journal", (InMemoryRuntime wyrd) => wyrd.Journal.Select(entry => entry.ToString()).ToArray());
 
-    dev.MapGet("/published", (InMemoryRuntime wyrd) => wyrd.Published);
+    // Keep each event's concrete public fields rather than serializing the empty marker interface.
+    dev.MapGet("/published", (InMemoryRuntime wyrd) => wyrd.Published.Cast<object>().ToArray());
 
     dev.MapPost("/payment-gateway/fail", (int times, InMemoryRuntime wyrd) =>
     {
@@ -112,7 +128,7 @@ if (connectionString is null)
     dev.MapPost("/clock/advance", async (int minutes, InMemoryRuntime wyrd) =>
     {
         await wyrd.AdvanceAsync(TimeSpan.FromMinutes(minutes));
-        return Results.Ok(new { now = wyrd.Now.ToString() });
+        return Results.Ok(new ClockResponse(wyrd.Now.ToString()));
     });
 }
 

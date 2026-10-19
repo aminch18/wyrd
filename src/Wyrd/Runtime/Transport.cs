@@ -24,6 +24,7 @@ public interface IWyrdTransport
 public sealed class InMemoryTransport : IWyrdTransport
 {
     private readonly List<IWyrdRuntime> _subscribers = [];
+    private readonly List<InMemoryRuntime> _members = [];
     private readonly List<TransportMessage> _sent = [];
     private readonly Lock _lock = new();
 
@@ -31,12 +32,36 @@ public sealed class InMemoryTransport : IWyrdTransport
     public InMemoryTransport Subscribe(IWyrdRuntime runtime)
     {
         ArgumentNullException.ThrowIfNull(runtime);
+        if (runtime is InMemoryRuntime member)
+        {
+            Join(member);
+        }
+
         lock (_lock)
         {
             _subscribers.Add(runtime);
         }
 
         return this;
+    }
+
+    /// <summary>Numbers the in-memory runtimes it connects, in order, so their message ids never collide.</summary>
+    internal void Join(InMemoryRuntime runtime)
+    {
+        long member;
+        lock (_lock)
+        {
+            var index = _members.IndexOf(runtime);
+            if (index < 0)
+            {
+                _members.Add(runtime);
+                index = _members.Count - 1;
+            }
+
+            member = index + 1;
+        }
+
+        runtime.JoinAs(member);
     }
 
     /// <summary>Every message sent, in order.</summary>
