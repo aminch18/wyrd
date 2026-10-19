@@ -38,6 +38,20 @@ public abstract class Database : IAsyncLifetime
 
     public static FakeTimeProvider Clock() => new(new DateTimeOffset(2026, 1, 1, 9, 0, 0, TimeSpan.Zero));
 
+    /// <summary>Waits until some session of <paramref name="db"/>'s database is blocked by another one's lock.</summary>
+    public async Task UntilBlockedAsync(DbContext db)
+    {
+        var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (await db.Database.SqlQueryRaw<int>(BlockedSessions).ToListAsync() is [0])
+        {
+            Assert.True(DateTime.UtcNow < timeout, "No session got blocked.");
+            await Task.Delay(10);
+        }
+    }
+
+    /// <summary>A query returning, as <c>Value</c>, how many sessions of the current database wait for a lock.</summary>
+    protected abstract string BlockedSessions { get; }
+
     protected abstract DbContextOptionsBuilder<TContext> Use<TContext>(DbContextOptionsBuilder<TContext> builder, string database)
         where TContext : DbContext;
 
@@ -62,6 +76,9 @@ public sealed class PostgreSqlDatabase : Database
 
     public override Task DisposeAsync() => _container.DisposeAsync().AsTask();
 
+    protected override string BlockedSessions =>
+        "SELECT count(*)::int AS \"Value\" FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'";
+
     protected override DbContextOptionsBuilder<TContext> Use<TContext>(DbContextOptionsBuilder<TContext> builder, string database) =>
         builder.UseNpgsql(new NpgsqlConnectionStringBuilder(_container.GetConnectionString()) { Database = database }.ConnectionString);
 }
@@ -79,6 +96,9 @@ public sealed class SqlServerDatabase : Database
     public override Task InitializeAsync() => _container.StartAsync();
 
     public override Task DisposeAsync() => _container.DisposeAsync().AsTask();
+
+    protected override string BlockedSessions =>
+        "SELECT count(*) AS [Value] FROM sys.dm_exec_requests WHERE database_id = DB_ID() AND blocking_session_id <> 0";
 
     protected override DbContextOptionsBuilder<TContext> Use<TContext>(DbContextOptionsBuilder<TContext> builder, string database) =>
         builder.UseSqlServer(new SqlConnectionStringBuilder(_container.GetConnectionString()) { InitialCatalog = database }.ConnectionString);

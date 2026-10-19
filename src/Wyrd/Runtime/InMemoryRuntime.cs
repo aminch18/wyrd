@@ -232,7 +232,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         ArgumentNullException.ThrowIfNull(key);
         return Read(() => _store.Instance(process.Name, Keys.Of(key)) is { } instance
             ? new InstanceHistory(instance.Process, instance.Key, instance.Fingerprint, instance.History)
-            : throw new InvalidOperationException($"{process.Name} has no instance '{Keys.Of(key)}'."));
+            : throw new InstanceStateException(process.Name, Keys.Of(key), $"{process.Name} has no instance '{Keys.Of(key)}'."));
     }
 
     /// <summary>The reason an instance is suspended, or null.</summary>

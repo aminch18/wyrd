@@ -433,7 +433,7 @@ internal sealed class Engine(
         IIntegrationEvent current = (IIntegrationEvent)@event;
         for (var version = source.Version; version < target.Version; version++)
         {
-            var upcaster = registry.Upcaster(target.Name, version) ?? throw new InvalidOperationException(
+            var upcaster = registry.Upcaster(target.Name, version) ?? throw new MissingUpcasterException(
                 $"A subscriber expects {target} but {target.Name} v{version} was published, and there is no upcaster from v{version}. Register one with AddUpcaster().");
             current = upcaster.Map(current);
         }
@@ -769,7 +769,7 @@ internal sealed class Engine(
         using var operation = Tracing.Operator("compensate", instance);
         if (instance.Compensating)
         {
-            throw new InvalidOperationException(
+            throw new InstanceStateException(processName, key,
                 $"{processName} '{key}' was already compensating when it was suspended: resume it to finish the compensation.");
         }
 
@@ -790,13 +790,13 @@ internal sealed class Engine(
         var instance = await store.LoadInstanceAsync(processName, key, cancellationToken).ConfigureAwait(false);
         if (instance is not { Status: ProcessStatus.Suspended })
         {
-            throw new InvalidOperationException($"{processName} '{key}' is not suspended (it is {instance?.Status.ToString() ?? "unknown"}).");
+            throw new InstanceStateException(processName, key, $"{processName} '{key}' is not suspended (it is {instance?.Status.ToString() ?? "unknown"}).");
         }
 
         var process = registry.ProcessNamed(processName);
         return instance.Fingerprint == process.Fingerprint
             ? (process, instance)
-            : throw new InvalidOperationException(
+            : throw new InstanceStateException(processName, key,
                 $"{processName} '{key}' started with another definition ({instance.Fingerprint}; deployed: {process.Fingerprint}). "
                 + "Deploy the definition it started with to resume or compensate it; migrating instances comes with process versioning.");
     }

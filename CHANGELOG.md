@@ -52,6 +52,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
+- Failures a host or an application handles are typed and derive from `WyrdException` (itself an
+  `InvalidOperationException`, so existing `catch` blocks still work): `ConcurrencyConflictException`,
+  `UnknownMessageTypeException`, `MissingJsonMetadataException`, `MissingUpcasterException`,
+  `NotAnIntegrationEventException`, `InstanceStateException` (Q4.1). Code checking for exactly
+  `InvalidOperationException` sees the new types. A conflict in your own transaction
+  (`EfCoreRuntime.SendAsync(command, context)`) is a `ConcurrencyConflictException` to retry.
 - A wait's timer is cancelled when the wait ends (the awaited event arrives, or the instance is suspended while
   waiting), instead of firing later and being ignored: nothing stays scheduled for an instance that no longer waits
   (Q2.2). The EF Core queue gains a `message_id` column for it.

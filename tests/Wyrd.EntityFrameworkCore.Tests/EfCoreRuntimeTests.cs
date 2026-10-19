@@ -97,7 +97,7 @@ public abstract class EfCoreRuntimeTests(Database database)
         await DrainAsync(shop);
         Assert.Equal(ProcessStatus.Completed, await shop.StatusOfAsync(Fulfillment, "A-1"));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => shop.ResumeAsync(Fulfillment, "A-1"));
+        await Assert.ThrowsAsync<InstanceStateException>(() => shop.ResumeAsync(Fulfillment, "A-1"));
     }
 
     [Fact]
@@ -259,6 +259,30 @@ public abstract class EfCoreRuntimeTests(Database database)
 
         await using var check = contexts.CreateDbContext();
         Assert.Equal(["restocked after the audit"], await check.Notes.Select(n => n.Text).ToListAsync());
+        Assert.Equal(5, (await shop.StateOfAsync<StockItem>("KEYBOARD")).Available);
+    }
+
+    [Fact]
+    public async Task a_conflict_in_your_transaction_is_a_concurrency_conflict_to_retry()
+    {
+        var contexts = await database.NewAsync<AppDbContext>(options => new(options));
+        var shop = ShopModule.Register(new EfCoreRuntime<AppDbContext>(contexts, ShopJson.Default, Database.Options));
+        await using var first = contexts.CreateDbContext();
+        await using var second = contexts.CreateDbContext();
+        await using var firstTransaction = await first.Database.BeginTransactionAsync();
+        await using var secondTransaction = await second.Database.BeginTransactionAsync();
+
+        await shop.SendAsync(new Restock("KEYBOARD", 5), first);
+        var racing = shop.SendAsync(new Restock("KEYBOARD", 3), second); // waits for the first transaction's key
+        await using (var observer = contexts.CreateDbContext())
+        {
+            await database.UntilBlockedAsync(observer);
+        }
+
+        await firstTransaction.CommitAsync();
+
+        var conflict = await Assert.ThrowsAsync<ConcurrencyConflictException>(() => racing);
+        Assert.NotNull(conflict.InnerException);
         Assert.Equal(5, (await shop.StateOfAsync<StockItem>("KEYBOARD")).Available);
     }
 

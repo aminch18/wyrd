@@ -106,12 +106,6 @@ internal sealed class Changes
 }
 
 /// <summary>
-/// Another transaction changed the same state or instance first. Retrying the message is always safe:
-/// the engine reloads and decides again.
-/// </summary>
-internal sealed class ConcurrencyConflictException(string message) : Exception(message);
-
-/// <summary>
 /// What the engine needs from persistence: read, and commit one message's changes atomically. In-memory and
 /// PostgreSQL implement it; how committed messages and timers are delivered is up to each host.
 /// </summary>

@@ -51,7 +51,7 @@ public class FingerprintTests
         runtime.Redeploy(Reshaped);
         await runtime.PublishAsync(new PaymentConfirmed("A-1"));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.ResumeAsync(Fulfillment, "A-1"));
+        await Assert.ThrowsAsync<InstanceStateException>(() => runtime.ResumeAsync(Fulfillment, "A-1"));
 
         runtime.Redeploy(Fulfillment); // roll back
         await runtime.ResumeAsync(Fulfillment, "A-1");

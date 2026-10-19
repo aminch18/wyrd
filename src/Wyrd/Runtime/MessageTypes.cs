@@ -59,8 +59,7 @@ internal sealed class MessageTypes
     public Type TypeOf(string type) =>
         _byName.TryGetValue(type, out var known)
             ? known
-            : throw new InvalidOperationException(
-                $"Unknown message type '{type}'. Register the slice, publication, projection or process that uses it.");
+            : throw new UnknownMessageTypeException(type);
 
     public static string SerializeReply(ReplyMessage reply) => JsonSerializer.Serialize(reply, WyrdJsonContext.Default.ReplyMessage);
 
@@ -75,8 +74,7 @@ internal sealed class MessageTypes
         }
         catch (NotSupportedException ex)
         {
-            throw new InvalidOperationException(
-                $"{type.Name} has no JSON metadata. Add [JsonSerializable(typeof({type.Name}))] to your [WyrdJsonContext].", ex);
+            throw new MissingJsonMetadataException(type, ex);
         }
     }
 

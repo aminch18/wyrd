@@ -69,7 +69,7 @@ internal sealed class Application(MessageTypes types)
 
         if (!typeof(IIntegrationEvent).IsAssignableFrom(type))
         {
-            throw new InvalidOperationException($"{message.Type} is not an integration event: only integration events cross service boundaries.");
+            throw new NotAnIntegrationEventException(message.Type);
         }
 
         return true;

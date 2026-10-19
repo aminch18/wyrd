@@ -183,7 +183,7 @@ public class TracingTests
         using var listener = new Recording();
         var engine = new Engine(new Registry(), new InMemoryStore(), MessageTypes.Reflection(),
             () => DateTimeOffset.UnixEpoch, () => Guid.Empty, (_, _) => false, (_, _, _) => { });
-        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        await Assert.ThrowsAsync<UnknownMessageTypeException>(async () =>
             await engine.HandleAsync(new Envelope(Guid.Empty, MessageKind.Command, "unknown", "{}"), default));
         var activity = Assert.Single(listener.Activities);
         Assert.Equal(ActivityStatusCode.Error, activity.Status);

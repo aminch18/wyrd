@@ -162,8 +162,8 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// <summary>
     /// Executes a command inside <paramref name="context"/>'s current transaction, which you begin and commit: your own
     /// changes in that context and Wyrd's are saved together, or not at all. The context's model must include Wyrd's
-    /// tables (<see cref="WyrdModelBuilderExtensions.AddWyrd"/>). A concurrency conflict surfaces as an exception for
-    /// you to retry, since the transaction is yours.
+    /// tables (<see cref="WyrdModelBuilderExtensions.AddWyrd"/>). A concurrency conflict surfaces as a
+    /// <see cref="ConcurrencyConflictException"/> for you to retry, since the transaction is yours.
     /// </summary>
     public async Task<Decision> SendAsync(ICommand command, TContext context, CancellationToken cancellationToken = default)
     {
@@ -175,7 +175,14 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                 "Begin a transaction on the context first (context.Database.BeginTransactionAsync()): Wyrd joins it and you commit it.");
         }
 
-        return await HandleAsync(context, command, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await HandleAsync(context, command, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not ConcurrencyConflictException && IsConflict(ex))
+        {
+            throw new ConcurrencyConflictException($"Another transaction changed what {command.GetType().Name} decides on first: roll back and retry.", ex);
+        }
     }
 
     /// <summary>Delivers a fact from another context (a webhook, a message from another service...).</summary>

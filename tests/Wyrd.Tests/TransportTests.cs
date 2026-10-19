@@ -85,7 +85,7 @@ public class TransportTests
         var shipping = ShippingService();
         var message = new TransportMessage(Guid.NewGuid(), MessageTypes.NameOf(typeof(OrderShipped)), """{"OrderId":"A-1"}""");
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => shipping.ReceiveAsync(message));
+        var ex = await Assert.ThrowsAsync<NotAnIntegrationEventException>(() => shipping.ReceiveAsync(message));
 
         Assert.Contains("only integration events cross service boundaries", ex.Message, StringComparison.Ordinal);
     }

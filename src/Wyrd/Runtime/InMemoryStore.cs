@@ -91,7 +91,7 @@ internal sealed class InMemoryStore : IWyrdStore
             {
                 if (_projected.GetValueOrDefault((stateType, key)) != read)
                 {
-                    throw new InvalidOperationException($"Concurrency conflict projecting {stateType} '{key}'.");
+                    throw new ConcurrencyConflictException($"Concurrency conflict projecting {stateType} '{key}'.");
                 }
             }
 
