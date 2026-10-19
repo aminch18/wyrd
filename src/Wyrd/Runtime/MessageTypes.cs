@@ -54,6 +54,8 @@ internal sealed class MessageTypes
         JsonSerializer.Deserialize(payload, TypeInfo(TypeOf(type)))
             ?? throw new InvalidOperationException($"'{type}' deserialized to null.");
 
+    public bool TryTypeOf(string type, [NotNullWhen(true)] out Type? known) => _byName.TryGetValue(type, out known);
+
     public Type TypeOf(string type) =>
         _byName.TryGetValue(type, out var known)
             ? known

@@ -2,9 +2,13 @@
 
   <PropertyGroup>
     <RootNamespace>Shop.Api</RootNamespace>
+    <PublishAot>true</PublishAot>
+    <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="OpenTelemetry.Exporter.Console" />
     <ProjectReference Include="..\Shop\Shop.csproj" />
     <ProjectReference Include="..\..\src\Wyrd.PostgreSql\Wyrd.PostgreSql.csproj" />
   </ItemGroup>

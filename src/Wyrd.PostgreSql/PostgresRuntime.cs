@@ -58,7 +58,6 @@ public sealed partial class PostgresRuntime : IWyrdBuilder<PostgresRuntime>, IWy
         _sql = new Sql(_options.Schema);
     }
 
-    /// <summary>Registers the single owner of a command type.</summary>
     /// <summary>Registers the integration that owns a command carried out by another system (the only I/O).</summary>
     public PostgresRuntime AddIntegration<TCommand, TEvent, TError>(Integration<TCommand, TEvent, TError> integration)
         where TCommand : ICommand
@@ -70,6 +69,7 @@ public sealed partial class PostgresRuntime : IWyrdBuilder<PostgresRuntime>, IWy
         return this;
     }
 
+    /// <summary>Registers the single owner of a command type.</summary>
     public PostgresRuntime AddSlice<TCommand, TState, TEvent, TError>(Slice<TCommand, TState, TEvent, TError> slice)
         where TCommand : ICommand
         where TState : IState<TState>
@@ -162,6 +162,10 @@ public sealed partial class PostgresRuntime : IWyrdBuilder<PostgresRuntime>, IWy
             },
             cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>Not supported by this prototype: the EF Core host, which replaces it, receives from a transport.</summary>
+    public Task ReceiveAsync(TransportMessage message, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("The PostgreSQL prototype has no transport; the EF Core host replaces it.");
 
     /// <summary>Handles queued messages that are due until none is left (or <paramref name="max"/>), and returns how many.</summary>
     public async Task<int> ProcessPendingAsync(int max = 1_000, CancellationToken cancellationToken = default)

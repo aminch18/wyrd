@@ -6,6 +6,12 @@ internal sealed record StoredState(string StateType, string Key, string Type, st
 
 internal sealed record StoredMessage(string Type, string Payload);
 
+/// <summary>
+/// An integration event this service published, with the id it keeps when it travels to other services and the trace
+/// context it was published in (diagnostic only).
+/// </summary>
+internal sealed record PublishedMessage(Guid Id, string Type, string Payload, TraceContext? Trace = null);
+
 internal sealed record StoredParked(string Process, string Key, int Step, string Type, string Payload)
 {
     public StoredMessage AsFact() => new(Type, Payload);
@@ -35,7 +41,8 @@ internal sealed record StoredInstance(
     string Fingerprint,
     ImmutableList<HistoryEntry> History,
     long Version,
-    string? Reason = null);
+    string? Reason = null,
+    TraceContext? Trace = null);
 
 internal sealed record Scheduled(DateTimeOffset At, Envelope Envelope);
 
@@ -57,7 +64,7 @@ internal sealed class Changes
 
     public List<StoredMessage> Events { get; } = [];
 
-    public List<StoredMessage> Published { get; } = [];
+    public List<PublishedMessage> Published { get; } = [];
 
     public Dictionary<Guid, ReplyMessage> Replies { get; } = [];
 
@@ -84,7 +91,11 @@ internal sealed class Changes
     public List<Guid> Handled { get; } = [];
 
     /// <summary>Saves an instance; its <c>Version</c> is the one read, checked on commit (optimistic concurrency).</summary>
-    public void Save(StoredInstance instance) => Instances[(instance.Process, instance.Key)] = instance;
+    public void Save(StoredInstance instance)
+    {
+        Tracing.Instance(instance);
+        Instances[(instance.Process, instance.Key)] = instance;
+    }
 
     public StoredInstance? Find(string process, string key) =>
         Instances.TryGetValue((process, key), out var instance) ? instance : null;

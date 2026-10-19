@@ -5,8 +5,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Breaking
+
+- The tool executable is now `dotnet-wyrd`, so the documented `dotnet wyrd` command works after a global
+  installation. Replace direct `wyrd` invocations with `dotnet wyrd` (or `dotnet-wyrd`).
+
 ### Added
 
+- Add BCL `Wyrd` process tracing with envelope context propagation, lifecycle/outcome tags and links for external continuations; Shop.Api exports to the console when `OTEL_EXPORTER=console`. Deterministic journals, domain state and replay histories are unchanged.
+- Documentation learning path with the shared read-model guide, working repository-relative links, and a searchable API reference checked against public declarations, analyzer rules and code-fix coverage during the website build.
+- `dotnet wyrd mcp`: an official-SDK stdio server exposing the existing Mermaid, AsyncAPI, contract parser and
+  Urd replay implementations. Contracts include structured content; failures preserve CLI messages without ending
+  the session, and process-discovery diagnostics stay on stderr.
+- Add `dotnet wyrd processes --output/--check` with versioned, readable process snapshots and a Shop CI check; structural, added and removed definitions require review, while retry and time-limit changes remain compatible.
+- Native AOT HTTP verification for `Shop.Api`: generated request delegates and JSON metadata, named response
+  records, and a reusable `curl`/`jq` smoke script covering checkout, rich drafts, cancellation and published events.
+  Ubuntu CI publishes and runs the native API alongside the existing native console walkthrough.
 - **Verdandi** (`Wyrd.PostgreSql`, in progress): the durable runtime. `PostgresRuntime` handles every message in one
   PostgreSQL transaction that also takes it off the queue — state, events, instances, inbox, outbox, timers and read
   models commit together or not at all. The queue is a table shared by any number of workers (`FOR UPDATE SKIP
@@ -19,6 +33,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - One retry layer on the durable host: a process command it can't handle goes back to its process as a failure (the
   step's retry policy decides, then the instance is suspended); dead letters are only for messages no process decides
   on (events, replies, timers).
+- **Transport between services** (core): `IWyrdTransport` carries published integration events, each with a stable
+  message id (`TransportMessage`); `IWyrdRuntime.ReceiveAsync` delivers one from another service, ignores contracts
+  the service doesn't use and handles a redelivery once. Only integration events cross service boundaries: commands
+  have one owner inside one service. `InMemoryTransport` connects in-memory runtimes (`UseTransport`, `Subscribe`);
+  the durable relay comes with the EF Core host. Traces cross with the message (`TraceParent`, `TraceState`), and an
+  integration's call to the outside world is a client span under its command.
 - `IWyrdBuilder<T>`: register a module the same way on any host (`ShopModule.Register(runtime)`).
 - `IWyrdRuntime`: what application code needs (send, publish, query), implemented by both hosts.
 - `samples/Shop.Api` runs on PostgreSQL when a `Wyrd` connection string is configured (`compose.yaml` included).

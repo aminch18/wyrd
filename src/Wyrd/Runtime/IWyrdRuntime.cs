@@ -14,6 +14,12 @@ public interface IWyrdRuntime
     /// <summary>Delivers a fact from another context (a webhook, a message from another service...).</summary>
     Task PublishAsync(IIntegrationEvent integrationEvent, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Delivers an integration event another service published (from a transport). Its message id is kept, so a
+    /// message delivered twice is handled once.
+    /// </summary>
+    Task ReceiveAsync(TransportMessage message, CancellationToken cancellationToken = default);
+
     Task<ProcessStatus?> StatusOfAsync(Process process, object key, CancellationToken cancellationToken = default);
 
     /// <summary>
