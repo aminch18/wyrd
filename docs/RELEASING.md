@@ -15,6 +15,9 @@ Before 1.0, minor versions may contain breaking changes; they are always called 
 
 0. **Check the [quality bar](QUALITY.md)** (from 0.5.0 on): every rule ✅ and green on `main`, coverage not below the
    previous release, and the benchmark results for the release notes (orders/s and KB/order per scenario, Q1.4).
+   Move each package's `PublicAPI.Unshipped.txt` entries into `PublicAPI.Shipped.txt` when releasing;
+   keep the nullable header and clear Unshipped. Update `PackageValidationBaselineVersion` to the newly published
+   library version for the next release, and document any intentional breaking change under *Breaking*.
 1. Move the `Unreleased` entries in `CHANGELOG.md` under a new `## [x.y.z] - YYYY-MM-DD` heading and update the
    compare links at the bottom.
 2. Commit: `Release x.y.z`.

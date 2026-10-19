@@ -25,7 +25,9 @@ public interface IIntegrationEvent : IEvent;
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]
 public sealed class IntegrationEventAttribute(string name) : Attribute
 {
+    /// <summary>The stable public contract name, shared by all versions of this integration event.</summary>
     public string Name { get; } = name;
 
+    /// <summary>The contract version published by this event type. Defaults to version 1.</summary>
     public int Version { get; set; } = 1;
 }

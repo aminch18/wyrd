@@ -95,7 +95,7 @@ then 1.0) only with the whole bar green.** Baseline and rules: [QUALITY.md](QUAL
 - [ ] A wait's timer is cancelled when the wait ends (Q2.2)
 - [ ] Retention for everything a host keeps, in semantics and the in-memory host (Q2.3; includes v0.5's instance
       history retention)
-- [ ] Public API tracked and documented; package validation against the last release (Q3)
+- [x] Public API tracked and documented; package validation against the last release (Q3)
 - [ ] Typed exceptions; no sync-over-async in hosts (Q4.1, Q4.2)
 - [ ] Coverage reported in CI, never lower than the previous release (Q5.2)
 
