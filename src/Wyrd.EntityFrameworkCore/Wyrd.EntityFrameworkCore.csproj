@@ -16,4 +16,8 @@
     <ProjectReference Include="..\Wyrd\Wyrd.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Wyrd.EntityFrameworkCore.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -82,7 +82,7 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
 
         foreach (var id in changes.Handled)
         {
-            db.Add(new HandledRow { MessageId = id });
+            db.Add(new HandledRow { MessageId = id, HandledAt = now });
         }
 
         foreach (var e in changes.Events)
@@ -205,9 +205,13 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
         // StoredInstance.Version is the version read (0 when new).
         var data = JsonSerializer.Serialize(instance, WyrdJsonContext.Default.StoredInstance);
         var status = instance.Status.ToString();
+        DateTimeOffset? finishedAt = instance.Status is ProcessStatus.Completed or ProcessStatus.Compensated ? now : null;
         if (instance.Version == 0)
         {
-            db.Add(new InstanceRow { Process = instance.Process, Key = instance.Key, Status = status, Deadline = instance.Deadline, Data = data, Version = 1 });
+            db.Add(new InstanceRow
+            {
+                Process = instance.Process, Key = instance.Key, Status = status, Deadline = instance.Deadline, Data = data, Version = 1, FinishedAt = finishedAt,
+            });
             return;
         }
 
@@ -216,6 +220,7 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
             .ExecuteUpdateAsync(
                 s => s.SetProperty(r => r.Status, status)
                     .SetProperty(r => r.Deadline, instance.Deadline)
+                    .SetProperty(r => r.FinishedAt, finishedAt)
                     .SetProperty(r => r.Data, data)
                     .SetProperty(r => r.Version, instance.Version + 1),
                 cancellationToken).ConfigureAwait(false);

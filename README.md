@@ -451,7 +451,15 @@ public sealed class ShopDbContext(DbContextOptions<ShopDbContext> options) : DbC
     protected override void OnModelCreating(ModelBuilder modelBuilder) => modelBuilder.AddWyrd();
 }
 
-var wyrd = ShopModule.Register(new EfCoreRuntime<ShopDbContext>(contexts, ShopJson.Default)); // an IDbContextFactory
+var wyrd = ShopModule.Register(new EfCoreRuntime<ShopDbContext>(contexts, ShopJson.Default, new Retention
+{
+    // How long Wyrd keeps what it stores: every line is your decision, there are no defaults.
+    Deduplication = Keep.For(7.Days),
+    FinishedInstances = Keep.For(30.Days),
+    RelayedMessages = Keep.For(7.Days),
+    Events = Keep.Forever("our record of what happened"),
+    DeadLetters = Keep.Forever("an operator reviews each one"),
+}));
 
 await wyrd.SendAsync(new PlaceOrder("A-1", "KEYBOARD", 1, 89m)); // decided and committed now
 await wyrd.RunAsync(stoppingToken);                              // a worker: run as many as you like
@@ -465,6 +473,7 @@ await wyrd.RunAsync(stoppingToken);                              // a worker: ru
 - **Your transaction, if you want it**: `SendAsync(command, context)` joins the transaction you began, so your own
   tables and Wyrd's commit together.
 - **Survives restarts**: kill the process mid-saga, start it again, and the order continues where it was.
+- **Bounded, by your decision**: workers remove what the retention no longer keeps; suspended instances never expire.
 - **JIT only**: EF Core's Native AOT support is experimental, so this host doesn't claim it. The in-memory host and
   the Wyrd core stay AOT-compatible.
 

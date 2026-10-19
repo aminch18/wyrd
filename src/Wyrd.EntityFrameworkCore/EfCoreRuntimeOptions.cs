@@ -12,6 +12,9 @@ public sealed record EfCoreRuntimeOptions
     /// <summary>The delay before a failed delivery is tried again (doubled on every attempt, capped at one minute).</summary>
     public TimeSpan RedeliveryDelay { get; init; } = TimeSpan.FromSeconds(1);
 
+    /// <summary>How often a worker removes what the retention no longer keeps.</summary>
+    public TimeSpan CleanupInterval { get; init; } = TimeSpan.FromMinutes(1);
+
     /// <summary>How many published messages the relay sends per transaction.</summary>
     public int RelayBatchSize { get; init; } = 100;
 

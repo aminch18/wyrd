@@ -42,6 +42,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   have one owner inside one service. `InMemoryTransport` connects in-memory runtimes (`UseTransport`, `Subscribe`);
   the durable relay comes with the EF Core host. Traces cross with the message (`TraceParent`, `TraceState`), and an
   integration's call to the outside world is a client span under its command.
+- **Retention** (Q2.3, semantics 4.1): everything a host keeps has one, and on a durable host it is a decision written
+  in the application: `EfCoreRuntime` requires a `Retention` whose every member is `Keep.For(period)` or
+  `Keep.Forever("why")` — deduplication, finished instances and their histories, relayed messages, domain events, dead
+  letters. Workers remove what expired in batches every `CleanupInterval` (`ForgetExpiredAsync`). Suspended instances
+  never expire; a removed finished instance frees its key. In memory: `UseRetention` (keeps everything by default) and
+  a bounded journal (`JournalLimit`, 10,000).
 - `IWyrdBuilder<T>`: register a module the same way on any host (`ShopModule.Register(runtime)`).
 - `IWyrdRuntime`: what application code needs (send, publish, query), implemented by both hosts.
 - `samples/Shop.Api` runs durable on PostgreSQL when built with `-p:WyrdHost=EfCore` and given a `Wyrd` connection

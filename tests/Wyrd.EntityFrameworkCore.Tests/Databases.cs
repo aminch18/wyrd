@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
 using Npgsql;
 using Shop;
+using Wyrd.Runtime;
 using Testcontainers.MsSql;
 using Testcontainers.PostgreSql;
 
@@ -31,8 +32,18 @@ public abstract class Database : IAsyncLifetime
     public Task<IDbContextFactory<WyrdDbContext>> NewAsync() => NewAsync<WyrdDbContext>(options => new(options));
 
     /// <summary>The sample shop on this database, with source-generated JSON.</summary>
-    public static EfCoreRuntime<WyrdDbContext> Shop(IDbContextFactory<WyrdDbContext> contexts, TimeProvider? time = null) =>
-        ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(contexts, ShopJson.Default, Options, time));
+    public static EfCoreRuntime<WyrdDbContext> Shop(IDbContextFactory<WyrdDbContext> contexts, TimeProvider? time = null, Retention? retention = null) =>
+        ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(contexts, ShopJson.Default, retention ?? Retention, Options, time));
+
+    /// <summary>Tests keep everything unless they are about retention.</summary>
+    public static Retention Retention { get; } = new()
+    {
+        Deduplication = Keep.Forever("tests"),
+        FinishedInstances = Keep.Forever("tests"),
+        RelayedMessages = Keep.Forever("tests"),
+        Events = Keep.Forever("tests"),
+        DeadLetters = Keep.Forever("tests"),
+    };
 
     public static EfCoreRuntimeOptions Options { get; } = new() { RedeliveryDelay = TimeSpan.FromMilliseconds(10) };
 

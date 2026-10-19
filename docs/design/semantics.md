@@ -44,8 +44,10 @@ simulate and version.
 
 ### 3.1 Instances
 
-- One instance per process and key, for the lifetime of the store: a second trigger with the same key is a
-  duplicate. **Implemented.**
+- One instance per process and key, for as long as the instance is kept: a second trigger with the same key is a
+  duplicate. Once a finished instance is removed by retention (section 4), its key is free and a later trigger starts
+  a new instance; "once per key, ever" belongs to the domain (a slice that rejects a second order with the same id).
+  **Implemented.**
 - Each instance records a **fingerprint of the process structure** it started with: the steps, their order and the
   waits — not configuration such as retries. If the deployed definition's structure differs, the instance is
   **suspended** ("definition changed") instead of continuing at the wrong step: nothing it receives meanwhile is lost
@@ -138,9 +140,33 @@ fences the step it gave up on; a late success of the pending command resumes it 
 - Every message is handled in **one transaction**: state, events, instances, inbox, outbox, timers and read
   models commit together or not at all. **Implemented** in memory and on the EF Core host (PostgreSQL, SQL Server).
 - Delivery is **at least once**; decisions are **effectively once**: the owner's inbox remembers every command it
-  decided and replays the outcome to duplicates. **Implemented.**
+  decided, for the deduplication retention, and replays the outcome to duplicates. **Implemented.**
 - Integration events reach each subscriber **once, in the contract version it understands** (upcast step by step;
   a newer version is never downcast). **Implemented.**
+
+### 4.1 Retention
+
+Everything a host keeps has a retention, and **on a durable host each one is a decision written in the application**:
+the host doesn't start without a `Retention`, whose every member is required, each `Keep.For(period)` or
+`Keep.Forever("why")`. **Implemented** in memory and on the EF Core host.
+
+| Member | What | Counted from |
+|---|---|---|
+| `Deduplication` | The inbox and the handled message ids: how long a duplicate is recognised | When it was handled |
+| `FinishedInstances` | Completed and compensated instances, with their history (what Urd replays) | When it finished |
+| `RelayedMessages` | Integration events published to other services | When relayed (when published, on a host without a transport) |
+| `Events` | Accepted domain events | When recorded |
+| `DeadLetters` | Messages that gave up | When they failed |
+
+- Something expires once its age reaches the period. **Suspended instances never expire**: they wait for an operator.
+  Running and waiting instances aren't finished, so they never expire either. A removed instance takes its parked
+  events with it.
+- Durable hosts remove what expired in batches, in the workers, every `CleanupInterval` (one minute by default), never
+  on a message's path. The in-memory host removes it when its clock moves (`AdvanceAsync`).
+- In memory there is a default, `Retention.InMemory`, that keeps everything (nothing outlives the process), and the
+  journal keeps the most recent `JournalLimit` entries (10,000 by default).
+- Business data is not delivery machinery: states and read models have no retention, they live as long as the
+  application keeps them.
 
 ## 5. Read models
 

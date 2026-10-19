@@ -181,7 +181,7 @@ public abstract class EfCoreRuntimeTests(Database database)
         // ShipOrder has no owner here, so the step's command can never be handled: it reaches the process as a
         // failure, the step has no retries, and the instance is suspended with a reason. No dead letter.
         Process broken = Process.StartOn<OrderPlaced>(e => e.OrderId, "Broken").Then(e => new ShipOrder(e.OrderId)).NoRetry("test");
-        var runtime = new EfCoreRuntime<WyrdDbContext>(await database.NewAsync(), ShopJson.Default, Database.Options with { MaxDeliveryAttempts = 3 })
+        var runtime = new EfCoreRuntime<WyrdDbContext>(await database.NewAsync(), ShopJson.Default, Database.Retention, Database.Options with { MaxDeliveryAttempts = 3 })
             .AddSlice(new PlaceOrderSlice())
             .AddSlice(new RestockSlice())
             .AddProcess(broken);
@@ -199,7 +199,7 @@ public abstract class EfCoreRuntimeTests(Database database)
     public async Task a_process_command_the_host_cant_handle_reaches_its_process_as_a_failure()
     {
 #pragma warning disable IL2026, IL3050 // reflection JSON keeps the test domain small
-        var runtime = new EfCoreRuntime<WyrdDbContext>(await database.NewAsync(), Database.Options)
+        var runtime = new EfCoreRuntime<WyrdDbContext>(await database.NewAsync(), Database.Retention, Database.Options)
             .AddSlice(new StartJobSlice())
             .AddSlice(new BrokenSlice())
             .AddProcess(Jobs.Process);
@@ -223,7 +223,7 @@ public abstract class EfCoreRuntimeTests(Database database)
     public async Task a_message_no_process_decides_on_ends_in_the_dead_letters_without_blocking_the_queue()
     {
 #pragma warning disable IL2026, IL3050 // reflection JSON keeps the test domain small
-        var runtime = new EfCoreRuntime<WyrdDbContext>(await database.NewAsync(), Database.Options with { MaxDeliveryAttempts = 3 })
+        var runtime = new EfCoreRuntime<WyrdDbContext>(await database.NewAsync(), Database.Retention, Database.Options with { MaxDeliveryAttempts = 3 })
             .AddSlice(new StartJobSlice())
             .AddProjection(new BrokenJobs());
 #pragma warning restore IL2026, IL3050
@@ -239,7 +239,7 @@ public abstract class EfCoreRuntimeTests(Database database)
     public async Task wyrd_commits_together_with_the_applications_own_tables()
     {
         var contexts = await database.NewAsync<AppDbContext>(options => new(options));
-        var shop = ShopModule.Register(new EfCoreRuntime<AppDbContext>(contexts, ShopJson.Default, Database.Options));
+        var shop = ShopModule.Register(new EfCoreRuntime<AppDbContext>(contexts, ShopJson.Default, Database.Retention, Database.Options));
 
         await using (var db = contexts.CreateDbContext())
         await using (var transaction = await db.Database.BeginTransactionAsync())
@@ -266,7 +266,7 @@ public abstract class EfCoreRuntimeTests(Database database)
     public async Task a_conflict_in_your_transaction_is_a_concurrency_conflict_to_retry()
     {
         var contexts = await database.NewAsync<AppDbContext>(options => new(options));
-        var shop = ShopModule.Register(new EfCoreRuntime<AppDbContext>(contexts, ShopJson.Default, Database.Options));
+        var shop = ShopModule.Register(new EfCoreRuntime<AppDbContext>(contexts, ShopJson.Default, Database.Retention, Database.Options));
         await using var first = contexts.CreateDbContext();
         await using var second = contexts.CreateDbContext();
         await using var firstTransaction = await first.Database.BeginTransactionAsync();
@@ -290,7 +290,7 @@ public abstract class EfCoreRuntimeTests(Database database)
     public async Task sending_into_a_context_needs_its_transaction()
     {
         var contexts = await database.NewAsync<AppDbContext>(options => new(options));
-        var shop = ShopModule.Register(new EfCoreRuntime<AppDbContext>(contexts, ShopJson.Default, Database.Options));
+        var shop = ShopModule.Register(new EfCoreRuntime<AppDbContext>(contexts, ShopJson.Default, Database.Retention, Database.Options));
         await using var db = contexts.CreateDbContext();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => shop.SendAsync(new Restock("KEYBOARD", 5), db));
@@ -358,7 +358,7 @@ public abstract class EfCoreRuntimeTests(Database database)
 
         var small = Database.Options with { RelayBatchSize = 3 };
         var relays = Enumerable.Range(0, 4).Select(_ =>
-            ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(contexts, ShopJson.Default, small)).UseTransport(transport).RelayPendingAsync());
+            ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(contexts, ShopJson.Default, Database.Retention, small)).UseTransport(transport).RelayPendingAsync());
         var relayed = await Task.WhenAll(relays);
 
         Assert.Equal(20, relayed.Sum());
@@ -378,7 +378,7 @@ public abstract class EfCoreRuntimeTests(Database database)
     }
 
     private static EfCoreRuntime<WyrdDbContext> Receiver(IDbContextFactory<WyrdDbContext> contexts) =>
-        new EfCoreRuntime<WyrdDbContext>(contexts, Database.Options).AddProjection(new Shipments());
+        new EfCoreRuntime<WyrdDbContext>(contexts, Database.Retention, Database.Options).AddProjection(new Shipments());
 
     /// <summary>Places, pays and ships an order (the shop publishes PaymentChargedV1 and OrderShippedV1).</summary>
     private static async Task ShipAsync(EfCoreRuntime<WyrdDbContext> shop, string orderId)
@@ -388,6 +388,69 @@ public abstract class EfCoreRuntimeTests(Database database)
         await DrainAsync(shop);
         await shop.PublishAsync(new PaymentConfirmed(orderId));
         await DrainAsync(shop);
+    }
+
+    [Fact]
+    public async Task retention_forgets_what_expired_and_keeps_the_rest()
+    {
+        var clock = Database.Clock();
+        var contexts = await database.NewAsync();
+        var shop = Database.Shop(contexts, clock, new Retention
+        {
+            Deduplication = Keep.For(TimeSpan.FromDays(7)),
+            FinishedInstances = Keep.For(TimeSpan.FromDays(30)),
+            RelayedMessages = Keep.For(TimeSpan.FromDays(7)),
+            Events = Keep.Forever("the record of what happened"),
+            DeadLetters = Keep.For(TimeSpan.FromDays(7)),
+        });
+        await ShipAsync(shop, "A-1");
+        var before = await CountAsync(contexts);
+        Assert.All([before.Inbox, before.Handled, before.Published, before.Events], count => Assert.NotEqual(0, count));
+
+        clock.Advance(TimeSpan.FromDays(7));
+        await shop.ForgetExpiredAsync(batchSize: 2); // small batches: several rounds per table
+        var week = await CountAsync(contexts);
+        Assert.Equal((0, 0, 0), (week.Inbox, week.Handled, week.Published));
+        Assert.Equal(ProcessStatus.Completed, await shop.StatusOfAsync(Fulfillment, "A-1"));
+
+        clock.Advance(TimeSpan.FromDays(23));
+        await shop.ForgetExpiredAsync();
+        Assert.Null(await shop.StatusOfAsync(Fulfillment, "A-1"));
+        Assert.Equal(before.Events, (await CountAsync(contexts)).Events); // kept forever, on purpose
+        Assert.Equal(1, (await shop.ViewAsync<OrderSummary>("A-1")) is null ? 0 : 1); // read models are the application's
+    }
+
+    [Fact]
+    public async Task a_suspended_instance_never_expires()
+    {
+        var clock = Database.Clock();
+        Process broken = Process.StartOn<OrderPlaced>(e => e.OrderId, "Broken").Then(e => new ShipOrder(e.OrderId)).NoRetry("test");
+        var expiring = new Retention
+        {
+            Deduplication = Keep.For(TimeSpan.FromDays(1)),
+            FinishedInstances = Keep.For(TimeSpan.FromDays(1)),
+            RelayedMessages = Keep.For(TimeSpan.FromDays(1)),
+            Events = Keep.For(TimeSpan.FromDays(1)),
+            DeadLetters = Keep.For(TimeSpan.FromDays(1)),
+        };
+        var runtime = new EfCoreRuntime<WyrdDbContext>(await database.NewAsync(), ShopJson.Default, expiring, Database.Options, clock)
+            .AddSlice(new PlaceOrderSlice())
+            .AddProcess(broken);
+        await runtime.SendAsync(new PlaceOrder("A-1", "KEYBOARD", 1, 89m));
+        await DrainAsync(runtime, settle: TimeSpan.FromSeconds(1));
+        Assert.Equal(ProcessStatus.Suspended, await runtime.StatusOfAsync(broken, "A-1"));
+
+        clock.Advance(TimeSpan.FromDays(365));
+        await runtime.ForgetExpiredAsync();
+
+        Assert.Equal(ProcessStatus.Suspended, await runtime.StatusOfAsync(broken, "A-1"));
+    }
+
+    private static async Task<(int Inbox, int Handled, int Published, int Events)> CountAsync(IDbContextFactory<WyrdDbContext> contexts)
+    {
+        await using var db = await contexts.CreateDbContextAsync();
+        return (await db.Set<InboxRow>().CountAsync(), await db.Set<HandledRow>().CountAsync(),
+            await db.Set<PublishedRow>().CountAsync(), await db.Set<EventRow>().CountAsync());
     }
 
     /// <summary>Processes until the queue has nothing due, waiting a little for short redelivery delays.</summary>

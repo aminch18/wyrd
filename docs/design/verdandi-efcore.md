@@ -67,8 +67,21 @@ them on start; production applies them as a deployment step.
 - **Gives:** one migration history per database, reviewed like any other schema change.
 - **Costs:** a Wyrd upgrade that changes its tables means a migration in each application, called out in the changelog.
 
+### 8. Retention is explicit
+
+The constructor takes a `Retention` with every member required ([semantics](semantics.md) 4.1): how long duplicates
+are recognised, finished instances and their histories kept, relayed messages, domain events and dead letters. Workers
+remove what expired every `CleanupInterval`, in batches (`Take(n)` with `ExecuteDelete`, translated by both
+providers), each in its own short transaction, so cleanup never holds many locks or slows a message. Dates are
+indexed (`finished_at` only for finished instances, a filtered index).
+
+- **Gives:** tables bounded by the periods the application chose; nobody finds out in production what the default was,
+  because there is none.
+- **Costs:** a few lines more to set up the host, and a decision the team has to make before starting.
+
 ## Not yet
 
-- The hardened queue: `LISTEN/NOTIFY` or backoff polling, batched cleanup, depth and age metrics (semantics 3.5).
-- Retention of histories, published rows and handled ids, and catching up a projection added to an existing store.
+- The hardened queue: `LISTEN/NOTIFY` or backoff polling, depth and age metrics (semantics 3.5).
+- The history archive (a finished instance's history handed to the application before retention removes it), and
+  catching up a projection added to an existing store.
 - A broker package (`Wyrd.RabbitMq`) implementing `IWyrdTransport`.

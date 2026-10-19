@@ -14,7 +14,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     private static readonly DateTimeOffset Epoch = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     private readonly Application _application;
-    private readonly InMemoryStore _store = new();
+    private readonly InMemoryStore _store;
     private readonly MessageTypes _types;
     private readonly List<Envelope> _queue = [];
     private readonly Dictionary<Type, int> _faults = [];
@@ -24,7 +24,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     private DateTimeOffset _now = Epoch;
     private readonly List<PublishedMessage> _unrelayed = [];
     private IWyrdTransport? _transport;
-    private int _relayed;
+    private Retention _retention = Retention.InMemory;
     private long _member;
     private long _ids;
 
@@ -46,8 +46,34 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     {
         _application = new Application(types);
         _types = types;
+        _store = new InMemoryStore(() => _now);
         _engine = new Engine(_application.Registry, _store, _types, () => _now, NextId, Fault, Log);
     }
+
+    /// <summary>
+    /// How long this runtime keeps what it handled, measured on its virtual clock: nothing expires by default, since
+    /// nothing outlives the process. Expired data goes when the clock moves (<see cref="AdvanceAsync"/>).
+    /// </summary>
+    public InMemoryRuntime UseRetention(Retention retention)
+    {
+        ArgumentNullException.ThrowIfNull(retention);
+        _retention = retention;
+        return this;
+    }
+
+    /// <summary>
+    /// The journal keeps at least this many most recent entries, and at most a tenth more (10,000 by default), so a long
+    /// run stays bounded. Older entries are dropped in batches.
+    /// </summary>
+    public int JournalLimit
+    {
+        get;
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1);
+            field = value;
+        }
+    } = 10_000;
 
     /// <summary>Virtual time elapsed since the runtime started.</summary>
     public TimeSpan Now => Read(() => _now - Epoch);
@@ -202,6 +228,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
             }
 
             Write(() => _now = until);
+            _store.Forget(_retention, relays: _transport is not null); // only time makes anything expire
         }
         finally
         {
@@ -436,8 +463,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            _unrelayed.AddRange(_store.Published.Skip(_relayed));
-            _relayed = _store.Published.Count;
+            _unrelayed.AddRange(_store.TakeUnrelayed());
             pending = [.. _unrelayed];
             _unrelayed.Clear();
         }
@@ -558,6 +584,11 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         lock (_store.Sync)
         {
             _journal.Add(new(_now - Epoch, process, key, message));
+            // Trimmed in batches, so a long run doesn't shift the list on every entry.
+            if (_journal.Count >= JournalLimit + Math.Max(JournalLimit / 10, 1))
+            {
+                _journal.RemoveRange(0, _journal.Count - JournalLimit);
+            }
         }
     }
 }
