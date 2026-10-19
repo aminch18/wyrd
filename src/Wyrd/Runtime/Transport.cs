@@ -86,6 +86,7 @@ public sealed class InMemoryTransport : IWyrdTransport
         }
     }
 
+    /// <inheritdoc />
     public async Task SendAsync(TransportMessage message, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(message);
