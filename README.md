@@ -540,6 +540,28 @@ Tool failures return `isError: true` with the CLI's error text; the server keeps
 and stdout contains only MCP messages. The [integration tests](https://github.com/aminch18/wyrd/blob/main/tests/Wyrd.Tool.Tests/McpTests.cs)
 exercise every tool against the CLI, including both replay forms and a process getter that prints a diagnostic.
 
+### Process snapshots catch structural changes in CI ✅
+
+Generate a reviewed snapshot from a built assembly, then check it on every pull request:
+
+```bash
+dotnet build samples/Shop -c Release
+dotnet wyrd processes --assembly samples/Shop/bin/Release/net10.0/Shop.dll --output samples/Shop/processes.wyrd.txt
+dotnet wyrd processes --assembly samples/Shop/bin/Release/net10.0/Shop.dll --check samples/Shop/processes.wyrd.txt
+```
+
+The last command prints this for the committed Shop snapshot:
+
+```text
+Process snapshot matches. Retry and time-limit configuration is not checked.
+```
+
+The versioned file records each public static process's name, fingerprint, and readable trigger, steps with
+undos, waits, and compensation outcome. `--check` exits 1 and shows old and new structures for changed,
+added or removed processes. Retry and time-limit changes leave the structure unchanged and pass.
+For a structural change, deploy when no instances are running, or keep the old definition until they finish;
+then regenerate the snapshot. Migration of in-flight instances remains planned.
+
 ## Urd replays what happened ✅
 
 Every process instance records what crossed its boundary: the trigger, each command it sent, each reply, the events

@@ -16,6 +16,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - `dotnet wyrd mcp`: an official-SDK stdio server exposing the existing Mermaid, AsyncAPI, contract parser and
   Urd replay implementations. Contracts include structured content; failures preserve CLI messages without ending
   the session, and process-discovery diagnostics stay on stderr.
+- Add `dotnet wyrd processes --output/--check` with versioned, readable process snapshots and a Shop CI check; structural, added and removed definitions require review, while retry and time-limit changes remain compatible.
 
 ## [0.4.0] - 2026-10-18
 
