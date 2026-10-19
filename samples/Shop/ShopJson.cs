@@ -33,9 +33,11 @@ namespace Shop;
 [JsonSerializable(typeof(Restock))]
 [JsonSerializable(typeof(ReserveStock))]
 [JsonSerializable(typeof(ReleaseStock))]
+[JsonSerializable(typeof(ConsumeStock))]
 [JsonSerializable(typeof(StockAdded))]
 [JsonSerializable(typeof(StockReserved))]
 [JsonSerializable(typeof(StockReleased))]
+[JsonSerializable(typeof(StockConsumed))]
 [JsonSerializable(typeof(StockItem))]
 [JsonSerializable(typeof(InventoryError))]
 // Payments

@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+
+- The Shop consumes shipped stock reservations through an independent inventory process, keeping per-SKU state bounded by outstanding reservations. Add business and hostile-future specifications and guidance on state that only grows.
+
 ### Breaking
 
 - The tool executable is now `dotnet-wyrd`, so the documented `dotnet wyrd` command works after a global
