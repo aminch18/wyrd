@@ -1,7 +1,7 @@
 # Agent guide
 
 Wyrd is a .NET 10 / C# 14 library for deterministic event-driven processes. Read `README.md` (✅ = works, 🔜 = planned),
-`docs/ROADMAP.md` and **`docs/design/semantics.md`** before changing anything. The semantics document is the source of
+`docs/ROADMAP.md`, **`docs/design/semantics.md`** and **`docs/QUALITY.md`** before changing anything. The semantics document is the source of
 truth for behaviour: if code and document disagree, fix the code, or change the document on purpose in the same PR.
 
 ## Layout
@@ -44,6 +44,9 @@ dotnet run --project samples/Shop.Api   # http://localhost:5080, see Shop.Api.ht
   serialized with `JsonTypeInfo` from the app's `[WyrdJsonContext]`. Reflection lives only behind
   `[RequiresUnreferencedCode]` entry points. CI publishes `samples/Shop.Console` with Native AOT.
 - **Readable over clever.** If a junior .NET dev can't read the user-facing API, it's too clever.
+- **Measured, bounded, deliberate.** [`docs/QUALITY.md`](docs/QUALITY.md) is the quality bar: what a message may cost,
+  how memory stays bounded, how the public API changes, how failures surface. Every PR keeps the enforced rules
+  green and follows the rest by hand; **a minor from 0.5 to 0.9 (and 1.0) ships only with the whole bar green.**
 
 ## Conventions
 
@@ -78,12 +81,16 @@ into `main`. Merge the latest `main` into your branch right before opening the P
 
 | Work | Owner | Branch | In bounds |
 |---|---|---|---|
-| v0.5 Verdandi, in the roadmap's order: Integrations, then the EF Core host | Claude | `feature/verdandi` | `src/Wyrd/**`, `src/Wyrd.PostgreSql/**` (to be replaced by EF Core), new host packages and their tests, `samples/Shop.Api/Program.cs` (host setup), `docs/design/**` |
+| v0.5 Verdandi, in the roadmap's order: Integrations, then the EF Core host; with it quality bar Q2.2, Q2.3, Q4.1, Q4.2 (timers, retention, typed exceptions, no sync-over-async) | Claude | `feature/verdandi` | `src/Wyrd/**`, `src/Wyrd.PostgreSql/**` (to be replaced by EF Core), new host packages and their tests, `samples/Shop.Api/Program.cs` (host setup), `docs/design/**` |
 | [009](docs/tasks/009-docs-site.md) — docs site: mental model first, API reference second | Codex | `codex/docs-site` | `src/Wyrd.Web/**` |
 | [010](docs/tasks/010-native-aot-end-to-end.md) — Native AOT verified end to end | Codex | `codex/aot-end-to-end` | `samples/Shop.Api/**`, AOT steps in `ci.yml` |
 | [011](docs/tasks/011-wyrd-mcp-server.md) — `dotnet wyrd mcp` for agents | Codex | `codex/wyrd-mcp` | `src/Wyrd.Tool/Mcp/**`, `tests/Wyrd.Tool.Tests/**` |
 | [012](docs/tasks/012-process-snapshots.md) — process snapshots: a changed process fails CI | Codex | `codex/process-snapshots` | `src/Wyrd.Tool/Processes*`, `samples/Shop/processes.wyrd.txt` |
 | [013](docs/tasks/013-opentelemetry-traces.md) — OpenTelemetry process traces | Codex | `codex/opentelemetry` | `src/Wyrd/Runtime/**` (tracing only) |
+| [014](docs/tasks/014-benchmarks.md) — benchmarks and the performance gates (Q1) | Codex | `codex/benchmarks` | `benchmarks/**`, the gate step in `ci.yml` |
+| [015](docs/tasks/015-public-api.md) — public API tracked and documented (Q3) | Codex | `codex/public-api` | XML doc comments under `src/**` (comments only), `PublicAPI.*.txt` |
+| [016](docs/tasks/016-bounded-shop-state.md) — bounded state in the Shop (Q2.1, Q6.1) | Codex | `codex/bounded-shop-state` | `samples/Shop/**`, `samples/Shop.Tests/**`, one section of the DDD guide |
+| [017](docs/tasks/017-coverage.md) — coverage report and ratchet (Q5.2) | Codex | `codex/coverage` | the coverage step in `ci.yml`, `coverage.json` |
 | Next for Claude after Verdandi: migration of in-flight instances (v1.0 process versioning) | Claude | — | — |
 
 Each task file lists its exact bounds. **Tasks come only from open items in `docs/ROADMAP.md`**, in milestone order,
@@ -113,3 +120,11 @@ Reviews check these, so check them first:
   failure there is a real bug, never a flaky test.
 - **Native AOT.** Anything reachable from the runtime must publish with Native AOT (`dotnet publish
   samples/Shop.Console -c Release`, then run it); reflection only behind `[RequiresUnreferencedCode]` entry points.
+- **No state that only grows** ([Q2.1](docs/QUALITY.md#q2-memory-is-bounded)). A state, instance or history whose
+  size grows with every message makes every message slower: forget what is finished, keep history in read models.
+- **Cost is shown, not claimed** ([Q1](docs/QUALITY.md#q1-performance-is-measured-not-assumed)). A PR touching
+  `src/Wyrd/Runtime` pastes benchmark numbers before and after; the scaling and allocation gates stay green.
+- **Public API on purpose** ([Q3](docs/QUALITY.md#q3-the-public-api-changes-on-purpose)). Every public member is
+  documented; API changes show up in `PublicAPI.Unshipped.txt`, and breaking ones under *Breaking* in the changelog.
+- **Failures are typed, waits are async** ([Q4](docs/QUALITY.md#q4-failures-and-concurrency-are-explicit)). Errors a
+  host or user handles derive from `WyrdException`; no `.Wait()`, `.Result` or blocking semaphore waits under `src/`.
