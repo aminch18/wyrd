@@ -43,8 +43,8 @@ public abstract class EfCoreRuntimeTests(Database database)
         Assert.Equal("Shipped", (await shop.ViewAsync<OrderSummary>("A-1"))!.Status);
         Assert.Equal(4, (await shop.StateOfAsync<StockItem>("KEYBOARD")).Available);
 
-        // Only the 15-minute timer is left: when it fires, the process is no longer waiting and it is ignored.
-        Assert.Equal((1, 0), await shop.BacklogAsync());
+        // The confirmation ended the wait, so its 15-minute timer was cancelled with it: nothing is left.
+        Assert.Equal((0, 0), await shop.BacklogAsync());
     }
 
     [Fact]

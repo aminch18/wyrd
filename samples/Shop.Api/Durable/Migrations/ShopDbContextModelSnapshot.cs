@@ -308,7 +308,14 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnType("text")
                         .HasColumnName("last_error");
 
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("message_id");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("MessageId")
+                        .HasDatabaseName("ix_queue_message_id");
 
                     b.HasIndex("AvailableAt", "Id")
                         .HasDatabaseName("ix_queue_available");

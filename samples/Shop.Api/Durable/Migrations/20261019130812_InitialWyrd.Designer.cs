@@ -12,7 +12,7 @@ using Shop.Api.Durable;
 namespace Shop.Api.Durable.Migrations
 {
     [DbContext(typeof(ShopDbContext))]
-    [Migration("20261019125345_InitialWyrd")]
+    [Migration("20261019130812_InitialWyrd")]
     partial class InitialWyrd
     {
         /// <inheritdoc />
@@ -311,7 +311,14 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnType("text")
                         .HasColumnName("last_error");
 
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("message_id");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("MessageId")
+                        .HasDatabaseName("ix_queue_message_id");
 
                     b.HasIndex("AvailableAt", "Id")
                         .HasDatabaseName("ix_queue_available");

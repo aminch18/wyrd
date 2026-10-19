@@ -42,7 +42,8 @@ internal sealed record StoredInstance(
     ImmutableList<HistoryEntry> History,
     long Version,
     string? Reason = null,
-    TraceContext? Trace = null);
+    TraceContext? Trace = null,
+    Guid? Timer = null);
 
 internal sealed record Scheduled(DateTimeOffset At, Envelope Envelope);
 
@@ -71,6 +72,9 @@ internal sealed class Changes
     public List<Envelope> Outbox { get; } = [];
 
     public List<Scheduled> Schedule { get; } = [];
+
+    /// <summary>Scheduled messages (by id) that are no longer wanted: a wait's timer once the wait is over.</summary>
+    public List<Guid> Cancel { get; } = [];
 
     public List<StoredParked> Park { get; } = [];
 

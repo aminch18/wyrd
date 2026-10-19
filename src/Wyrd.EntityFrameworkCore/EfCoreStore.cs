@@ -160,12 +160,21 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
             Enqueue(scheduled.Envelope, scheduled.At);
         }
 
+        if (changes.Cancel.Count > 0)
+        {
+            await db.Set<QueueRow>().Where(r => changes.Cancel.Contains(r.MessageId))
+                .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Adds a message to the queue; it is written on the next <c>SaveChanges</c>.</summary>
     public void Enqueue(Envelope envelope, DateTimeOffset availableAt) =>
-        db.Add(new QueueRow { Envelope = JsonSerializer.Serialize(envelope, WyrdJsonContext.Default.Envelope), AvailableAt = availableAt });
+        db.Add(new QueueRow
+        {
+            MessageId = envelope.MessageId, Envelope = JsonSerializer.Serialize(envelope, WyrdJsonContext.Default.Envelope), AvailableAt = availableAt,
+        });
 
     internal static StoredInstance Deserialize(InstanceRow row) =>
         JsonSerializer.Deserialize(row.Data, WyrdJsonContext.Default.StoredInstance)! with { Version = row.Version };

@@ -94,6 +94,9 @@ simulate and version.
 - **Time limits are business decisions**: `.Within(duration)` on a wait ("the customer has 15 minutes to confirm");
   when it expires, the process compensates on purpose. A wait without `.Within` is reported (WYRD0012).
   **Implemented.**
+- **A wait's timer lives only as long as the wait.** When the wait ends before its limit — the awaited event
+  arrives, or the instance is suspended while waiting — its timer is cancelled in the same transaction, so nothing
+  stays scheduled for an instance that no longer waits. **Implemented** in memory and on the EF Core host.
 - **Slowness is not failure.** There are no technical timeouts on steps: durable messaging waits, a slow third party
   only makes processes wait, and latency is *observed* (age of pending steps, alerts), never turned into failures.
   **Observability planned (v0.5).** A business deadline on a step is modelled as an explicit wait for its

@@ -27,6 +27,9 @@ internal sealed class InMemoryStore : IWyrdStore
 
     public IReadOnlyList<PublishedMessage> Published => _published;
 
+    /// <summary>Messages waiting for their time: timers and scheduled retries.</summary>
+    public IEnumerable<Envelope> Scheduled => _scheduled.Select(s => s.Envelope);
+
     public StoredState? State(string stateType, string key) => _states.GetValueOrDefault((stateType, key));
 
     public StoredInstance? Instance(string process, string key) => _instances.GetValueOrDefault((process, key));
@@ -133,6 +136,7 @@ internal sealed class InMemoryStore : IWyrdStore
             _parked.AddRange(changes.Park);
             _parked.RemoveAll(changes.Unpark.Contains);
             _outbox.AddRange(changes.Outbox);
+            _scheduled.RemoveAll(s => changes.Cancel.Contains(s.Envelope.MessageId));
             foreach (var scheduled in changes.Schedule)
             {
                 _scheduled.Add((scheduled.At, _sequence++, scheduled.Envelope));

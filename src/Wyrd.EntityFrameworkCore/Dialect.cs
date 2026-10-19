@@ -52,7 +52,7 @@ internal abstract class Dialect
     private sealed class PostgreSql : Dialect
     {
         public override string Dequeue(string table) =>
-            $"SELECT id, envelope, available_at, attempts, last_error FROM {table} WHERE available_at <= {{0}} ORDER BY available_at, id LIMIT 1 FOR UPDATE SKIP LOCKED";
+            $"SELECT id, message_id, envelope, available_at, attempts, last_error FROM {table} WHERE available_at <= {{0}} ORDER BY available_at, id LIMIT 1 FOR UPDATE SKIP LOCKED";
 
         public override string ClaimPublished(string table) =>
             $"UPDATE {table} SET relayed_at = {{1}} WHERE seq IN (SELECT seq FROM {table} WHERE relayed_at IS NULL ORDER BY seq LIMIT {{0}} FOR UPDATE SKIP LOCKED) RETURNING {PublishedColumns}";
@@ -68,7 +68,7 @@ internal abstract class Dialect
         private static PropertyInfo? _number;
 
         public override string Dequeue(string table) =>
-            $"SELECT TOP (1) id, envelope, available_at, attempts, last_error FROM {table} WITH (UPDLOCK, READPAST, ROWLOCK) WHERE available_at <= {{0}} ORDER BY available_at, id";
+            $"SELECT TOP (1) id, message_id, envelope, available_at, attempts, last_error FROM {table} WITH (UPDLOCK, READPAST, ROWLOCK) WHERE available_at <= {{0}} ORDER BY available_at, id";
 
         public override string ClaimPublished(string table) =>
             $"WITH pending AS (SELECT TOP ({{0}}) * FROM {table} WITH (UPDLOCK, READPAST, ROWLOCK) WHERE relayed_at IS NULL ORDER BY seq) " +

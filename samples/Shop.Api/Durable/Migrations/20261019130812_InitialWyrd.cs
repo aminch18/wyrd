@@ -163,6 +163,7 @@ namespace Shop.Api.Durable.Migrations
                 {
                     id = table.Column<long>(type: "bigint", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    message_id = table.Column<Guid>(type: "uuid", nullable: false),
                     envelope = table.Column<string>(type: "text", nullable: false),
                     available_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     attempts = table.Column<int>(type: "integer", nullable: false),
@@ -224,6 +225,12 @@ namespace Shop.Api.Durable.Migrations
                 schema: "wyrd",
                 table: "queue",
                 columns: new[] { "available_at", "id" });
+
+            migrationBuilder.CreateIndex(
+                name: "ix_queue_message_id",
+                schema: "wyrd",
+                table: "queue",
+                column: "message_id");
         }
 
         /// <inheritdoc />

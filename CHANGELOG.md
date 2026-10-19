@@ -52,6 +52,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
+- A wait's timer is cancelled when the wait ends (the awaited event arrives, or the instance is suspended while
+  waiting), instead of firing later and being ignored: nothing stays scheduled for an instance that no longer waits
+  (Q2.2). The EF Core queue gains a `message_id` column for it.
 - In-memory reads (`View`, `StatusOf`, `Journal`...) no longer wait for an operation in progress: they see the last
   commit, behind a short lock instead of a blocking wait on the runtime's gate (Q4.2). The threading analyzers guard
   every project under `src/` against sync-over-async.

@@ -498,6 +498,9 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     internal void Note(string message) => Log("skuld", null, message);
 
     /// <summary>Every process instance and its status, in creation order.</summary>
+    /// <summary>Messages waiting for their time (timers and scheduled retries), in no particular order.</summary>
+    internal IReadOnlyList<Envelope> Scheduled() => Read(() => (IReadOnlyList<Envelope>)[.. _store.Scheduled]);
+
     internal IReadOnlyList<(string Process, string Key, ProcessStatus Status)> Instances() =>
         Read(() => (IReadOnlyList<(string, string, ProcessStatus)>)[.. _store.Instances.Select(i => (i.Process, i.Key, i.Status))]);
 

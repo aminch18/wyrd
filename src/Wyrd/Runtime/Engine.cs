@@ -357,16 +357,16 @@ internal sealed class Engine(
         {
             // Kept at the step the instance waits at, in case it is what it waits for once its definition is back.
             changes.Park.Add(Parked(process, key, instance.Position, wait, awaited));
-            changes.Save(changed);
+            changes.Save(EndWait(changed, changes));
         }
         else if (instance is { Status: ProcessStatus.Awaiting } && instance.Position == step)
         {
             log(process.Name, key, $"<- {awaited.GetType().Name}");
             var trigger = Trigger(instance);
             var fact = Parked(process, key, step, wait, awaited).AsFact();
-            instance = Record(instance, HistoryKind.Received, step: step, message: fact) with
+            instance = EndWait(Record(instance, HistoryKind.Received, step: step, message: fact), changes) with
             {
-                Position = step + 1, Status = ProcessStatus.Running, Deadline = null, Facts = instance.Facts.Add(fact),
+                Position = step + 1, Status = ProcessStatus.Running, Facts = instance.Facts.Add(fact),
             };
             changes.Save(await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false));
         }
@@ -391,6 +391,20 @@ internal sealed class Engine(
     /// The instance suspended, when the deployed definition's structure is not the one it started with: continuing
     /// would run the wrong step. Null when it is the same.
     /// </summary>
+    /// <summary>
+    /// A wait is over before its time limit: its timer is cancelled with the rest of the changes, so nothing is left
+    /// scheduled for an instance that no longer waits (Q2.2).
+    /// </summary>
+    private static StoredInstance EndWait(StoredInstance instance, Changes changes)
+    {
+        if (instance.Timer is { } timer)
+        {
+            changes.Cancel.Add(timer);
+        }
+
+        return instance with { Deadline = null, Timer = null };
+    }
+
     private StoredInstance? DefinitionChanged(Process process, StoredInstance instance) =>
         instance.Fingerprint == process.Fingerprint
             ? null
@@ -454,17 +468,19 @@ internal sealed class Engine(
                     }
 
                     DateTimeOffset? deadline = wait.Timeout is { } timeout ? now() + timeout : null;
+                    Guid? timer = null;
                     if (deadline is { } at)
                     {
+                        timer = newId();
                         changes.Schedule.Add(new Scheduled(at, new Envelope(
-                            newId(), MessageKind.Timeout, TimeoutType, "{}", new ProcessRef(instance.Process, instance.Key, instance.Position, false), Trace: Tracing.Capture(instance))));
+                            timer.Value, MessageKind.Timeout, TimeoutType, "{}", new ProcessRef(instance.Process, instance.Key, instance.Position, false), Trace: Tracing.Capture(instance))));
                     }
 
                     log(instance.Process, instance.Key, wait.Timeout is { } t
                         ? $"awaiting {wait.Event.Name} (within {Durations.Format(t)})"
                         : $"awaiting {wait.Event.Name}");
                     Tracing.Event("wyrd.waiting", instance, instance.Position);
-                    return instance with { Status = ProcessStatus.Awaiting, Deadline = deadline };
+                    return instance with { Status = ProcessStatus.Awaiting, Deadline = deadline, Timer = timer };
             }
         }
 
@@ -826,7 +842,7 @@ internal sealed class Engine(
         var wait = (AwaitNode)process.Nodes[target.Step];
         log(instance.Process, instance.Key, $"timeout: {wait.Event.Name} not received in time");
         instance = Record(instance, HistoryKind.TimedOut, step: target.Step);
-        changes.Save(StartCompensation(process, instance with { Deadline = null }, Trigger(instance), changes));
+        changes.Save(StartCompensation(process, instance with { Deadline = null, Timer = null }, Trigger(instance), changes));
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
     }
 

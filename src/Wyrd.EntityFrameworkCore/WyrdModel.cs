@@ -135,6 +135,9 @@ internal sealed class QueueRow
 {
     public long Id { get; set; }
 
+    /// <summary>The envelope's id, so a scheduled message can be cancelled (a wait's timer).</summary>
+    public Guid MessageId { get; set; }
+
     public string Envelope { get; set; } = "";
 
     public DateTimeOffset AvailableAt { get; set; }
@@ -271,11 +274,13 @@ public static class WyrdModelBuilderExtensions
         {
             e.ToTable("queue", schema).HasKey(r => r.Id);
             e.Property(r => r.Id).HasColumnName("id").ValueGeneratedOnAdd();
+            e.Property(r => r.MessageId).HasColumnName("message_id");
             Text(e.Property(r => r.Envelope), "envelope");
             e.Property(r => r.AvailableAt).HasColumnName("available_at");
             e.Property(r => r.Attempts).HasColumnName("attempts");
             e.Property(r => r.LastError).HasColumnName("last_error");
             e.HasIndex(r => new { r.AvailableAt, r.Id }).HasDatabaseName("ix_queue_available");
+            e.HasIndex(r => r.MessageId).HasDatabaseName("ix_queue_message_id");
         });
 
         modelBuilder.Entity<DeadLetterRow>(e =>
