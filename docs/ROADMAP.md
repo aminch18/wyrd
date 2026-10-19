@@ -96,7 +96,7 @@ then 1.0) only with the whole bar green.** Baseline and rules: [QUALITY.md](QUAL
 - [x] Retention for everything a host keeps, in semantics and every host (Q2.3; includes v0.5's instance history
       retention). **Explicit, like every other decision in Wyrd**: a durable host doesn't start without a retention for
       deduplication (inbox, handled), finished instances and their histories, relayed messages and domain events;
-      keeping something forever is written down too (`Retention.KeepForever("why")`). Suspended instances never
+      keeping something forever is written down too (`Keep.Forever("why")`). Suspended instances never
       expire. Only the in-memory host has defaults (nothing outlives its process; the journal is bounded)
 - [ ] Public API tracked and documented; package validation against the last release (Q3)
 - [x] Typed exceptions; no sync-over-async in hosts (Q4.1, Q4.2)
@@ -127,7 +127,7 @@ Work happens on `feature/verdandi` (PR #11), in this order:
       Done: the port (`IWyrdTransport`, `ReceiveAsync`, only integration events cross services), `InMemoryTransport`,
       the EF Core outbox relay and trace context across services. Left: the `Wyrd.RabbitMq` package, kept thin
 - [x] OpenTelemetry with process-level traces
-- [ ] Instance history retention and catching up a projection added to an existing store
+- [ ] Catching up a projection added to an existing store
 - [ ] **History archive** (`IHistoryArchive`): before retention removes a finished instance, its history
       (`InstanceHistory`, the JSON Urd replays) is handed to the application — blob storage, a cold table, a data lake —
       and removed only once the archive confirms; a failed archive keeps the instance for the next pass. Hot tables
