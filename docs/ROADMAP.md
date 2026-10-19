@@ -97,7 +97,7 @@ then 1.0) only with the whole bar green.** Baseline and rules: [QUALITY.md](QUAL
       history retention)
 - [ ] Public API tracked and documented; package validation against the last release (Q3)
 - [ ] Typed exceptions; no sync-over-async in hosts (Q4.1, Q4.2)
-- [ ] Coverage reported in CI, never lower than the previous release (Q5.2)
+- [x] Coverage reported in CI, never lower than the previous release (Q5.2)
 
 ## v0.5 — Verdandi (run the present)
 
