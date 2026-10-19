@@ -81,7 +81,7 @@ What the numbers say:
 | Id | Rule | Check | |
 |---|---|---|---|
 | Q4.1 | **Typed exceptions** for what a host or user handles: concurrency conflicts, unknown message types, missing JSON metadata... derive from `WyrdException`. Argument validation keeps the BCL exceptions. | Tests | 🔜 |
-| Q4.2 | **No sync-over-async** under `src/`: no `.Wait()`, `.Result` or `GetAwaiter().GetResult()` on tasks, no blocking waits on a `SemaphoreSlim` in code reachable from async callers. | Analyzer (VSTHRD002 or equivalent) | 🔜 |
+| Q4.2 | **No sync-over-async** under `src/`: no `.Wait()`, `.Result` or `GetAwaiter().GetResult()` on tasks, no blocking waits on a `SemaphoreSlim` in code reachable from async callers. | Analyzers VSTHRD002/VSTHRD103 (`Microsoft.VisualStudio.Threading.Analyzers`, every project under `src/`); synchronous APIs that read a host (`InMemoryRuntime.View`, `StatusOf`...) take a short lock, never the host's gate | ✅ |
 | Q4.3 | Every public async method takes a `CancellationToken`. | Review | ✅ (holds today) |
 
 ### Q5. Tests stay fast, honest and measured

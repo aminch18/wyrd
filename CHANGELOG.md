@@ -52,6 +52,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
+- In-memory reads (`View`, `StatusOf`, `Journal`...) no longer wait for an operation in progress: they see the last
+  commit, behind a short lock instead of a blocking wait on the runtime's gate (Q4.2). The threading analyzers guard
+  every project under `src/` against sync-over-async.
 - Urd compares entries in order without their time: on a real clock a reply takes milliseconds, on replay none.
 
 ## [0.4.0] - 2026-10-18

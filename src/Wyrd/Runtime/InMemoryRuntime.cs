@@ -50,7 +50,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     }
 
     /// <summary>Virtual time elapsed since the runtime started.</summary>
-    public TimeSpan Now => _now - Epoch;
+    public TimeSpan Now => Read(() => _now - Epoch);
 
     public IReadOnlyList<JournalEntry> Journal => Read(() => (IReadOnlyList<JournalEntry>)[.. _journal]);
 
@@ -196,12 +196,12 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
             var until = _now + by;
             while (await _store.TakeNextDueAsync(until, cancellationToken).ConfigureAwait(false) is { } due)
             {
-                _now = due.At > _now ? due.At : _now;
+                Write(() => _now = due.At > _now ? due.At : _now);
                 _queue.Add(due.Envelope);
                 await DrainAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            _now = until;
+            Write(() => _now = until);
         }
         finally
         {
@@ -266,7 +266,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         where TCommand : ICommand
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(times, 1);
-        Read(() => _faults[typeof(TCommand)] = _faults.GetValueOrDefault(typeof(TCommand)) + times);
+        Write(() => _faults[typeof(TCommand)] = _faults.GetValueOrDefault(typeof(TCommand)) + times);
     }
 
     public ProcessStatus? StatusOf(Process process, object key)
@@ -511,25 +511,24 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
 
     private bool Fault(Envelope command, Type commandType)
     {
-        if (_faults.GetValueOrDefault(commandType) > 0)
+        lock (_store.Sync)
         {
-            _faults[commandType]--;
-            return true;
+            if (_faults.GetValueOrDefault(commandType) > 0)
+            {
+                _faults[commandType]--;
+                return true;
+            }
         }
 
         return Simulation?.Fault(command, commandType) ?? false;
     }
 
+    // Reads never wait for an operation in progress (no blocking wait on the gate, Q4.2): they see the last commit.
     private T Read<T>(Func<T> read)
     {
-        _gate.Wait();
-        try
+        lock (_store.Sync)
         {
             return read();
-        }
-        finally
-        {
-            _gate.Release();
         }
     }
 
@@ -543,5 +542,19 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         return new Guid(bytes);
     }
 
-    private void Log(string process, string? key, string message) => _journal.Add(new(Now, process, key, message));
+    private void Write(Action write)
+    {
+        lock (_store.Sync)
+        {
+            write();
+        }
+    }
+
+    private void Log(string process, string? key, string message)
+    {
+        lock (_store.Sync)
+        {
+            _journal.Add(new(_now - Epoch, process, key, message));
+        }
+    }
 }

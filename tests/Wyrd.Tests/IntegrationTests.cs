@@ -142,4 +142,37 @@ public class IntegrationTests
 
         report.ThrowIfViolated();
     }
+    [Fact]
+    public async Task reading_never_waits_for_an_operation_in_progress()
+    {
+        var gateway = new SlowGateway();
+        var runtime = TestSystem.WithGateway(gateway, Fulfillment);
+        var placing = runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+        await gateway.Called.Task.WaitAsync(TimeSpan.FromSeconds(5)); // the operation is now inside the gateway call
+
+        var reading = Task.Run(() => runtime.StatusOf(Fulfillment, "A-1"));
+
+        Assert.Same(reading, await Task.WhenAny(reading, Task.Delay(TimeSpan.FromSeconds(5))));
+        Assert.Equal(ProcessStatus.Running, await reading);
+        gateway.Answer.SetResult();
+        await placing;
+    }
+
+    /// <summary>A payment provider that answers only when told to.</summary>
+    private sealed class SlowGateway : Integration<ChargePayment, PaymentCharged, PaymentError>
+    {
+        public TaskCompletionSource Called { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Answer { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override object KeyOf(ChargePayment command) => command.OrderId;
+
+        public override async Task<Result<PaymentCharged, PaymentError>> ExecuteAsync(
+            ChargePayment command, IntegrationContext context, CancellationToken cancellationToken)
+        {
+            Called.TrySetResult();
+            await Answer.Task.WaitAsync(cancellationToken);
+            return new PaymentCharged(command.OrderId, command.Amount);
+        }
+    }
 }

@@ -17,6 +17,12 @@ internal sealed class InMemoryStore : IWyrdStore
     private readonly List<StoredHeld> _held = [];
     private long _sequence;
 
+    /// <summary>
+    /// Readers outside the runtime's gate take it; a commit holds it, so they see every commit whole. The runtime's gate
+    /// serialises the writer, so the writer's own reads need no lock.
+    /// </summary>
+    public Lock Sync { get; } = new();
+
     public IReadOnlyList<StoredMessage> Events => _events;
 
     public IReadOnlyList<PublishedMessage> Published => _published;
@@ -57,77 +63,80 @@ internal sealed class InMemoryStore : IWyrdStore
 
     public ValueTask CommitAsync(Changes changes, CancellationToken cancellationToken)
     {
-        // Check every expected version first: all or nothing, like a transaction.
-        foreach (var state in changes.States)
+        lock (Sync)
         {
-            var current = _states.GetValueOrDefault((state.StateType, state.Key))?.Version ?? 0;
-            if (current != state.Version - 1)
+            // Check every expected version first: all or nothing, like a transaction.
+            foreach (var state in changes.States)
             {
-                throw new ConcurrencyConflictException($"Concurrency conflict on {state.StateType} '{state.Key}'.");
+                var current = _states.GetValueOrDefault((state.StateType, state.Key))?.Version ?? 0;
+                if (current != state.Version - 1)
+                {
+                    throw new ConcurrencyConflictException($"Concurrency conflict on {state.StateType} '{state.Key}'.");
+                }
             }
-        }
 
-        foreach (var instance in changes.Instances.Values)
-        {
-            var current = _instances.GetValueOrDefault((instance.Process, instance.Key))?.Version ?? 0;
-            if (current != instance.Version)
+            foreach (var instance in changes.Instances.Values)
             {
-                throw new ConcurrencyConflictException($"Concurrency conflict on process '{instance.Process}' '{instance.Key}'.");
+                var current = _instances.GetValueOrDefault((instance.Process, instance.Key))?.Version ?? 0;
+                if (current != instance.Version)
+                {
+                    throw new ConcurrencyConflictException($"Concurrency conflict on process '{instance.Process}' '{instance.Key}'.");
+                }
             }
-        }
 
-        foreach (var ((stateType, key), (read, _)) in changes.Projected)
-        {
-            if (_projected.GetValueOrDefault((stateType, key)) != read)
+            foreach (var ((stateType, key), (read, _)) in changes.Projected)
             {
-                throw new InvalidOperationException($"Concurrency conflict projecting {stateType} '{key}'.");
+                if (_projected.GetValueOrDefault((stateType, key)) != read)
+                {
+                    throw new InvalidOperationException($"Concurrency conflict projecting {stateType} '{key}'.");
+                }
             }
-        }
 
-        foreach (var state in changes.States)
-        {
-            _states[(state.StateType, state.Key)] = state;
-        }
-
-        foreach (var ((stateType, key), (_, version)) in changes.Projected)
-        {
-            _projected[(stateType, key)] = version;
-        }
-
-        _held.AddRange(changes.Hold);
-        _held.RemoveAll(changes.Release.Contains);
-
-        foreach (var instance in changes.Instances.Values)
-        {
-            _instances[(instance.Process, instance.Key)] = instance with { Version = instance.Version + 1 };
-        }
-
-        foreach (var (id, reply) in changes.Replies)
-        {
-            _replies[id] = reply;
-        }
-
-        foreach (var view in changes.Views.Values)
-        {
-            if (view.Payload is null)
+            foreach (var state in changes.States)
             {
-                _views.Remove((view.ViewType, view.Key));
+                _states[(state.StateType, state.Key)] = state;
             }
-            else
-            {
-                _views[(view.ViewType, view.Key)] = view;
-            }
-        }
 
-        _handled.UnionWith(changes.Handled);
-        _events.AddRange(changes.Events);
-        _published.AddRange(changes.Published);
-        _parked.AddRange(changes.Park);
-        _parked.RemoveAll(changes.Unpark.Contains);
-        _outbox.AddRange(changes.Outbox);
-        foreach (var scheduled in changes.Schedule)
-        {
-            _scheduled.Add((scheduled.At, _sequence++, scheduled.Envelope));
+            foreach (var ((stateType, key), (_, version)) in changes.Projected)
+            {
+                _projected[(stateType, key)] = version;
+            }
+
+            _held.AddRange(changes.Hold);
+            _held.RemoveAll(changes.Release.Contains);
+
+            foreach (var instance in changes.Instances.Values)
+            {
+                _instances[(instance.Process, instance.Key)] = instance with { Version = instance.Version + 1 };
+            }
+
+            foreach (var (id, reply) in changes.Replies)
+            {
+                _replies[id] = reply;
+            }
+
+            foreach (var view in changes.Views.Values)
+            {
+                if (view.Payload is null)
+                {
+                    _views.Remove((view.ViewType, view.Key));
+                }
+                else
+                {
+                    _views[(view.ViewType, view.Key)] = view;
+                }
+            }
+
+            _handled.UnionWith(changes.Handled);
+            _events.AddRange(changes.Events);
+            _published.AddRange(changes.Published);
+            _parked.AddRange(changes.Park);
+            _parked.RemoveAll(changes.Unpark.Contains);
+            _outbox.AddRange(changes.Outbox);
+            foreach (var scheduled in changes.Schedule)
+            {
+                _scheduled.Add((scheduled.At, _sequence++, scheduled.Envelope));
+            }
         }
 
         return ValueTask.CompletedTask;
