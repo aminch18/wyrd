@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Added
 
 - Add BCL `Wyrd` process tracing with envelope context propagation, lifecycle/outcome tags and links for external continuations; Shop.Api exports to the console when `OTEL_EXPORTER=console`. Deterministic journals, domain state and replay histories are unchanged.
+- Documentation learning path with the shared read-model guide, working repository-relative links, and a searchable API reference checked against public declarations, analyzer rules and code-fix coverage during the website build.
 
 ## [0.4.0] - 2026-10-18
 
