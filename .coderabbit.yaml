@@ -7,8 +7,9 @@ tone_instructions: >-
   Be direct and specific. Say what is wrong, why it matters and how to fix it. No praise, no filler.
 
 reviews:
-  # Balanced: the analyzers already turn warnings into errors, so style nits add nothing.
-  profile: chill
+  # Thorough, to match the quality bar. Style is the analyzers' job (warnings are errors): comment on behaviour,
+  # semantics and the rules above, not on formatting.
+  profile: assertive
   high_level_summary: true
   poem: false
   auto_review:
