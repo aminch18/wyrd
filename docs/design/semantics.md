@@ -18,8 +18,8 @@
 
 | Kind | Meaning | Rules |
 |---|---|---|
-| Command | An intention | Exactly one owner (slice); sent, never published; can be rejected |
-| Domain event | A fact inside one context | Produced only by slices; private; can change freely |
+| Command | An intention | Exactly one owner (slice or integration); sent, never published; can be rejected |
+| Domain event | A fact inside one context | Produced only by slices and integrations; private; can change freely |
 | Integration event | A fact for other contexts | Public, versioned contract; produced only by a publication; snapshot-checked |
 
 All **implemented**.
@@ -121,7 +121,7 @@ Suspending doesn't make the world consistent: the instance stays half-way. It ma
 Nothing is lost and nothing stays stuck in silence. `ResumeAsync` re-sends what the instance was doing with the same
 message id (a command that did run is not run twice); `CompensateAsync` undoes a forward-suspended instance and
 fences the step it gave up on; a late success of the pending command resumes it on its own. **Implemented**
-(in memory; durable hosts in v0.5). Opt-in automatic compensation: `.Retry(3.Times).OrCompensate()`. **Implemented.**
+(in memory and on the EF Core host). Opt-in automatic compensation: `.Retry(3.Times).OrCompensate()`. **Implemented.**
 
 ### 3.7 Statuses
 
@@ -187,4 +187,3 @@ the host doesn't start without a `Retention`, whose every member is required, ea
 | One event per decision | Keeps decisions simple and explicit | A union of events |
 | Linear processes | Readable, simulable, versionable | Another process for the alternative |
 | Snapshot state | Simple storage, fast reads | Event sourcing as a future option |
-| No real I/O yet | Integrations are designed, not built | Integrations (v0.5): the only place with I/O, with idempotency keys and recorded outcomes |

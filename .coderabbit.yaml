@@ -1,0 +1,68 @@
+# CodeRabbit reviews every pull request against Wyrd's own rules, not only generic ones.
+# Schema: https://coderabbit.ai/integrations/schema.v2.json
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: en-US
+tone_instructions: >-
+  Be direct and specific. Say what is wrong, why it matters and how to fix it. No praise, no filler.
+
+reviews:
+  # Thorough, to match the quality bar. Style is the analyzers' job (warnings are errors): comment on behaviour,
+  # semantics and the rules above, not on formatting.
+  profile: assertive
+  high_level_summary: true
+  poem: false
+  auto_review:
+    enabled: true
+    drafts: false
+    # Long-lived feature branches (e.g. feature/verdandi) collect sub-branches before main.
+    base_branches:
+      - "^feature/.*$"
+  path_filters:
+    - "!**/bin/**"
+    - "!**/obj/**"
+    - "!samples/Shop.Api/Durable/Migrations/**"
+    - "!**/*.Designer.cs"
+  path_instructions:
+    - path: "**/*"
+      instructions: >-
+        Review against the "Review checklist" in AGENTS.md and the rules in docs/QUALITY.md. docs/design/semantics.md
+        is the source of truth for behaviour: flag any change in behaviour that does not update it, and any text that
+        presents planned (🔜) behaviour as available. Quoted output (journal lines, reports, diagnostics) must come
+        from a real run; flag anything that looks invented, and wrong singular/plural. Process snippets, in code and
+        docs, declare every decision: .Retry(...) or .NoRetry("why") on every step, .Within(...) on every wait,
+        .Undo(...) or .NoCompensation("why") on every step followed by others. Commands, domain events and integration
+        events are never blurred; only integration events cross services.
+    - path: "src/Wyrd/Runtime/**"
+      instructions: >-
+        The engine must stay deterministic: no wall-clock time, no randomness, no unordered iteration that changes the
+        journal. No sync-over-async (Q4.2): no .Wait(), .Result, GetAwaiter().GetResult() or blocking semaphore waits.
+        Failures a host or user handles derive from WyrdException (Q4.1). The engine knows nothing of transports or
+        storage. A change here needs benchmark numbers before and after in the PR (Q1) and must keep
+        samples/Shop.Tests/SkuldSpecs green.
+    - path: "src/**"
+      instructions: >-
+        src/Wyrd stays dependency-free and Native AOT compatible: no Type.GetType, no runtime code generation,
+        reflection only behind [RequiresUnreferencedCode] entry points (Wyrd.EntityFrameworkCore is JIT only, by
+        decision). Every public member is documented and public API changes are deliberate (Q3). Argument validation
+        keeps the BCL exceptions. Code should read like the surrounding code: file-scoped namespaces, records for data,
+        immutable types.
+    - path: "tests/**"
+      instructions: >-
+        xUnit, snake_case names that describe behaviour. Tests must be deterministic: no sleeps to wait for a race,
+        wait for the condition instead. Container tests carry [Trait("Category", "Containers")]. Keep dotnet test fast.
+    - path: "README.md"
+      instructions: >-
+        The README is packed into every NuGet package: links and images must be absolute
+        (https://github.com/aminch18/wyrd/blob/main/...).
+    - path: ".github/workflows/**"
+      instructions: >-
+        Workflows must pass actionlint. Container tests run only on the Linux runner.
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "AGENTS.md"
+      - "docs/QUALITY.md"
+      - "docs/design/semantics.md"

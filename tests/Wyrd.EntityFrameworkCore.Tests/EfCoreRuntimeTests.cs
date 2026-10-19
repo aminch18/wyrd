@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Shop;
 using Shop.Contracts;
@@ -7,6 +8,7 @@ using Shop.Shipping;
 using Wyrd.Processes;
 using Wyrd.Runtime;
 using Wyrd.Testing;
+using Process = Wyrd.Processes.Process;
 
 namespace Wyrd.EntityFrameworkCore.Tests;
 
@@ -233,6 +235,51 @@ public abstract class EfCoreRuntimeTests(Database database)
         await DrainAsync(runtime, settle: TimeSpan.FromSeconds(1));
 
         Assert.Equal((0, 2), await runtime.BacklogAsync()); // both JobStarted events, after 3 attempts each
+    }
+
+    [Fact]
+    public async Task workers_racing_over_failing_messages_record_each_failure_once()
+    {
+#pragma warning disable IL2026, IL3050 // reflection JSON keeps the test domain small
+        var runtime = new EfCoreRuntime<WyrdDbContext>(await database.NewAsync(), Database.Retention, Database.Options with { MaxDeliveryAttempts = 3 })
+            .AddSlice(new StartJobSlice())
+            .AddProjection(new BrokenJobs());
+#pragma warning restore IL2026, IL3050
+
+        for (var i = 1; i <= 10; i++)
+        {
+            await runtime.SendAsync(new StartJob($"J-{i}"));
+        }
+
+        // A failed attempt releases its row lock before the failure is written: the others must not record it again.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+        await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Task.Run(() => DrainAsync(runtime, TimeSpan.FromSeconds(1), timeout.Token))));
+
+        Assert.Equal((0, 10), await runtime.BacklogAsync());
+    }
+
+    [Fact]
+    public async Task a_tracestate_longer_than_512_characters_crosses_with_its_message()
+    {
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == "Wyrd",
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
+        };
+        ActivitySource.AddActivityListener(listener);
+        var state = string.Join(',', Enumerable.Range(1, 32).Select(i => $"vendor{i}={new string('x', 20)}"));
+        var transport = new RecordingTransport();
+        var shop = Database.Shop(await database.NewAsync()).UseTransport(transport);
+
+        using (var request = new Activity("request").SetIdFormat(ActivityIdFormat.W3C))
+        {
+            request.TraceStateString = state;
+            request.Start();
+            await ShipAsync(shop, "A-1");
+        }
+
+        Assert.Equal(2, await shop.RelayPendingAsync());
+        Assert.All(transport.Sent, message => Assert.Equal(state, message.TraceState));
     }
 
     [Fact]

@@ -284,8 +284,7 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnName("trace_parent");
 
                     b.Property<string>("TraceState")
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
+                        .HasColumnType("text")
                         .HasColumnName("trace_state");
 
                     b.Property<string>("Type")

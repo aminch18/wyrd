@@ -388,10 +388,6 @@ internal sealed class Engine(
     }
 
     /// <summary>
-    /// The instance suspended, when the deployed definition's structure is not the one it started with: continuing
-    /// would run the wrong step. Null when it is the same.
-    /// </summary>
-    /// <summary>
     /// A wait is over before its time limit: its timer is cancelled with the rest of the changes, so nothing is left
     /// scheduled for an instance that no longer waits (Q2.2).
     /// </summary>
@@ -405,6 +401,10 @@ internal sealed class Engine(
         return instance with { Deadline = null, Timer = null };
     }
 
+    /// <summary>
+    /// The instance suspended, when the deployed definition's structure is not the one it started with: continuing
+    /// would run the wrong step. Null when it is the same.
+    /// </summary>
     private StoredInstance? DefinitionChanged(Process process, StoredInstance instance) =>
         instance.Fingerprint == process.Fingerprint
             ? null

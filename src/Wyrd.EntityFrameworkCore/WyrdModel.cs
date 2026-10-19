@@ -221,7 +221,7 @@ public static class WyrdModelBuilderExtensions
             e.Property(r => r.RecordedAt).HasColumnName("recorded_at");
             e.Property(r => r.RelayedAt).HasColumnName("relayed_at");
             e.Property(r => r.TraceParent).HasColumnName("trace_parent").HasMaxLength(55);
-            e.Property(r => r.TraceState).HasColumnName("trace_state").HasMaxLength(512);
+            e.Property(r => r.TraceState).HasColumnName("trace_state");
             e.HasIndex(r => r.MessageId).IsUnique().HasDatabaseName("ix_published_message_id");
             e.HasIndex(r => r.RelayedAt).HasDatabaseName("ix_published_relayed_at");
             // Only what is waiting for the relay: the index stays as small as the backlog.

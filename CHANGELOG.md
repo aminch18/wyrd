@@ -9,6 +9,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - The tool executable is now `dotnet-wyrd`, so the documented `dotnet wyrd` command works after a global
   installation. Replace direct `wyrd` invocations with `dotnet wyrd` (or `dotnet-wyrd`).
+- Failures a host or an application handles throw `WyrdException` subtypes instead of `InvalidOperationException`
+  itself (see *Changed*). `catch (InvalidOperationException)` still works; checks for the exact type
+  (`ex.GetType() == typeof(InvalidOperationException)`, `Assert.Throws<InvalidOperationException>`) no longer match.
+  A command without an owner now says "Nothing owns X. Register its owner with AddSlice() or AddIntegration()."
+  instead of "No slice owns X".
 
 ### Added
 
@@ -61,8 +66,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Failures a host or an application handles are typed and derive from `WyrdException` (itself an
   `InvalidOperationException`, so existing `catch` blocks still work): `ConcurrencyConflictException`,
   `UnknownMessageTypeException`, `MissingJsonMetadataException`, `MissingUpcasterException`,
-  `NotAnIntegrationEventException`, `InstanceStateException` (Q4.1). Code checking for exactly
-  `InvalidOperationException` sees the new types. A conflict in your own transaction
+  `NotAnIntegrationEventException`, `InstanceStateException` (Q4.1). A conflict in your own transaction
   (`EfCoreRuntime.SendAsync(command, context)`) is a `ConcurrencyConflictException` to retry.
 - A wait's timer is cancelled when the wait ends (the awaited event arrives, or the instance is suspended while
   waiting), instead of firing later and being ignored: nothing stays scheduled for an instance that no longer waits

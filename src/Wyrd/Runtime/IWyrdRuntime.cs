@@ -20,6 +20,7 @@ public interface IWyrdRuntime
     /// </summary>
     Task ReceiveAsync(TransportMessage message, CancellationToken cancellationToken = default);
 
+    /// <summary>Where the instance of the process with this key stands, or null if there is no such instance.</summary>
     Task<ProcessStatus?> StatusOfAsync(Process process, object key, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -34,12 +35,15 @@ public interface IWyrdRuntime
     /// <summary>What the instance received and sent (Urd), or null if there is no such instance.</summary>
     Task<InstanceHistory?> HistoryOfAsync(Process process, object key, CancellationToken cancellationToken = default);
 
+    /// <summary>The current state of the aggregate with this key (its initial state if nothing happened to it yet).</summary>
     Task<TState> StateOfAsync<TState>(object key, CancellationToken cancellationToken = default)
         where TState : IState<TState>;
 
+    /// <summary>The read model with this key, or null if no event has built it yet.</summary>
     Task<TView?> ViewAsync<TView>(object key, CancellationToken cancellationToken = default)
         where TView : class;
 
+    /// <summary>Every read model of this type, in a stable order.</summary>
     Task<IReadOnlyList<TView>> ViewsAsync<TView>(CancellationToken cancellationToken = default)
         where TView : class;
 }
