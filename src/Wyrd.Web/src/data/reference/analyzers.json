@@ -1,0 +1,154 @@
+[
+  {
+    "code": "WYRD0001",
+    "title": "A message is either a command or an event",
+    "severity": "Error",
+    "example": "public sealed record ChargePayment(string OrderId) : ICommand;\npublic sealed record PaymentCharged(string OrderId) : IDomainEvent;",
+    "fix": "No dedicated code fix.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0002",
+    "title": "A command has exactly one owner",
+    "severity": "Error",
+    "example": "// Keep one Slice<ChargePayment, Payment, PaymentCharged, PaymentError>.",
+    "fix": "No dedicated code fix.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0003",
+    "title": "Name events in the past tense",
+    "severity": "Info",
+    "example": "public sealed record PaymentCharged(string OrderId) : IDomainEvent;",
+    "fix": "No dedicated code fix.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0004",
+    "title": "Name commands in the imperative",
+    "severity": "Info",
+    "example": "public sealed record ChargePayment(string OrderId) : ICommand;",
+    "fix": "No dedicated code fix.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0014",
+    "title": "Say how a step retries",
+    "severity": "Warning",
+    "example": ".Then(Shipping.Ship).NoRetry(\"the carrier retries on its side\")",
+    "fix": "No dedicated code fix.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0011",
+    "title": "Say how a step is undone",
+    "severity": "Warning",
+    "example": ".Then(Stock.Reserve).Retry(3.Times).Undo(Stock.Release)",
+    "fix": "No dedicated code fix.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0012",
+    "title": "A wait needs a timeout",
+    "severity": "Warning",
+    "example": ".Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)",
+    "fix": "No dedicated code fix.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0020",
+    "title": "A switch over a union handles every case",
+    "severity": "Error",
+    "example": "// Handle Payment.None, Payment.Charged and Payment.Refunded explicitly.",
+    "fix": "No dedicated code fix.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0013",
+    "title": "Write processes in the repository's style",
+    "severity": "Warning",
+    "example": "# .editorconfig\nwyrd_process_style = fluent",
+    "fix": "Convert the whole process between fluent and pipe syntax; Fix all uses the Roslyn batch fixer.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0101",
+    "title": "Integration events must not expose domain types",
+    "severity": "Error",
+    "example": "// Use primitives in the contract, not OrderLine or Money.\npublic sealed record PriceV1(decimal Amount, string Currency) : IIntegrationEvent;",
+    "fix": "No dedicated code fix.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0102",
+    "title": "Integration events need a name, a version and IIntegrationEvent",
+    "severity": "Error",
+    "example": "[IntegrationEvent(\"payments.confirmed\", Version = 1)]\npublic sealed record PaymentConfirmed(string OrderId) : IIntegrationEvent;",
+    "fix": "No dedicated code fix.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0300",
+    "title": "Wyrd serializes this type: declare it in the JSON context",
+    "severity": "Error",
+    "example": "[JsonSerializable(typeof(ChargePayment))]",
+    "fix": "Add JsonSerializable; Fix all completes declarations across a document, project or solution.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0301",
+    "title": "Union cases must be declared as JSON derived types",
+    "severity": "Error",
+    "example": "[JsonDerivedType(typeof(Payment.Charged), \"Charged\")]",
+    "fix": "Add JsonDerivedType; Fix all also resolves newly exposed JSON naming collisions.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0302",
+    "title": "Types in the JSON context need unique names",
+    "severity": "Error",
+    "example": "[JsonSerializable(typeof(Payment.None), TypeInfoPropertyName = \"PaymentNone\")]",
+    "fix": "Add a unique TypeInfoPropertyName; Fix all coordinates declarations without duplicates.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0200",
+    "title": "Integration event is missing from the contract snapshot",
+    "severity": "Warning",
+    "example": "payments.payment-charged v1 | Amount: decimal; Currency: string; OrderId: string",
+    "fix": "Add the reviewed snapshot entry; Fix all coordinates document, project or solution changes.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0201",
+    "title": "Breaking change in a published integration event",
+    "severity": "Error",
+    "example": "// Keep V1 unchanged; publish the changed schema as PaymentChargedV2.",
+    "fix": "No dedicated code fix.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0202",
+    "title": "Contract snapshot is outdated",
+    "severity": "Warning",
+    "example": "// Review the optional field, then apply the snapshot code fix.",
+    "fix": "Update the snapshot entry; Fix all preserves comments and avoids duplicate declarations.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0203",
+    "title": "A published integration event was removed",
+    "severity": "Error",
+    "example": "retired payments.payment-charged v1 | Amount: decimal; Currency: string; OrderId: string",
+    "fix": "No dedicated code fix.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  },
+  {
+    "code": "WYRD0204",
+    "title": "Integration event name and version must be unique",
+    "severity": "Error",
+    "example": "// Give the new contract a distinct name or increment its version.",
+    "fix": "No dedicated code fix.",
+    "source": "src/Wyrd.Analyzers/Diagnostics.cs"
+  }
+]

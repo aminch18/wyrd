@@ -84,6 +84,21 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] `dotnet wyrd asyncapi`: AsyncAPI document from the integration event contracts (moved from v0.1)
 - [x] `dotnet wyrd diagram`: Mermaid diagrams for every process
 
+## Quality bar — the gate for every minor from 0.5 to 0.9
+
+The [quality bar](QUALITY.md) is how good Wyrd must be: measured cost, bounded memory, a deliberate public API,
+explicit failures, honest tests. **0.5.0 ships only when every rule is enforced, and every later minor (0.6 to 0.9,
+then 1.0) only with the whole bar green.** Baseline and rules: [QUALITY.md](QUALITY.md).
+
+- [ ] Benchmarks, with the scaling and allocation gates in CI (Q1)
+- [ ] The Shop's stock forgets shipped orders; the guides teach bounded state (Q2.1, Q6.1)
+- [ ] A wait's timer is cancelled when the wait ends (Q2.2)
+- [ ] Retention for everything a host keeps, in semantics and the in-memory host (Q2.3; includes v0.5's instance
+      history retention)
+- [ ] Public API tracked and documented; package validation against the last release (Q3)
+- [ ] Typed exceptions; no sync-over-async in hosts (Q4.1, Q4.2)
+- [ ] Coverage reported in CI, never lower than the previous release (Q5.2)
+
 ## v0.5 — Verdandi (run the present)
 
 Work happens on `feature/verdandi` (PR #11), in this order:
@@ -119,7 +134,7 @@ mental model matters as much as the code.
 - [x] Guidance: shared invariants live on the state or in pure domain policies, never duplicated across slices
       (covered in the DDD guide; an analyzer for state-module cohesion is still a possible future addition)
 - [x] Guide: modelling read models (projections) for screens and reports
-- [ ] Docs site with the mental model first, API reference second
+- [x] Docs site with the mental model first, API reference second
 
 ## v1.0 — Production ready
 

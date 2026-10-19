@@ -2,73 +2,98 @@ export interface DocSection {
     id: string
     title: string
     subtitle: string
+    group: 'Why' | 'Behavior' | 'Guides' | 'Reference'
 }
 
 export const DOC_SECTIONS: DocSection[] = [
     {
         id: 'overview',
+        group: 'Why',
         title: 'Overview & Philosophy',
         subtitle: 'Why Wyrd exists and what it guarantees by construction.',
     },
     {
         id: 'semantics',
+        group: 'Behavior',
         title: 'How Wyrd behaves',
         subtitle:
             'The rules behind the API, each marked implemented or planned.',
     },
     {
         id: 'decisions',
+        group: 'Behavior',
         title: 'Design decisions',
         subtitle: 'Problem, decision, what it gives you and what it costs.',
     },
     {
         id: 'from-ddd',
+        group: 'Guides',
         title: 'From DDD to Wyrd',
         subtitle:
             'Follow the same business rule from a mutable aggregate to a pure decision.',
     },
     {
+        id: 'read-models',
+        group: 'Guides',
+        title: 'Read models',
+        subtitle: 'Pure projections, screen models, ordering and queries.',
+    },
+    {
         id: 'quick-start',
+        group: 'Guides',
         title: 'Quick start',
         subtitle: 'Install and run the sample.',
     },
     {
+        id: 'api-reference',
+        group: 'Reference',
+        title: 'API reference',
+        subtitle: 'Source-checked signatures, examples and analyzer rules.',
+    },
+    {
         id: 'messages',
+        group: 'Reference',
         title: 'Messages & Slices',
         subtitle: 'Commands, domain events, closed states, and pure deciders.',
     },
     {
         id: 'processes',
+        group: 'Reference',
         title: 'Declarative Processes',
         subtitle:
             'Sagas as data: fluent & pipe syntax, retries, timeouts, compensations.',
     },
     {
         id: 'simulation',
+        group: 'Reference',
         title: 'Simulation (Skuld)',
         subtitle:
             'Hostile futures, invariants, and exact replay of any broken run.',
     },
     {
         id: 'contracts',
+        group: 'Reference',
         title: 'Versioned Contracts',
         subtitle:
             'Integration events, snapshots, upcasters, and Roslyn analyzers.',
     },
     {
         id: 'testing-aot',
+        group: 'Reference',
         title: 'Testing & Native AOT',
         subtitle:
             'Given/When/Then business specs, virtual time, and trim-safe serialization.',
     },
     {
         id: 'tool',
+        group: 'Reference',
         title: 'CLI & generated docs',
         subtitle:
             'Export AsyncAPI contracts and Mermaid process diagrams with Wyrd.Tool.',
     },
     {
         id: 'roadmap',
+        group: 'Reference',
         title: 'Roadmap',
         subtitle: 'Where Wyrd is today and what is coming next.',
     },
