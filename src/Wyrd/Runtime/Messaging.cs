@@ -27,7 +27,8 @@ internal sealed record Envelope(
     ProcessRef? Process = null,
     Guid? ReplyTo = null,
     Guid? Fences = null,
-    StreamRef? Stream = null);
+    StreamRef? Stream = null,
+    TraceContext? Trace = null);
 
 /// <summary>Where a domain event comes from: the state it changed and that state's version after the change.</summary>
 internal sealed record StreamRef(string StateType, string Key, long Version);

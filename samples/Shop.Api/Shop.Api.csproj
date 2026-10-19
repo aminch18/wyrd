@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="OpenTelemetry.Exporter.Console" />
     <ProjectReference Include="..\Shop\Shop.csproj" />
   </ItemGroup>
 

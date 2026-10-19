@@ -440,6 +440,43 @@ Every expectation also checks that events, states and views survive a JSON round
 when Wyrd stores them — so a state that can't be persisted fails a unit test, not production.
 See [`samples/Shop.Tests`](https://github.com/aminch18/wyrd/tree/main/samples/Shop.Tests).
 
+## Follow a process with traces ✅
+
+The runtime emits BCL activities from the `Wyrd` source. Enable the Shop API's console exporter:
+
+```bash
+OTEL_EXPORTER=console dotnet run --project samples/Shop.Api
+```
+
+Send orders and payment webhooks as in the [HTTP sample](https://github.com/aminch18/wyrd/blob/main/samples/Shop.Api/Shop.Api.http).
+These selected fields came from a real happy order and an order whose card was declined; the declined charge and
+its completed compensation share one trace:
+
+```text
+Activity.TraceId:            9287ae95a2ef41ec765a979c3b2578ee
+Activity.DisplayName:        wyrd Reply wyrd.reply
+    wyrd.outcome: Accepted
+    wyrd.process.key: TRACE-HAPPY
+    wyrd.process.status: Completed
+
+Activity.TraceId:            d566cd180443c662558dd1fd99e276cf
+Activity.DisplayName:        wyrd Command Shop.Payments.ChargePayment
+    wyrd.outcome: Rejected
+    wyrd.process.key: TRACE-COMP
+
+Activity.TraceId:            d566cd180443c662558dd1fd99e276cf
+Activity.DisplayName:        wyrd Reply wyrd.reply
+    wyrd.outcome: Accepted
+    wyrd.process.key: TRACE-COMP
+    wyrd.process.status: Compensated
+```
+
+Each handled message has a consumer span with its kind, type, key, attempt and outcome. Steps, replies, retries,
+waits, timeouts and compensation carry the instance context; later webhooks and operator actions link their caller
+context while continuing that story. Trace metadata does not enter the journal, domain state or Urd replay history.
+Your own OpenTelemetry host enables collection with `.AddSource("Wyrd")`; the library has no exporter dependency.
+Design and the full list of tags: [process traces](https://github.com/aminch18/wyrd/blob/main/docs/design/tracing.md).
+
 ## Native AOT, source-generated JSON ✅
 
 Everything Wyrd stores or sends crosses as JSON. In development the runtime uses reflection; for production,

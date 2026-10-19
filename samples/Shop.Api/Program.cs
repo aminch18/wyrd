@@ -1,3 +1,6 @@
+using OpenTelemetry;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Shop;
 using Shop.Api;
 using Shop.Contracts;
@@ -7,6 +10,16 @@ using Shop.Orders;
 using Shop.Payments;
 using Wyrd;
 using Wyrd.Runtime;
+
+// Export is opt-in; Wyrd itself only depends on the BCL ActivitySource APIs.
+using var traces = Environment.GetEnvironmentVariable("OTEL_EXPORTER") == "console"
+    ? Sdk.CreateTracerProviderBuilder()
+        .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("Shop.Api"))
+        .SetSampler(new AlwaysOnSampler()) // This opt-in console demo also records uninstrumented HTTP parents.
+        .AddSource("Wyrd")
+        .AddConsoleExporter()
+        .Build()
+    : null;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
