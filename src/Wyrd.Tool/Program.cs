@@ -16,6 +16,7 @@ internal static class Program
     internal static void Configure(IConfigurator config, IAnsiConsole errors)
     {
         config.SetApplicationName("wyrd");
+        config.AddCommand<McpCommand>("mcp").WithDescription("Serve diagrams, contracts, AsyncAPI and replay over MCP stdio.");
         config.AddCommand<AsyncApiCommand>("asyncapi")
             .WithDescription("Generate AsyncAPI 3.0 YAML from an integration contract snapshot.")
             .WithExample("asyncapi", "--contracts", "contracts.wyrd.txt", "--output", "asyncapi.yaml");
