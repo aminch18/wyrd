@@ -20,6 +20,7 @@ public class CommandTests
     [Theory]
     [InlineData("asyncapi", "--contracts", "Contract snapshot not found")]
     [InlineData("diagram", "--assembly", "Assembly not found")]
+    [InlineData("processes", "--assembly", "Assembly not found")]
     public void nonexistent_input_is_reported_to_stderr(string command, string option, string message)
     {
         var (app, errors) = CreateApp();

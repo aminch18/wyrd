@@ -90,27 +90,29 @@
     .docs-sidebar {
         position: static;
         padding-top: 24px;
-        overflow-x: auto;
     }
     .docs-sidebar > p,
     .docs-side-note {
         display: none;
     }
     .docs-sidebar nav {
-        display: flex;
-        width: max-content;
-    }
-    .docs-sidebar nav button {
-        white-space: nowrap;
-        border-left: 0;
-        border-bottom: 1px solid var(--line);
-    }
-    .docs-sidebar nav button.current {
-        border-left: 0;
-        border-bottom-color: var(--cyan);
-    }
-    .docs-sidebar nav button svg {
         display: none;
+    }
+    .docs-mobile-nav {
+        display: grid;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 12px;
+    }
+    .docs-mobile-nav select {
+        width: 100%;
+        min-width: 0;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--heading);
+        font: inherit;
     }
     .doc-article {
         padding-top: 48px;

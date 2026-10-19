@@ -1,0 +1,11 @@
+# wyrd processes 1
+# Process structure only; retries and time limits are configuration. Review changes before regenerating.
+- name: "OrderFulfillment"
+  fingerprint: "d7c5dc7f958b"
+  structure:
+    - "trigger OrderPlaced"
+    - "step Stock.Reserve ~ Stock.Release"
+    - "step Payments.Charge ~ Payments.Refund"
+    - "await PaymentConfirmed"
+    - "step Shipping.Ship"
+    - "outcome Orders.Cancel"

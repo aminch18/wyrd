@@ -499,6 +499,69 @@ public static process properties and fields. Both commands write to stdout when 
 Use `dotnet wyrd --help` or `dotnet wyrd asyncapi --help` for command and option descriptions. Invalid inputs
 are reported on stderr with a nonzero exit code, so redirected documents stay clean.
 
+#### MCP server for agents ✅
+
+`dotnet wyrd mcp` serves the same implementations through the [official MCP C# SDK](https://github.com/modelcontextprotocol/csharp-sdk)
+over stdio. Register it in your MCP client's server configuration:
+
+```json
+{
+  "mcpServers": {
+    "wyrd": {
+      "command": "dotnet",
+      "args": ["wyrd", "mcp"]
+    }
+  }
+}
+```
+
+Paths in tool calls resolve from the server's working directory; use absolute paths when the client starts elsewhere.
+Build the application's assembly before calling `diagram`. It loads public process getters, so use a trusted assembly.
+
+| Tool | When to use it |
+|---|---|
+| `diagram` | Inspect the Mermaid workflows in a compiled assembly (`assemblyPath`). |
+| `asyncapi` | Generate AsyncAPI YAML from `contractsPath`, with optional `title` and `version`. |
+| `contracts` | Read contract names, versions, retired markers and fields as structured content. |
+| `replay` | Inspect `historyPath` as a timeline, or set `asTest` with `runtime` and `process` to generate an xUnit test. |
+
+Excerpt from a real SDK client session against the compiled Shop sample:
+
+```text
+tools/list: asyncapi, contracts, diagram, replay
+tools/call diagram:
+# Shop processes
+
+## OrderFulfillment
+```
+
+The diagram response continues with the full Mermaid block, byte-for-byte identical to the CLI document.
+Tool failures return `isError: true` with the CLI's error text; the server keeps answering. Diagnostics go to stderr,
+and stdout contains only MCP messages. The [integration tests](https://github.com/aminch18/wyrd/blob/main/tests/Wyrd.Tool.Tests/McpTests.cs)
+exercise every tool against the CLI, including both replay forms and a process getter that prints a diagnostic.
+
+### Process snapshots catch structural changes in CI ✅
+
+Generate a reviewed snapshot from a built assembly, then check it on every pull request:
+
+```bash
+dotnet build samples/Shop -c Release
+dotnet wyrd processes --assembly samples/Shop/bin/Release/net10.0/Shop.dll --output samples/Shop/processes.wyrd.txt
+dotnet wyrd processes --assembly samples/Shop/bin/Release/net10.0/Shop.dll --check samples/Shop/processes.wyrd.txt
+```
+
+The last command prints this for the committed Shop snapshot:
+
+```text
+Process snapshot matches. Retry and time-limit configuration is not checked.
+```
+
+The versioned file records each public static process's name, fingerprint, and readable trigger, steps with
+undos, waits, and compensation outcome. `--check` exits 1 and shows old and new structures for changed,
+added or removed processes. Retry and time-limit changes leave the structure unchanged and pass.
+For a structural change, deploy when no instances are running, or keep the old definition until they finish;
+then regenerate the snapshot. Migration of in-flight instances remains planned.
+
 ## Urd replays what happened ✅
 
 Every process instance records what crossed its boundary: the trigger, each command it sent, each reply, the events
@@ -529,14 +592,13 @@ bill twice the amount and it fails with both sides:
 A history recorded with another process structure is reported up front instead of replayed. Design:
 [Urd](https://github.com/aminch18/wyrd/blob/main/docs/design/urd.md).
 
-## Coming next
-
-### Built for agents 🔜
+## Built for agents ✅
 
 Most event-driven code will be written by AI agents. Wyrd is designed so they can't get it wrong quietly:
 a tiny pure surface, and diagnostics written for a feedback loop — *what* is wrong, *why* it matters and
 *how* to fix it, like `WYRD0201` above; the process rules (WYRD0011–0014) already ask for every retry, undo and
-time limit, and Urd turns a recorded instance into a test (`dotnet wyrd replay --as-test`). Next: an MCP server.
+time limit, and Urd turns a recorded instance into a test (`dotnet wyrd replay --as-test`). The MCP server exposes
+those same diagrams, contracts and recorded histories directly to an agent's tools.
 
 ## What Wyrd guarantees — and what it doesn't
 

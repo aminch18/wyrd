@@ -84,15 +84,43 @@ Milestones map to SemVer minor versions (v0.1 → `0.1.0`); previews are tagged 
 - [x] `dotnet wyrd asyncapi`: AsyncAPI document from the integration event contracts (moved from v0.1)
 - [x] `dotnet wyrd diagram`: Mermaid diagrams for every process
 
+## Quality bar — the gate for every minor from 0.5 to 0.9
+
+The [quality bar](QUALITY.md) is how good Wyrd must be: measured cost, bounded memory, a deliberate public API,
+explicit failures, honest tests. **0.5.0 ships only when every rule is enforced, and every later minor (0.6 to 0.9,
+then 1.0) only with the whole bar green.** Baseline and rules: [QUALITY.md](QUALITY.md).
+
+- [ ] Benchmarks, with the scaling and allocation gates in CI (Q1)
+- [ ] The Shop's stock forgets shipped orders; the guides teach bounded state (Q2.1, Q6.1)
+- [ ] A wait's timer is cancelled when the wait ends (Q2.2)
+- [ ] Retention for everything a host keeps, in semantics and the in-memory host (Q2.3; includes v0.5's instance
+      history retention)
+- [ ] Public API tracked and documented; package validation against the last release (Q3)
+- [ ] Typed exceptions; no sync-over-async in hosts (Q4.1, Q4.2)
+- [ ] Coverage reported in CI, never lower than the previous release (Q5.2)
+
 ## v0.5 — Verdandi (run the present)
 
-- [ ] Integrations (`IIntegration<...>`): the only I/O, with idempotency keys and recorded outcomes
-- [ ] Framework reply envelope (Accepted / Rejected / Faulted) and re-send with stable message ids
-- [ ] Ports: `IMessageTransport`, `IOutboxStore`, `IProcessStateStore`, `IScheduler`
-- [ ] EF Core outbox/inbox/state (PostgreSQL, SQL Server)
-- [ ] Durable scheduler for timeouts
-- [ ] RabbitMQ transport
+Work happens on `feature/verdandi` (PR #11), in this order:
+
+- [x] Framework reply envelope (Accepted / Rejected / Faulted) and re-send with stable message ids (since v0.2)
+- [x] One atomic storage port, `IWyrdStore`: state, events, instances, inbox, outbox, timers and read models commit
+      together. Supersedes the separate `IMessageTransport` / `IOutboxStore` / `IProcessStateStore` / `IScheduler`
+      ports first planned here: separate ports can't commit atomically
+- [x] Durable scheduler for timeouts and retries: queue rows with an availability time (PostgreSQL prototype)
+- [x] `IWyrdRuntime` and `IWyrdBuilder<T>`: application code and modules are the same on every host
+- [ ] **Integrations** (`IIntegration<...>`): the only I/O, with idempotency keys and recorded outcomes
+- [ ] **EF Core** host for state, inbox, outbox and queue (PostgreSQL, SQL Server), with migrations and an option to
+      share the application's `DbContext` transaction; only the queue's dequeue (`FOR UPDATE SKIP LOCKED` / `READPAST`)
+      is raw SQL. Replaces the hand-written Npgsql prototype
+- [ ] One retry layer on durable hosts: a process command that ends in dead letters reaches its process as a failure
+      ([semantics](design/semantics.md) 3.3)
+- [ ] Operators on durable hosts: resume and compensate suspended instances
+- [ ] A hardened queue: `LISTEN/NOTIFY` (or polling backoff) instead of busy polling, batched cleanup, metrics for
+      queue depth and the age of pending steps ([semantics](design/semantics.md) 3.5)
+- [ ] RabbitMQ transport between services (the outbox stays in the database; the broker carries what leaves it)
 - [ ] OpenTelemetry with process-level traces
+- [ ] Instance history retention and catching up a projection added to an existing store
 
 ## Documentation & adoption (continuous, required before going public)
 
@@ -106,14 +134,13 @@ mental model matters as much as the code.
 - [x] Guidance: shared invariants live on the state or in pure domain policies, never duplicated across slices
       (covered in the DDD guide; an analyzer for state-module cohesion is still a possible future addition)
 - [x] Guide: modelling read models (projections) for screens and reports
-- [ ] Docs site with the mental model first, API reference second
+- [x] Docs site with the mental model first, API reference second
 
 ## v1.0 — Production ready
 
 - [ ] **Process versioning**: snapshot of every process; breaking changes fail the build until in-flight instances are migrated
 - [x] Native AOT verified end to end
-- [ ] `dotnet wyrd` CLI + MCP server for agents
-- [ ] Docs site
+- [x] `dotnet wyrd` CLI + MCP server for agents
 
 ## Later
 
