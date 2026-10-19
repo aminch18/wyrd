@@ -13,8 +13,10 @@ truth for behaviour: if code and document disagree, fix the code, or change the 
 - `src/Wyrd.Analyzers` — Roslyn analyzers (netstandard2.0, Roslyn 4.14), packed into the Wyrd package.
   New rules go in `Diagnostics.cs` **and** `AnalyzerReleases.Unshipped.md`. Messages: what, why, how to fix.
 - `src/Wyrd.Analyzers.CodeFixes` — IDE code fixes (needs Workspaces, so it can't live in the analyzer assembly).
-- `src/Wyrd.PostgreSql` — Verdandi: `PostgresStore` (one transaction per message) and `PostgresRuntime` (PostgreSQL
-  as the queue). Tests in `tests/Wyrd.PostgreSql.Tests` run on a real PostgreSQL with Testcontainers: Docker required.
+- `src/Wyrd.EntityFrameworkCore` — Verdandi: `EfCoreStore` (one transaction per message), `EfCoreRuntime<TContext>`
+  (the database as the queue and the outbox) and `AddWyrd()` for your own `DbContext`. PostgreSQL and SQL Server; JIT
+  only (EF Core's Native AOT is experimental). Tests in `tests/Wyrd.EntityFrameworkCore.Tests` run every case on both
+  databases with Testcontainers: Docker required (`Category=Containers`, Linux CI only).
 - `src/Wyrd.Testing` — Given/When/Then scenarios and Skuld (uses Wyrd internals through InternalsVisibleTo:
   `ISimulation` hooks in `InMemoryRuntime` pick, duplicate and fault messages). Any engine change must keep
   `samples/Shop.Tests/SkuldSpecs` green: it explores thousands of hostile futures.
@@ -83,7 +85,7 @@ into `main`. Merge the latest `main` into your branch right before opening the P
 
 | Work | Owner | Branch | In bounds |
 |---|---|---|---|
-| v0.5 Verdandi, in the roadmap's order: Integrations, then the EF Core host; with it quality bar Q2.2, Q2.3, Q4.1, Q4.2 (timers, retention, typed exceptions, no sync-over-async) | Claude | `feature/verdandi` | `src/Wyrd/**`, `src/Wyrd.PostgreSql/**` (to be replaced by EF Core), new host packages and their tests, `samples/Shop.Api/Program.cs` (host setup), `docs/design/**` |
+| v0.5 Verdandi, in the roadmap's order: Integrations, then the EF Core host; with it quality bar Q2.2, Q2.3, Q4.1, Q4.2 (timers, retention, typed exceptions, no sync-over-async) | Claude | `feature/verdandi` | `src/Wyrd/**`, `src/Wyrd.EntityFrameworkCore/**`, new host packages and their tests, `samples/Shop.Api/Program.cs` (host setup), `docs/design/**` |
 | [009](docs/tasks/009-docs-site.md) — docs site: mental model first, API reference second | Codex | `codex/docs-site` | `src/Wyrd.Web/**` |
 | [010](docs/tasks/010-native-aot-end-to-end.md) — Native AOT verified end to end | Codex | `codex/aot-end-to-end` | `samples/Shop.Api/**`, AOT steps in `ci.yml` |
 | [011](docs/tasks/011-wyrd-mcp-server.md) — `dotnet wyrd mcp` for agents | Codex | `codex/wyrd-mcp` | `src/Wyrd.Tool/Mcp/**`, `tests/Wyrd.Tool.Tests/**` |

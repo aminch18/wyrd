@@ -440,13 +440,18 @@ Every expectation also checks that events, states and views survive a JSON round
 when Wyrd stores them — so a state that can't be persisted fails a unit test, not production.
 See [`samples/Shop.Tests`](https://github.com/aminch18/wyrd/tree/main/samples/Shop.Tests).
 
-## Verdandi: the durable runtime on PostgreSQL ✅
+## Verdandi: the durable runtime on EF Core ✅
 
-The same application, now durable. Register your module on `PostgresRuntime` instead of `InMemoryRuntime`:
+The same application, now durable on PostgreSQL or SQL Server. Put Wyrd's tables in your own `DbContext`, so they are
+part of your migrations, and register your module on `EfCoreRuntime` instead of `InMemoryRuntime`:
 
 ```csharp
-var wyrd = ShopModule.Register(new PostgresRuntime(dataSource, ShopJson.Default));
-await wyrd.EnsureSchemaAsync();
+public sealed class ShopDbContext(DbContextOptions<ShopDbContext> options) : DbContext(options)
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder) => modelBuilder.AddWyrd();
+}
+
+var wyrd = ShopModule.Register(new EfCoreRuntime<ShopDbContext>(contexts, ShopJson.Default)); // an IDbContextFactory
 
 await wyrd.SendAsync(new PlaceOrder("A-1", "KEYBOARD", 1, 89m)); // decided and committed now
 await wyrd.RunAsync(stoppingToken);                              // a worker: run as many as you like
@@ -454,16 +459,21 @@ await wyrd.RunAsync(stoppingToken);                              // a worker: ru
 
 - **One transaction per message**: state, events, instances, inbox, outbox, timers and read models commit together
   with taking the message off the queue — or not at all.
-- **PostgreSQL is the queue**: workers in one process or many share it with `FOR UPDATE SKIP LOCKED`; optimistic
-  concurrency settles races; failures are redelivered with backoff; poison messages go to dead letters.
+- **The database is the queue**: workers in one process or many share it (`FOR UPDATE SKIP LOCKED` on PostgreSQL,
+  `READPAST` on SQL Server, the only raw SQL); optimistic concurrency settles races; failures are redelivered with
+  backoff; poison messages go to dead letters.
+- **Your transaction, if you want it**: `SendAsync(command, context)` joins the transaction you began, so your own
+  tables and Wyrd's commit together.
 - **Survives restarts**: kill the process mid-saga, start it again, and the order continues where it was.
+- **JIT only**: EF Core's Native AOT support is experimental, so this host doesn't claim it. The in-memory host and
+  the Wyrd core stay AOT-compatible.
 
-Try it with the API sample:
+Try it with the API sample (the durable build is `-p:WyrdHost=EfCore`; it applies its migrations on start):
 
 ```bash
 docker compose -f samples/Shop.Api/compose.yaml up -d
 ConnectionStrings__Wyrd="Host=localhost;Port=5433;Username=wyrd;Password=wyrd;Database=shop" \
-  dotnet run --project samples/Shop.Api
+  dotnet run --project samples/Shop.Api -p:WyrdHost=EfCore
 ```
 
 Your endpoints depend on `IWyrdRuntime`, so the host is configuration: no connection string, and the same API runs in memory.
@@ -682,7 +692,7 @@ It does **not** know your business rules. If you compute the tax wrong, Wyrd wil
 
 ```
 src/Wyrd/                  the library
-src/Wyrd.PostgreSql/        Verdandi: the durable runtime on PostgreSQL (package)
+src/Wyrd.EntityFrameworkCore/  Verdandi: the durable runtime on EF Core, PostgreSQL and SQL Server (package)
 src/Wyrd.Analyzers/        Roslyn analyzers, shipped inside the Wyrd package
 src/Wyrd.Analyzers.CodeFixes/  IDE code fixes, shipped inside the Wyrd package
 tests/Wyrd.Tests/          unit and runtime tests

@@ -1,4 +1,3 @@
-using Npgsql;
 using OpenTelemetry;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -10,8 +9,10 @@ using Shop.Inventory;
 using Shop.Orders;
 using Shop.Payments;
 using Wyrd;
-using Wyrd.PostgreSql;
 using Wyrd.Runtime;
+#if WYRD_EFCORE
+using Shop.Api.Durable;
+#endif
 
 // Export is opt-in; Wyrd itself only depends on the BCL ActivitySource APIs.
 using var traces = Environment.GetEnvironmentVariable("OTEL_EXPORTER") == "console"
@@ -31,8 +32,8 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(1, ApiJson.Default);
 });
 
-// The host is configuration: with a connection string the shop is durable on PostgreSQL (Verdandi); without one it
-// runs in memory. The endpoints below and the whole domain are the same either way.
+// The host is configuration: with a connection string the shop is durable on PostgreSQL (Verdandi, built with
+// -p:WyrdHost=EfCore); without one it runs in memory. The endpoints below and the whole domain are the same either way.
 var connectionString = builder.Configuration.GetConnectionString("Wyrd");
 if (connectionString is null)
 {
@@ -42,13 +43,12 @@ if (connectionString is null)
 }
 else
 {
-    builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(connectionString));
-    builder.Services.AddSingleton(services => ShopModule.Register(new PostgresRuntime(
-        services.GetRequiredService<NpgsqlDataSource>(),
-        ShopJson.Default,
-        logger: services.GetRequiredService<ILogger<PostgresRuntime>>())));
-    builder.Services.AddSingleton<IWyrdRuntime>(services => services.GetRequiredService<PostgresRuntime>());
-    builder.Services.AddHostedService<WyrdWorker>();
+#if WYRD_EFCORE
+    builder.Services.AddDurableShop(connectionString);
+#else
+    throw new InvalidOperationException(
+        "A Wyrd connection string is configured, but this build is the in-memory shop: build with -p:WyrdHost=EfCore for the durable one.");
+#endif
 }
 
 var app = builder.Build();

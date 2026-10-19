@@ -28,7 +28,13 @@ jobs:
 
       - run: dotnet restore
       - run: dotnet build --no-restore -c Release
+      # Container tests need Docker with Linux images: only the Linux runner has it.
       - run: dotnet test --no-build -c Release
+        if: matrix.os == 'ubuntu-latest'
+      - run: dotnet test --no-build -c Release --filter "Category!=Containers"
+        if: matrix.os != 'ubuntu-latest'
+      - name: Build the durable Shop.Api (EF Core, JIT)
+        run: dotnet build -c Release samples/Shop.Api -p:WyrdHost=EfCore
       - name: Sample smoke test
         run: dotnet run --no-build -c Release --project samples/Shop.Console
 

@@ -1,6 +1,6 @@
 # PostgreSQL for the durable shop:
 #   docker compose -f samples/Shop.Api/compose.yaml up -d
-#   ConnectionStrings__Wyrd="Host=localhost;Port=5433;Username=wyrd;Password=wyrd;Database=shop" dotnet run --project samples/Shop.Api
+#   ConnectionStrings__Wyrd="Host=localhost;Port=5433;Username=wyrd;Password=wyrd;Database=shop" dotnet run --project samples/Shop.Api -p:WyrdHost=EfCore
 services:
   postgres:
     image: postgres:17-alpine

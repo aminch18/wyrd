@@ -1,16 +1,38 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <!--
+    Two hosts, chosen at build time. InMemory (the default) publishes with Native AOT and is what the native smoke test
+    runs. EfCore (-p:WyrdHost=EfCore) is the durable shop on PostgreSQL through Wyrd.EntityFrameworkCore, which runs
+    on the JIT: EF Core's Native AOT support is experimental, and Wyrd doesn't depend on it.
+  -->
   <PropertyGroup>
     <RootNamespace>Shop.Api</RootNamespace>
-    <PublishAot>true</PublishAot>
+    <WyrdHost Condition="'$(WyrdHost)' == ''">InMemory</WyrdHost>
     <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
     <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(WyrdHost)' == 'InMemory'">
+    <PublishAot>true</PublishAot>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(WyrdHost)' == 'EfCore'">
+    <DefineConstants>$(DefineConstants);WYRD_EFCORE</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="OpenTelemetry.Exporter.Console" />
     <ProjectReference Include="..\Shop\Shop.csproj" />
-    <ProjectReference Include="..\..\src\Wyrd.PostgreSql\Wyrd.PostgreSql.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(WyrdHost)' == 'EfCore'">
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+    <ProjectReference Include="..\..\src\Wyrd.EntityFrameworkCore\Wyrd.EntityFrameworkCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(WyrdHost)' != 'EfCore'">
+    <Compile Remove="Durable/**" />
   </ItemGroup>
 
 </Project>

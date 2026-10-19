@@ -21,10 +21,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Native AOT HTTP verification for `Shop.Api`: generated request delegates and JSON metadata, named response
   records, and a reusable `curl`/`jq` smoke script covering checkout, rich drafts, cancellation and published events.
   Ubuntu CI publishes and runs the native API alongside the existing native console walkthrough.
-- **Verdandi** (`Wyrd.PostgreSql`, in progress): the durable runtime. `PostgresRuntime` handles every message in one
-  PostgreSQL transaction that also takes it off the queue — state, events, instances, inbox, outbox, timers and read
-  models commit together or not at all. The queue is a table shared by any number of workers (`FOR UPDATE SKIP
-  LOCKED`); failures are redelivered with backoff and poison messages go to dead letters; processes survive restarts.
+- **Verdandi** (`Wyrd.EntityFrameworkCore`, in progress): the durable runtime on PostgreSQL and SQL Server.
+  `EfCoreRuntime<TContext>` handles every message in one transaction that also takes it off the queue — state,
+  events, instances, inbox, outbox, timers and read models commit together or not at all. The queue is a table shared
+  by any number of workers (`FOR UPDATE SKIP LOCKED` / `READPAST`, the only raw SQL); failures are redelivered with
+  backoff and poison messages go to dead letters; processes survive restarts. `modelBuilder.AddWyrd()` puts Wyrd's
+  tables in your own `DbContext` and migrations, and `SendAsync(command, context)` joins your transaction. JIT only:
+  EF Core's Native AOT support is experimental.
 - **Integrations** (`Integration<TCommand, TEvent, TError>`, `AddIntegration`): the only I/O. An integration owns a
   command like a slice; its event is recorded and published like a domain event, its error is a business rejection,
   and an exception is a transient failure for the process's retry policy. `IntegrationContext.IdempotencyKey` is the
@@ -41,9 +44,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   integration's call to the outside world is a client span under its command.
 - `IWyrdBuilder<T>`: register a module the same way on any host (`ShopModule.Register(runtime)`).
 - `IWyrdRuntime`: what application code needs (send, publish, query), implemented by both hosts.
-- `samples/Shop.Api` runs on PostgreSQL when a `Wyrd` connection string is configured (`compose.yaml` included).
-- Ordered read models and instance histories on PostgreSQL; `IWyrdRuntime.HistoryOfAsync` on both hosts, so an
-  instance recorded on PostgreSQL replays locally with Urd.
+- `samples/Shop.Api` runs durable on PostgreSQL when built with `-p:WyrdHost=EfCore` and given a `Wyrd` connection
+  string (`compose.yaml` included; its `ShopDbContext` carries Wyrd's tables and migrations). The default build stays
+  in memory and Native AOT.
+- Ordered read models and instance histories on the durable host; `IWyrdRuntime.HistoryOfAsync` on both hosts, so an
+  instance recorded in the database replays locally with Urd.
 
 ### Changed
 

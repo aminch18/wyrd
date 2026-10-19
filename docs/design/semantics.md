@@ -72,7 +72,7 @@ simulate and version.
 - A failure of a process command — the owner can't handle it — **reaches the process as a failure** and the step's
   policy decides. Hosts don't multiply attempts behind the process's back: a command that can't be delivered or
   handled ends as a failure reply; dead letters are only for messages no process decides on (events, replies,
-  timers). **Implemented** in memory and on the PostgreSQL host.
+  timers). **Implemented** in memory and on the EF Core host.
 - A business rejection is never retried: a pure decision would answer the same. **Implemented.**
 
 ### 3.4 Compensation is a guarantee
@@ -133,7 +133,7 @@ fences the step it gave up on; a late success of the pending command resumes it 
 ## 4. Delivery
 
 - Every message is handled in **one transaction**: state, events, instances, inbox, outbox, timers and read
-  models commit together or not at all. **Implemented** in memory; durable hosts in v0.5 (a PostgreSQL prototype exists on `feature/verdandi`; the EF Core host replaces it).
+  models commit together or not at all. **Implemented** in memory and on the EF Core host (PostgreSQL, SQL Server).
 - Delivery is **at least once**; decisions are **effectively once**: the owner's inbox remembers every command it
   decided and replays the outcome to duplicates. **Implemented.**
 - Integration events reach each subscriber **once, in the contract version it understands** (upcast step by step;
