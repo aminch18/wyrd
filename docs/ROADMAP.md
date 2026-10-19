@@ -104,7 +104,7 @@ Work happens on `feature/verdandi` (PR #11), in this order:
 - [ ] A hardened queue: `LISTEN/NOTIFY` (or polling backoff) instead of busy polling, batched cleanup, metrics for
       queue depth and the age of pending steps ([semantics](design/semantics.md) 3.5)
 - [ ] RabbitMQ transport between services (the outbox stays in the database; the broker carries what leaves it)
-- [ ] OpenTelemetry with process-level traces
+- [x] OpenTelemetry with process-level traces
 - [ ] Instance history retention and catching up a projection added to an existing store
 
 ## Documentation & adoption (continuous, required before going public)

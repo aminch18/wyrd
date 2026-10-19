@@ -159,7 +159,7 @@ public sealed class InMemoryRuntime : IDisposable
         Log(Engine.External, key, $"-> {command.GetType().Name}");
 
         var (type, payload) = _types.Serialize(command, command.GetType());
-        var decision = (await _engine.HandleAsync(new Envelope(NextId(), MessageKind.Command, type, payload), cancellationToken).ConfigureAwait(false))!;
+        var decision = (await _engine.HandleAsync(new Envelope(NextId(), MessageKind.Command, type, payload, Trace: Tracing.Capture()), cancellationToken).ConfigureAwait(false))!;
         Log(Engine.External, key, decision switch
         {
             Decision.Accepted accepted => $"ok {accepted.Event.GetType().Name}",
@@ -182,7 +182,7 @@ public sealed class InMemoryRuntime : IDisposable
         try
         {
             var (type, payload) = _types.Serialize(@event, @event.GetType());
-            _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload));
+            _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload, Trace: Tracing.Capture()));
             await DrainAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -355,7 +355,7 @@ public sealed class InMemoryRuntime : IDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload));
+            _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload, Trace: Tracing.Capture()));
             await DrainAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
