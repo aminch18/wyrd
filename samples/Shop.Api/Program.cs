@@ -21,7 +21,13 @@ using var traces = Environment.GetEnvironmentVariable("OTEL_EXPORTER") == "conso
         .Build()
     : null;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateSlimBuilder(args);
+
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.TypeInfoResolverChain.Insert(0, ShopJson.Default);
+    options.SerializerOptions.TypeInfoResolverChain.Insert(1, ApiJson.Default);
+});
 
 // Wyrd runs in memory here: same engine and guarantees as production, without a database or a broker yet.
 // The day PostgreSQL and RabbitMQ arrive, this line changes; the endpoints and the domain do not.
@@ -66,22 +72,19 @@ app.MapGet("/order-details", (InMemoryRuntime wyrd) => wyrd.Views<OrderDetail>()
 
 app.MapGet("/orders/{orderId}", (string orderId, InMemoryRuntime wyrd) =>
     wyrd.View<OrderDetail>(orderId) is { } details
-        ? Results.Ok(new
-        {
-            order = wyrd.View<OrderSummary>(orderId),
-            details,
-            fulfillment = wyrd.StatusOf(Processes.OrderFulfillment, orderId)?.ToString(),
-        })
+        ? Results.Ok(new OrderResponse(wyrd.View<OrderSummary>(orderId), details,
+            wyrd.StatusOf(Processes.OrderFulfillment, orderId)?.ToString()))
         : Results.NotFound());
 
 app.MapGet("/stock/{sku}", (string sku, InMemoryRuntime wyrd) =>
-    new { sku, available = wyrd.StateOf<StockItem>(sku).Available });
+    new StockResponse(sku, wyrd.StateOf<StockItem>(sku).Available));
 
 // ── Developer tools: see what happened, break things on purpose, travel in time ─────────────
 
-app.MapGet("/dev/journal", (InMemoryRuntime wyrd) => wyrd.Journal.Select(entry => entry.ToString()));
+app.MapGet("/dev/journal", (InMemoryRuntime wyrd) => wyrd.Journal.Select(entry => entry.ToString()).ToArray());
 
-app.MapGet("/dev/published", (InMemoryRuntime wyrd) => wyrd.Published);
+// Keep each event's concrete public fields rather than serializing the empty marker interface.
+app.MapGet("/dev/published", (InMemoryRuntime wyrd) => wyrd.Published.Cast<object>().ToArray());
 
 app.MapPost("/dev/payment-gateway/fail", (int times, InMemoryRuntime wyrd) =>
 {
@@ -104,7 +107,7 @@ app.MapPost("/dev/orders/{orderId}/compensate", async (string orderId, InMemoryR
 app.MapPost("/dev/clock/advance", async (int minutes, InMemoryRuntime wyrd) =>
 {
     await wyrd.AdvanceAsync(TimeSpan.FromMinutes(minutes));
-    return Results.Ok(new { now = wyrd.Now.ToString() });
+    return Results.Ok(new ClockResponse(wyrd.Now.ToString()));
 });
 
 app.Run();

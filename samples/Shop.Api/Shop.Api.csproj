@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <RootNamespace>Shop.Api</RootNamespace>
+    <PublishAot>true</PublishAot>
+    <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
 
   <ItemGroup>

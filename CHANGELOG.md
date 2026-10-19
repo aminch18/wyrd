@@ -5,10 +5,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Breaking
+
+- The tool executable is now `dotnet-wyrd`, so the documented `dotnet wyrd` command works after a global
+  installation. Replace direct `wyrd` invocations with `dotnet wyrd` (or `dotnet-wyrd`).
+
 ### Added
 
 - Add BCL `Wyrd` process tracing with envelope context propagation, lifecycle/outcome tags and links for external continuations; Shop.Api exports to the console when `OTEL_EXPORTER=console`. Deterministic journals, domain state and replay histories are unchanged.
 - Documentation learning path with the shared read-model guide, working repository-relative links, and a searchable API reference checked against public declarations, analyzer rules and code-fix coverage during the website build.
+- `dotnet wyrd mcp`: an official-SDK stdio server exposing the existing Mermaid, AsyncAPI, contract parser and
+  Urd replay implementations. Contracts include structured content; failures preserve CLI messages without ending
+  the session, and process-discovery diagnostics stay on stderr.
+- Add `dotnet wyrd processes --output/--check` with versioned, readable process snapshots and a Shop CI check; structural, added and removed definitions require review, while retry and time-limit changes remain compatible.
+- Native AOT HTTP verification for `Shop.Api`: generated request delegates and JSON metadata, named response
+  records, and a reusable `curl`/`jq` smoke script covering checkout, rich drafts, cancellation and published events.
+  Ubuntu CI publishes and runs the native API alongside the existing native console walkthrough.
 
 ## [0.4.0] - 2026-10-18
 
