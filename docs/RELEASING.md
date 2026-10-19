@@ -16,8 +16,7 @@ Before 1.0, minor versions may contain breaking changes; they are always called 
 0. **Check the [quality bar](QUALITY.md)** (from 0.5.0 on): every rule ✅ and green on `main`, coverage not below the
    previous release, and the benchmark results for the release notes (orders/s and KB/order per scenario, Q1.4).
    Move each package's `PublicAPI.Unshipped.txt` entries into `PublicAPI.Shipped.txt` when releasing;
-   keep the nullable header and clear Unshipped. Update `PackageValidationBaselineVersion` to the newly published
-   library version for the next release, and document any intentional breaking change under *Breaking*.
+   keep the nullable header and clear Unshipped. Document any intentional breaking change under *Breaking*.
 1. Move the `Unreleased` entries in `CHANGELOG.md` under a new `## [x.y.z] - YYYY-MM-DD` heading and update the
    compare links at the bottom.
 2. Commit: `Release x.y.z`.
@@ -30,6 +29,9 @@ Before 1.0, minor versions may contain breaking changes; they are always called 
 
 4. CI builds, tests, packs and creates the GitHub Release with the packages and the changelog notes
    (marked as pre-release when the tag has a suffix).
+5. After the packages appear on nuget.org, set `PackageValidationBaselineVersion` in `src/Directory.Build.props`
+   to the newly published library version in the first commit of the next cycle. Keep validating the release
+   against the previous version until publication completes.
 
 ## Publishing to nuget.org
 
