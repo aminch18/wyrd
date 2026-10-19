@@ -19,6 +19,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - One retry layer on the durable host: a process command it can't handle goes back to its process as a failure (the
   step's retry policy decides, then the instance is suspended); dead letters are only for messages no process decides
   on (events, replies, timers).
+- **Transport between services** (core): `IWyrdTransport` carries published integration events, each with a stable
+  message id (`TransportMessage`); `IWyrdRuntime.ReceiveAsync` delivers one from another service, ignores contracts
+  the service doesn't use and handles a redelivery once. Only integration events cross service boundaries: commands
+  have one owner inside one service. `InMemoryTransport` connects in-memory runtimes (`UseTransport`, `Subscribe`);
+  the durable relay comes with the EF Core host.
 - `IWyrdBuilder<T>`: register a module the same way on any host (`ShopModule.Register(runtime)`).
 - `IWyrdRuntime`: what application code needs (send, publish, query), implemented by both hosts.
 - `samples/Shop.Api` runs on PostgreSQL when a `Wyrd` connection string is configured (`compose.yaml` included).

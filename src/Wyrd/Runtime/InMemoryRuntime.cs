@@ -12,6 +12,7 @@ namespace Wyrd.Runtime;
 public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntime, IDisposable
 {
     private static readonly DateTimeOffset Epoch = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    private static long s_runtimes;
 
     private readonly Application _application;
     private readonly InMemoryStore _store = new();
@@ -22,8 +23,10 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     private readonly Engine _engine;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private DateTimeOffset _now = Epoch;
+    private readonly List<PublishedMessage> _unrelayed = [];
     private IWyrdTransport? _transport;
     private int _relayed;
+    private readonly long _runtime = Interlocked.Increment(ref s_runtimes);
     private long _ids;
 
     /// <summary>Reflection-based JSON: convenient for development and tests. Use a <c>[WyrdJsonContext]</c> for AOT.</summary>
@@ -60,7 +63,6 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     public IReadOnlyList<IIntegrationEvent> Published =>
         Read(() => (IReadOnlyList<IIntegrationEvent>)[.. _store.Published.Select(e => (IIntegrationEvent)_types.Deserialize(e.Type, e.Payload))]);
 
-    /// <summary>Registers the single owner of a command type.</summary>
     /// <summary>Registers the integration that owns a command carried out by another system (the only I/O).</summary>
     public InMemoryRuntime AddIntegration<TCommand, TEvent, TError>(Integration<TCommand, TEvent, TError> integration)
         where TCommand : ICommand
@@ -72,6 +74,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         return this;
     }
 
+    /// <summary>Registers the single owner of a command type.</summary>
     public InMemoryRuntime AddSlice<TCommand, TState, TEvent, TError>(Slice<TCommand, TState, TEvent, TError> slice)
         where TCommand : ICommand
         where TState : IState<TState>
@@ -367,17 +370,22 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         return this;
     }
 
+    /// <summary>
+    /// Delivers an integration event another service published. A contract nobody uses here is ignored; a message
+    /// received twice is handled once.
+    /// </summary>
     public async Task ReceiveAsync(TransportMessage message, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(message);
-        if (!typeof(IIntegrationEvent).IsAssignableFrom(_types.TypeOf(message.Type)))
-        {
-            throw new InvalidOperationException($"{message.Type} is not an integration event: only integration events cross service boundaries.");
-        }
-
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (!_application.Uses(message))
+            {
+                Log(Engine.External, null, $"{message.Type} is not used here, ignored");
+                return;
+            }
+
             _queue.Add(new Envelope(message.MessageId, MessageKind.Event, message.Type, message.Payload));
             await DrainAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -391,7 +399,9 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
 
     /// <summary>
     /// The outbox relay to other services: what was published since the last relay goes to the transport, after the
-    /// commit and outside the gate (a transport may deliver to another runtime). At least once.
+    /// commit and outside the gate (a transport may deliver to another runtime, which may answer back). Messages are
+    /// claimed under the gate, so concurrent relays never send one twice or skip one; what a failing transport didn't
+    /// take is sent first next time. At least once.
     /// </summary>
     private async Task RelayAsync(CancellationToken cancellationToken)
     {
@@ -400,11 +410,30 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
             return;
         }
 
-        var pending = Read(() => _store.Published.Skip(_relayed).ToList());
-        foreach (var message in pending)
+        var pending = Read(() =>
         {
-            await _transport.SendAsync(new TransportMessage(message.Id, message.Type, message.Payload), cancellationToken).ConfigureAwait(false);
-            _relayed++;
+            _unrelayed.AddRange(_store.Published.Skip(_relayed));
+            _relayed = _store.Published.Count;
+            List<PublishedMessage> claimed = [.. _unrelayed];
+            _unrelayed.Clear();
+            return claimed;
+        });
+
+        for (var i = 0; i < pending.Count; i++)
+        {
+            try
+            {
+                await _transport.SendAsync(new TransportMessage(pending[i].Id, pending[i].Type, pending[i].Payload), cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                Read(() =>
+                {
+                    _unrelayed.InsertRange(0, pending.Skip(i));
+                    return 0;
+                });
+                throw;
+            }
         }
     }
 
@@ -476,11 +505,13 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         }
     }
 
-    // Deterministic message ids: same inputs, same ids.
+    // Deterministic message ids: same inputs, same ids. The second half tells runtimes apart, so ids stay unique when
+    // runtimes exchange messages through a transport (ids never reach the journal or a history).
     private Guid NextId()
     {
         Span<byte> bytes = stackalloc byte[16];
         BitConverter.TryWriteBytes(bytes, ++_ids);
+        BitConverter.TryWriteBytes(bytes[8..], _runtime);
         return new Guid(bytes);
     }
 

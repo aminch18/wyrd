@@ -55,6 +55,26 @@ internal sealed class Application(MessageTypes types)
         RegisterTypesOf(process);
     }
 
+    /// <summary>
+    /// Whether an integration event another service published is used here (by a process, a projection or an
+    /// upcaster): a contract nobody uses is ignored. Only integration events cross service boundaries.
+    /// </summary>
+    public bool Uses(TransportMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        if (!Types.TryTypeOf(message.Type, out var type))
+        {
+            return false;
+        }
+
+        if (!typeof(IIntegrationEvent).IsAssignableFrom(type))
+        {
+            throw new InvalidOperationException($"{message.Type} is not an integration event: only integration events cross service boundaries.");
+        }
+
+        return true;
+    }
+
     private void RegisterTypesOf(Process process)
     {
         Register(process.Trigger);

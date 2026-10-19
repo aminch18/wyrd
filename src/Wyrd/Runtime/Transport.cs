@@ -16,27 +16,52 @@ public interface IWyrdTransport
     Task SendAsync(TransportMessage message, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Connects runtimes in one process, deterministically: every message reaches every other subscriber.</summary>
+/// <summary>
+/// Connects runtimes in one process, deterministically: every message reaches every subscriber, in order, before
+/// <see cref="SendAsync"/> returns. A subscriber ignores contracts it doesn't use and discards its own messages as
+/// duplicates, like it would behind a broker.
+/// </summary>
 public sealed class InMemoryTransport : IWyrdTransport
 {
     private readonly List<IWyrdRuntime> _subscribers = [];
+    private readonly List<TransportMessage> _sent = [];
+    private readonly Lock _lock = new();
 
-    /// <summary>Delivers what other services publish to <paramref name="runtime"/>.</summary>
+    /// <summary>Delivers what is sent through this transport to <paramref name="runtime"/>.</summary>
     public InMemoryTransport Subscribe(IWyrdRuntime runtime)
     {
         ArgumentNullException.ThrowIfNull(runtime);
-        _subscribers.Add(runtime);
+        lock (_lock)
+        {
+            _subscribers.Add(runtime);
+        }
+
         return this;
     }
 
     /// <summary>Every message sent, in order.</summary>
-    public List<TransportMessage> Sent { get; } = [];
+    public IReadOnlyList<TransportMessage> Sent
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return [.. _sent];
+            }
+        }
+    }
 
     public async Task SendAsync(TransportMessage message, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(message);
-        Sent.Add(message);
-        foreach (var subscriber in _subscribers)
+        IWyrdRuntime[] subscribers;
+        lock (_lock)
+        {
+            _sent.Add(message);
+            subscribers = [.. _subscribers];
+        }
+
+        foreach (var subscriber in subscribers)
         {
             await subscriber.ReceiveAsync(message, cancellationToken).ConfigureAwait(false);
         }

@@ -129,11 +129,6 @@ internal sealed class Engine(
         return decision;
     }
 
-    /// <summary>
-    /// The undo of a step with an unknown outcome. In the same transaction as the inbox: if the original command never
-    /// ran, it is fenced (a late copy will find the fence and never execute) and there is nothing to undo; if it ran
-    /// and was accepted, the undo runs normally. Returns true when the undo is answered without running.
-    /// </summary>
     /// <summary>Records an accepted event: stored, delivered to whoever reacts to it, and mapped to its publications.</summary>
     private void Accept(IDomainEvent @event, ICommandOwner owner, string key, StreamRef? stream, Changes changes)
     {
@@ -152,6 +147,11 @@ internal sealed class Engine(
         }
     }
 
+    /// <summary>
+    /// The undo of a step with an unknown outcome. In the same transaction as the inbox: if the original command never
+    /// ran, it is fenced (a late copy will find the fence and never execute) and there is nothing to undo; if it ran
+    /// and was accepted, the undo runs normally. Returns true when the undo is answered without running.
+    /// </summary>
     private async ValueTask<bool> FenceAsync(
         Envelope undo, Guid original, ICommand command, string key, Changes changes, CancellationToken cancellationToken)
     {
