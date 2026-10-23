@@ -40,7 +40,18 @@ runtime.AddIntegration(new PaymentGateway(http));
 4. **The outcome is recorded.** The reply is stored in the owner's inbox with the event: a duplicate delivery after
    the outcome was committed is answered from the inbox without calling the provider again; Urd replays it without
    I/O; fencing works as for slices.
-5. **Timeouts are the integration's own business.** Wyrd adds no technical timeout ([semantics](semantics.md) 3.5);
+5. **No transaction waits on a third party.** A durable host *leases* an integration command instead of locking it:
+   a short transaction pushes the queue row's availability forward by `IntegrationLease` (five minutes by default)
+   and commits; the call is made with no transaction or connection held; a new transaction records the outcome if the
+   row still carries this worker's lease. A worker that stops, or a call slower than the lease, leaves the command to
+   another worker, which calls again **with the same idempotency key**; the late outcome is not recorded. Before
+   calling, the host checks what the engine would do: a duplicate is answered from the inbox and an undo its fence
+   answers is not called. If what it read changed by the time it records, it handles the message again from the start.
+   A conflict while recording records the same outcome again: the call is a fact, it is not repeated.
+   *Gives:* a slow provider holds no connection and no lock, so it slows only its own processes, never the queue.
+   *Costs:* a call slower than its lease is made twice (same key); the lease must be longer than the slowest call.
+   In memory, and when Wyrd joins your own transaction (`SendAsync(command, context)`), the call is made inline.
+6. **Timeouts are the integration's own business.** Wyrd adds no technical timeout ([semantics](semantics.md) 3.5);
    an `HttpClient` timeout is the integration author's choice and surfaces as a transient failure.
 
 ## Not in scope

@@ -222,6 +222,66 @@ public abstract class EfCoreRuntimeTests(Database database)
     }
 
     [Fact]
+    public async Task an_integration_calls_the_outside_world_with_no_transaction_open()
+    {
+        var contexts = await database.NewAsync();
+        var gateway = new JobGateway(async (_, context) =>
+        {
+            // Another connection writes the command's queue row meanwhile: a transaction holding it would block this.
+            await using var db = await contexts.CreateDbContextAsync();
+            db.Database.SetCommandTimeout(TimeSpan.FromSeconds(5));
+            Assert.Equal(1, await db.Set<QueueRow>().Where(r => r.MessageId == context.IdempotencyKey)
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.LastError, "written during the call")));
+        });
+        var runtime = JobRuntime(contexts, gateway);
+
+        await runtime.SendAsync(new StartJob("J-1"));
+        await DrainAsync(runtime);
+
+        Assert.Equal(ProcessStatus.Completed, await runtime.StatusOfAsync(Jobs.Process, "J-1"));
+        Assert.Single(gateway.Keys);
+        Assert.Equal((0, 0), await runtime.BacklogAsync());
+    }
+
+    [Fact]
+    public async Task an_integration_call_that_outlives_its_lease_is_recorded_once_with_the_same_idempotency_key()
+    {
+        var contexts = await database.NewAsync();
+        var first = true;
+        var gateway = new JobGateway(async (_, context) =>
+        {
+            if (first)
+            {
+                // The lease runs out while the first call is slow: the command is due again for another worker.
+                first = false;
+                await using var db = await contexts.CreateDbContextAsync();
+                await db.Set<QueueRow>().Where(r => r.MessageId == context.IdempotencyKey)
+                    .ExecuteUpdateAsync(s => s.SetProperty(r => r.AvailableAt, DateTimeOffset.UtcNow.AddSeconds(-1)));
+            }
+        });
+        var runtime = JobRuntime(contexts, gateway);
+
+        await runtime.SendAsync(new StartJob("J-1"));
+        await DrainAsync(runtime);
+
+        Assert.Equal(ProcessStatus.Completed, await runtime.StatusOfAsync(Jobs.Process, "J-1"));
+        Assert.Equal(2, gateway.Keys.Count); // the late outcome was not recorded: the second call's was
+        Assert.Single(gateway.Keys.Distinct());
+        var history = (await runtime.HistoryOfAsync(Jobs.Process, "J-1"))!;
+        Assert.Single(history.Entries, e => e.Kind == HistoryKind.Replied);
+    }
+
+    private static EfCoreRuntime<WyrdDbContext> JobRuntime(IDbContextFactory<WyrdDbContext> contexts, JobGateway gateway)
+    {
+#pragma warning disable IL2026, IL3050 // reflection JSON keeps the test domain small
+        return new EfCoreRuntime<WyrdDbContext>(contexts, Database.Options)
+            .AddSlice(new StartJobSlice())
+            .AddIntegration(gateway)
+            .AddProcess(Jobs.Process);
+#pragma warning restore IL2026, IL3050
+    }
+
+    [Fact]
     public async Task a_message_no_process_decides_on_ends_in_the_dead_letters_without_blocking_the_queue()
     {
 #pragma warning disable IL2026, IL3050 // reflection JSON keeps the test domain small

@@ -1,3 +1,5 @@
+using System.Runtime.ExceptionServices;
+
 namespace Wyrd.Runtime;
 
 internal enum MessageKind
@@ -48,3 +50,20 @@ internal enum ReplyOutcome
 
 /// <summary>The framework reply to a command: the accepted event, the rejection error, or a transient fault.</summary>
 internal sealed record ReplyMessage(ReplyOutcome Outcome, string? Type = null, string? Payload = null);
+
+/// <summary>
+/// What an integration's outside call returned, made before the transaction that records it: the decision, or the
+/// failure to record as a fault (or to throw, for a command no process sent).
+/// </summary>
+internal sealed record IntegrationCall(Decision? Decision = null, ExceptionDispatchInfo? Failure = null)
+{
+    /// <summary>No call was made: handling the command won't need one (a duplicate, a fault, a fence).</summary>
+    public static IntegrationCall None { get; } = new();
+}
+
+/// <summary>
+/// Handling a command needs the outside call after all (what it read changed since <see cref="Engine.CallAsync"/>
+/// decided no call was needed): the host rolls back and handles the message again.
+/// </summary>
+internal sealed class IntegrationCallNeededException()
+    : WyrdException("The command's outside call wasn't made before its transaction: handle the message again.");

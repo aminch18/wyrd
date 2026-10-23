@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Runtime.ExceptionServices;
 using Wyrd.Processes;
 
 namespace Wyrd.Runtime;
@@ -20,7 +21,14 @@ internal sealed class Engine(
     private const string ReplyType = "wyrd.reply";
     private const string TimeoutType = "wyrd.timeout";
 
-    public async ValueTask<Decision?> HandleAsync(Envelope envelope, CancellationToken cancellationToken)
+    public ValueTask<Decision?> HandleAsync(Envelope envelope, CancellationToken cancellationToken) =>
+        HandleAsync(envelope, call: null, cancellationToken);
+
+    /// <summary>
+    /// Handles <paramref name="envelope"/> with the outside call its integration command already made
+    /// (<see cref="CallAsync"/>), or calls it inline when <paramref name="call"/> is null.
+    /// </summary>
+    public async ValueTask<Decision?> HandleAsync(Envelope envelope, IntegrationCall? call, CancellationToken cancellationToken)
     {
         using var trace = Tracing.Begin(envelope);
         try
@@ -29,7 +37,7 @@ internal sealed class Engine(
             switch (envelope.Kind)
             {
                 case MessageKind.Command:
-                    return await HandleCommandAsync(envelope, cancellationToken).ConfigureAwait(false);
+                    return await HandleCommandAsync(envelope, call, cancellationToken).ConfigureAwait(false);
                 case MessageKind.Event:
                     await HandleEventAsync(envelope, cancellationToken).ConfigureAwait(false);
                     return null;
@@ -52,7 +60,50 @@ internal sealed class Engine(
 
     // ── Commands: the owner decides ───────────────────────────────────────────────────────────
 
-    private async ValueTask<Decision?> HandleCommandAsync(Envelope envelope, CancellationToken cancellationToken)
+    /// <summary>Whether <paramref name="envelope"/> is a command an integration handles: one that calls the outside world.</summary>
+    public bool IsIntegrationCommand(Envelope envelope) =>
+        envelope.Kind == MessageKind.Command
+        && types.TryTypeOf(envelope.Type, out var type)
+        && registry.FindOwner(type) is IIntegrationHandler;
+
+    /// <summary>
+    /// The outside call of an integration command, made by a durable host before the transaction that records it, so no
+    /// transaction waits on a third party. <see cref="IntegrationCall.None"/> when handling the command won't call it:
+    /// a duplicate, a faulted delivery, or an undo its fence answers. Only reads the store.
+    /// </summary>
+    public async ValueTask<IntegrationCall> CallAsync(Envelope envelope, CancellationToken cancellationToken)
+    {
+        using var trace = Tracing.Begin(envelope);
+        var command = (ICommand)types.Deserialize(envelope.Type, envelope.Payload);
+        if (registry.OwnerOf(command.GetType()) is not IIntegrationHandler integration
+            || await store.FindReplyAsync(envelope.MessageId, cancellationToken).ConfigureAwait(false) is not null
+            || (envelope.Process is not null && fault(envelope, command.GetType()))
+            || (envelope.Fences is { } original
+                && await store.FindReplyAsync(original, cancellationToken).ConfigureAwait(false) is not { Outcome: ReplyOutcome.Accepted }))
+        {
+            return IntegrationCall.None;
+        }
+
+        return await CallIntegrationAsync(integration, command, envelope, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async ValueTask<IntegrationCall> CallIntegrationAsync(
+        IIntegrationHandler integration, ICommand command, Envelope envelope, CancellationToken cancellationToken)
+    {
+        using var activity = Tracing.Integration(envelope);
+        try
+        {
+            return new IntegrationCall(await integration.ExecuteAsync(
+                command, new IntegrationContext(envelope.MessageId, envelope.Process?.Attempt ?? 1), cancellationToken).ConfigureAwait(false));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Tracing.Failed(activity, ex);
+            return new IntegrationCall(Failure: ExceptionDispatchInfo.Capture(ex));
+        }
+    }
+
+    private async ValueTask<Decision?> HandleCommandAsync(Envelope envelope, IntegrationCall? call, CancellationToken cancellationToken)
     {
         var command = (ICommand)types.Deserialize(envelope.Type, envelope.Payload);
         var owner = registry.OwnerOf(command.GetType());
@@ -90,20 +141,25 @@ internal sealed class Engine(
         {
             // The only I/O: outside world first, then the outcome is recorded like any decision. A crash in between
             // redelivers the command with the same id — the idempotency key — so the other system doesn't repeat it.
-            using var call = Tracing.Integration(envelope);
-            try
+            // A durable host made the call before this transaction; in memory it is made here.
+            call = call == IntegrationCall.None
+                ? throw new IntegrationCallNeededException()
+                : call ?? await CallIntegrationAsync(integration, command, envelope, cancellationToken).ConfigureAwait(false);
+            if (call.Failure is { } failure)
             {
-                decision = await integration.ExecuteAsync(command, new IntegrationContext(envelope.MessageId, envelope.Process?.Attempt ?? 1), cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (envelope.Process is not null && ex is not OperationCanceledException)
-            {
-                Tracing.Failed(call, ex);
-                log(External, key, $"{command.GetType().Name} failed: {ex.GetType().Name}: {ex.Message}");
+                if (envelope.Process is null)
+                {
+                    failure.Throw();
+                }
+
+                log(External, key, $"{command.GetType().Name} failed: {failure.SourceException.GetType().Name}: {failure.SourceException.Message}");
                 Tracing.Outcome(ReplyOutcome.Faulted);
                 Reply(envelope, new ReplyMessage(ReplyOutcome.Faulted), changes);
                 await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
                 return null;
             }
+
+            decision = call.Decision!;
 
             if (decision is Decision.Accepted done)
             {

@@ -36,7 +36,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - **Integrations** (`Integration<TCommand, TEvent, TError>`, `AddIntegration`): the only I/O. An integration owns a
   command like a slice; its event is recorded and published like a domain event, its error is a business rejection,
   and an exception is a transient failure for the process's retry policy. `IntegrationContext.IdempotencyKey` is the
-  command's message id, stable across retries and redeliveries. Design: `docs/design/integrations.md`.
+  command's message id, stable across retries and redeliveries. On the EF Core host the call is made with no
+  transaction open: the command is leased (`EfCoreRuntimeOptions.IntegrationLease`, five minutes), and its outcome is
+  recorded in a second transaction while the lease is still the worker's. Design: `docs/design/integrations.md`.
 - Operators on every host: `IWyrdRuntime.ResumeAsync` / `CompensateAsync`.
 - One retry layer on the durable host: a process command it can't handle goes back to its process as a failure (the
   step's retry policy decides, then the instance is suspended); dead letters are only for messages no process decides
