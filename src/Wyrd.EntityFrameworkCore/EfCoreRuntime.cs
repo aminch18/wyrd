@@ -18,7 +18,7 @@ namespace Wyrd.EntityFrameworkCore;
 /// on a crash or a restart. Wyrd's tables live in <typeparamref name="TContext"/>: your own context (see
 /// <see cref="WyrdModelBuilderExtensions.AddWyrd"/>) or <see cref="WyrdDbContext"/>.
 /// </summary>
-public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime<TContext>>, IWyrdRuntime
+public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime<TContext>>, IWyrdRuntime, IDisposable
     where TContext : DbContext
 {
     private readonly IDbContextFactory<TContext> _contexts;
@@ -30,6 +30,8 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     private readonly Retention _retention;
     private IWyrdTransport? _transport;
     private DateTimeOffset _lastCleanup = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastHealth = DateTimeOffset.MinValue;
+    private readonly SemaphoreSlim _work = new(0, 1);
 
     /// <summary>
     /// Source-generated JSON from your <c>[WyrdJsonContext]</c>. <paramref name="retention"/> says how long each kind of
@@ -160,6 +162,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                 await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
                 var decision = await HandleAsync(db, command, cancellationToken).ConfigureAwait(false);
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                Wake();
                 return decision;
             }
             catch (Exception ex) when (attempt < _options.MaxConflictRetries && IsConflict(ex))
@@ -187,7 +190,9 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
         try
         {
-            return await HandleAsync(context, command, cancellationToken).ConfigureAwait(false);
+            var decision = await HandleAsync(context, command, cancellationToken).ConfigureAwait(false);
+            Wake(); // early, before your commit: a worker that finds nothing yet goes back to waiting
+            return decision;
         }
         catch (Exception ex) when (ex is not ConcurrencyConflictException && IsConflict(ex))
         {
@@ -204,6 +209,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         var now = _time.GetUtcNow();
         new EfCoreStore(db, now).Enqueue(new Envelope(Guid.CreateVersion7(), MessageKind.Event, type, payload, Trace: Tracing.Capture()), now);
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        Wake();
     }
 
     /// <summary>
@@ -224,6 +230,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         new EfCoreStore(db, now).Enqueue(
             new Envelope(message.MessageId, MessageKind.Event, message.Type, message.Payload, Trace: Tracing.Received(message)), now);
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        Wake();
     }
 
     private async Task<Decision> HandleAsync(TContext db, ICommand command, CancellationToken cancellationToken)
@@ -334,6 +341,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// </summary>
     public async Task RunAsync(CancellationToken cancellationToken)
     {
+        var idle = _options.PollInterval;
         while (!cancellationToken.IsCancellationRequested)
         {
             try
@@ -345,9 +353,21 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                     _lastCleanup = _time.GetUtcNow();
                     await ForgetExpiredAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
                 }
+
+                if (_time.GetUtcNow() - _lastHealth >= _options.HealthInterval)
+                {
+                    _lastHealth = _time.GetUtcNow();
+                    QueueMetrics.Record(QueueName(), await HealthAsync(cancellationToken).ConfigureAwait(false));
+                }
+
                 if (handled == 0 && relayed == 0)
                 {
-                    await Task.Delay(_options.PollInterval, _time, cancellationToken).ConfigureAwait(false);
+                    await IdleAsync(idle, cancellationToken).ConfigureAwait(false);
+                    idle = TimeSpan.FromTicks(Math.Min(idle.Ticks * 2, _options.MaxPollInterval.Ticks));
+                }
+                else
+                {
+                    idle = _options.PollInterval;
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -360,6 +380,40 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                 // transactional, so queued messages are safe and nothing is half done.
                 LogWorkerFailed(ex);
                 await Task.Delay(_options.PollInterval, _time, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Waits <paramref name="delay"/>, or less if this runtime queues a message meanwhile. The signal stays set until a
+    /// worker takes it, so a message queued while the worker was looking still ends the next wait at once.
+    /// </summary>
+    private async Task IdleAsync(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        using var timeout = new CancellationTokenSource(delay, _time);
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+        try
+        {
+            await _work.WaitAsync(wait.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The wait is over: look again.
+        }
+    }
+
+    /// <summary>Something was queued: an idle worker looks now instead of after its wait.</summary>
+    private void Wake()
+    {
+        if (_work.CurrentCount == 0)
+        {
+            try
+            {
+                _work.Release();
+            }
+            catch (SemaphoreFullException)
+            {
+                // Another caller set the signal first.
             }
         }
     }
@@ -391,6 +445,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             await Engine(db, now).HandleAsync(envelope, cancellationToken).ConfigureAwait(false);
             await db.Set<QueueRow>().Where(r => r.Id == message.Id).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            QueueMetrics.Handled.Add(1);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -514,6 +569,8 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             return;
         }
 
+        QueueMetrics.Failed.Add(1);
+
         // The rollback released the row lock, so another worker may have claimed the message meanwhile. Every branch
         // first takes the row back, unchanged since this attempt, and writes the failure only when that succeeded; if
         // the other worker still holds it, the statement waits for its commit and then finds nothing.
@@ -546,6 +603,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             }
 
             LogDeadLetter(message.Id, failed, error);
+            QueueMetrics.DeadLettered.Add(1);
             db.Add(new DeadLetterRow { Id = message.Id, Envelope = message.Envelope, Attempts = failed, Error = error.ToString(), FailedAt = now });
             await db.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
         }
@@ -584,7 +642,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await operation(Engine(db, _time.GetUtcNow()), process.Name, Keys.Of(key)).ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        Wake();
     }
+
+    /// <summary>Releases the workers' wake-up signal. Stop the workers (<see cref="RunAsync"/>) first.</summary>
+    public void Dispose() => _work.Dispose();
 
     // ── Queries ──────────────────────────────────────────────────────────────────────────────
 
@@ -655,6 +717,36 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             .Where(r => r.ViewType == viewType).OrderBy(r => r.Created).ThenBy(r => r.Key)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
         return [.. rows.Select(r => (TView)_application.Types.Deserialize(r.Type, r.Payload))];
+    }
+
+    /// <summary>
+    /// Measures the queue (<see cref="QueueHealth"/>): its lag, what waits for its time, dead letters, pending steps and
+    /// suspended instances. Workers publish it on the <c>Wyrd</c> meter every <see cref="EfCoreRuntimeOptions.HealthInterval"/>.
+    /// </summary>
+    public async Task<QueueHealth> HealthAsync(CancellationToken cancellationToken = default)
+    {
+        var now = _time.GetUtcNow();
+        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var due = db.Set<QueueRow>().Where(r => r.AvailableAt <= now);
+        var pending = db.Set<InstanceRow>().Where(r => r.PendingSince != null);
+        return new QueueHealth(
+            Due: await due.LongCountAsync(cancellationToken).ConfigureAwait(false),
+            OldestDue: Age(await due.MinAsync(r => (DateTimeOffset?)r.AvailableAt, cancellationToken).ConfigureAwait(false), now),
+            Scheduled: await db.Set<QueueRow>().LongCountAsync(r => r.AvailableAt > now, cancellationToken).ConfigureAwait(false),
+            DeadLetters: await db.Set<DeadLetterRow>().LongCountAsync(cancellationToken).ConfigureAwait(false),
+            PendingSteps: await pending.LongCountAsync(cancellationToken).ConfigureAwait(false),
+            OldestPendingStep: Age(await pending.MinAsync(r => r.PendingSince, cancellationToken).ConfigureAwait(false), now),
+            // A literal, so the filtered index ix_instances_suspended answers it.
+            Suspended: await db.Set<InstanceRow>().LongCountAsync(r => r.Status == "Suspended", cancellationToken).ConfigureAwait(false));
+
+        static TimeSpan Age(DateTimeOffset? since, DateTimeOffset now) => since < now ? now - since.Value : TimeSpan.Zero;
+    }
+
+    private string QueueName()
+    {
+        using var db = _contexts.CreateDbContext();
+        var queue = db.Model.FindEntityType(typeof(QueueRow))!;
+        return $"{queue.GetSchema()}.{queue.GetTableName()}";
     }
 
     /// <summary>Messages waiting in the queue (due now or later) and messages that gave up (dead letters).</summary>

@@ -438,6 +438,56 @@ public abstract class EfCoreRuntimeTests(Database database)
     }
 
     [Fact]
+    public async Task the_queue_health_shows_lag_pending_steps_and_suspended_instances()
+    {
+        var clock = Database.Clock();
+#pragma warning disable IL2026, IL3050 // reflection JSON keeps the test domain small
+        using var runtime = new EfCoreRuntime<WyrdDbContext>(await database.NewAsync(), Database.Retention, Database.Options, clock)
+            .AddSlice(new StartJobSlice())
+            .AddSlice(new BrokenSlice())
+            .AddProcess(Jobs.Process);
+#pragma warning restore IL2026, IL3050
+
+        await runtime.SendAsync(new StartJob("J-1"));
+        Assert.Equal(new QueueHealth(1, TimeSpan.Zero, 0, 0, 0, TimeSpan.Zero, 0), await runtime.HealthAsync());
+
+        await runtime.ProcessPendingAsync(max: 1); // the process starts and sends RunJob
+        clock.Advance(TimeSpan.FromSeconds(30));
+        Assert.Equal(new QueueHealth(1, TimeSpan.FromSeconds(30), 0, 0, 1, TimeSpan.FromSeconds(30), 0), await runtime.HealthAsync());
+
+        while (await runtime.ProcessPendingAsync() > 0)
+        {
+            clock.Advance(TimeSpan.FromMinutes(1)); // redeliveries become due
+        }
+
+        // RunJob always fails: after its retries the instance needs an operator, and nothing is pending any more.
+        var health = await runtime.HealthAsync();
+        Assert.Equal((0, 1L, 0L), (health.PendingSteps, health.Suspended, health.Due));
+    }
+
+    [Fact]
+    public async Task a_message_queued_by_this_runtime_wakes_its_idle_worker()
+    {
+        // Workers that would otherwise look again only after ten seconds.
+        var slow = Database.Options with { PollInterval = TimeSpan.FromSeconds(10), MaxPollInterval = TimeSpan.FromSeconds(10) };
+        using var shop = ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(await database.NewAsync(), ShopJson.Default, Database.Retention, slow));
+        using var stop = new CancellationTokenSource();
+        var worker = shop.RunAsync(stop.Token);
+        await Task.Delay(TimeSpan.FromMilliseconds(500)); // idle, waiting
+
+        var sent = Stopwatch.StartNew();
+        await shop.SendAsync(new Restock("KEYBOARD", 5));
+        while ((await shop.BacklogAsync()).Queued > 0)
+        {
+            Assert.True(sent.Elapsed < TimeSpan.FromSeconds(5), "the worker was not woken");
+            await Task.Delay(TimeSpan.FromMilliseconds(20));
+        }
+
+        await stop.CancelAsync();
+        await worker;
+    }
+
+    [Fact]
     public async Task retention_forgets_what_expired_and_keeps_the_rest()
     {
         var clock = Database.Clock();

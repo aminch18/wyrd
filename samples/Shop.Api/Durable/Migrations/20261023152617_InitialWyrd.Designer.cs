@@ -12,7 +12,7 @@ using Shop.Api.Durable;
 namespace Shop.Api.Durable.Migrations
 {
     [DbContext(typeof(ShopDbContext))]
-    [Migration("20261023150601_InitialWyrd")]
+    [Migration("20261023152617_InitialWyrd")]
     partial class InitialWyrd
     {
         /// <inheritdoc />
@@ -185,6 +185,10 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("finished_at");
 
+                    b.Property<DateTimeOffset?>("PendingSince")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("pending_since");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -200,6 +204,14 @@ namespace Shop.Api.Durable.Migrations
                     b.HasIndex("FinishedAt")
                         .HasDatabaseName("ix_instances_finished")
                         .HasFilter("finished_at IS NOT NULL");
+
+                    b.HasIndex("PendingSince")
+                        .HasDatabaseName("ix_instances_pending")
+                        .HasFilter("pending_since IS NOT NULL");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_instances_suspended")
+                        .HasFilter("status = 'Suspended'");
 
                     b.ToTable("instances", "wyrd");
                 });

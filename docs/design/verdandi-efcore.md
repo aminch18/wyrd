@@ -24,8 +24,18 @@ worker claims one due row with `FOR UPDATE SKIP LOCKED` (PostgreSQL) or `UPDLOCK
 handles it, and deletes it in the same transaction.
 
 - **Gives:** no broker inside a service; any number of workers, in one process or many; nothing lost on a crash.
-- **Costs:** polling (until the hardened queue, [semantics](semantics.md) 3.5) and database load proportional to the
-  message rate.
+- **Costs:** polling and database load proportional to the message rate.
+
+An idle worker waits `PollInterval` (250 ms), doubling while the queue stays empty up to `MaxPollInterval` (2 s), and is
+back to `PollInterval` as soon as there is work. A message this runtime queues itself (`SendAsync`, `PublishAsync`,
+`ReceiveAsync`, an operator) wakes its idle workers at once; one queued by another process is seen within
+`MaxPollInterval`. `LISTEN/NOTIFY` would remove that delay on PostgreSQL only, so it waits until someone needs it.
+
+Slowness is observed, not turned into failures ([semantics](semantics.md) 3.5): `HealthAsync` measures the queue's lag
+(due messages, the oldest one's age), what waits for its time, dead letters, pending steps (`pending_since` on the
+instance: when the step it waits on was first sent, retries included) and suspended instances. Workers publish it every
+`HealthInterval` on the `Wyrd` meter (`System.Diagnostics.Metrics`, no dependency), with counters of handled, failed
+and dead-lettered messages: alerts belong on these.
 
 ### 3. Optimistic concurrency and unique keys settle races
 
@@ -82,7 +92,7 @@ removed.
 
 ## Not yet
 
-- The hardened queue: `LISTEN/NOTIFY` or backoff polling, depth and age metrics (semantics 3.5).
+- `LISTEN/NOTIFY` on PostgreSQL, for messages queued by another process.
 - The history archive (a finished instance's history handed to the application before retention removes it), and
   catching up a projection added to an existing store.
 - A broker package (`Wyrd.RabbitMq`) implementing `IWyrdTransport`.
