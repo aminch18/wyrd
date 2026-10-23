@@ -29,6 +29,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     private Dialect? _dialect;
     private readonly Retention _retention;
     private IWyrdTransport? _transport;
+    private IHistoryArchive? _archive;
     private DateTimeOffset _lastCleanup = DateTimeOffset.MinValue;
     private DateTimeOffset _lastHealth = DateTimeOffset.MinValue;
     private readonly SemaphoreSlim _work = new(0, 1);
@@ -131,6 +132,17 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     {
         ArgumentNullException.ThrowIfNull(process);
         _application.Add(process);
+        return this;
+    }
+
+    /// <summary>
+    /// Hands the histories of finished instances to <paramref name="archive"/> before retention removes them, outside any
+    /// transaction; an instance is removed only once its history is archived.
+    /// </summary>
+    public EfCoreRuntime<TContext> UseHistoryArchive(IHistoryArchive archive)
+    {
+        ArgumentNullException.ThrowIfNull(archive);
+        _archive = archive;
         return this;
     }
 
@@ -521,17 +533,36 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         var removed = 0;
         while (true)
         {
-            await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            var finished = await db.Set<InstanceRow>().AsNoTracking()
-                .Where(r => r.FinishedAt <= cutoff).OrderBy(r => r.FinishedAt).Take(batchSize)
-                .Select(r => new { r.Process, r.Key })
-                .ToListAsync(cancellationToken).ConfigureAwait(false);
+            List<InstanceRow> finished;
+            await using (var reader = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var expired = reader.Set<InstanceRow>().AsNoTracking().Where(r => r.FinishedAt <= cutoff).OrderBy(r => r.FinishedAt).Take(batchSize);
+                finished = _archive is null
+                    ? await expired.Select(r => new InstanceRow { Process = r.Process, Key = r.Key }).ToListAsync(cancellationToken).ConfigureAwait(false)
+                    : await expired.ToListAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             if (finished.Count == 0)
             {
                 return removed;
             }
 
+            if (_archive is not null)
+            {
+                // Archived before anything is removed, with no transaction open: a failed archive keeps them for the next pass.
+                try
+                {
+                    await _archive.ArchiveAsync([.. finished.Select(HistoryOf)], cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    LogArchiveFailed(finished.Count, ex);
+                    return removed;
+                }
+            }
+
+            await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
             foreach (var instance in finished)
             {
                 // Checked again in the delete: an instance can't be running again, but its row is only removed while finished.
@@ -677,6 +708,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             return null;
         }
 
+        return HistoryOf(row);
+    }
+
+    private static InstanceHistory HistoryOf(InstanceRow row)
+    {
         var instance = EfCoreStore.Deserialize(row);
         return new InstanceHistory(instance.Process, instance.Key, instance.Fingerprint, instance.History);
     }
@@ -808,6 +844,9 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Worker failed (database unavailable?); queued messages are safe, retrying")]
     private partial void LogWorkerFailed(Exception error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "History archive failed: {Count} finished instances kept for the next cleanup")]
+    private partial void LogArchiveFailed(int count, Exception error);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Message {Id} was taken by another worker meanwhile: its failure is not recorded twice")]
     private partial void LogTakenMeanwhile(long id);

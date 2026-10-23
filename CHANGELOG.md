@@ -66,6 +66,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   oldest one's age, scheduled messages, dead letters, pending steps and the oldest one's age, suspended instances);
   workers publish it every `HealthInterval` on the `Wyrd` meter, with counters of handled, failed and dead-lettered
   messages. Instances carry `pending_since`; `EfCoreRuntime` is `IDisposable`.
+- **History archive** (`IHistoryArchive`, `UseHistoryArchive` on both hosts): before retention removes an expired
+  finished instance, its history is handed to the application (blob storage, a cold table...); it is removed only once
+  the archive returned, and a failed archive keeps it for the next pass. An archived history still replays with Urd.
 
 ### Changed
 

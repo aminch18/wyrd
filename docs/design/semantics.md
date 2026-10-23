@@ -161,6 +161,10 @@ the host doesn't start without a `Retention`, whose every member is required, ea
 - Something expires once its age reaches the period. **Suspended instances never expire**: they wait for an operator.
   Running and waiting instances aren't finished, so they never expire either. A removed instance takes its parked
   events with it.
+- **A history archive** (`IHistoryArchive`, optional, `UseHistoryArchive`) receives the histories of expired finished
+  instances before they are removed, and an instance is removed only once the archive returned: a failed archive keeps
+  it for the next pass. An archived history still replays with Urd. Without an archive, expiring deletes.
+  **Implemented** in memory and on the EF Core host.
 - **Fences never expire**: a fenced command is blocked forever (3.4). There is one per step given up on without knowing
   whether it ran, so they grow with failures, not with traffic.
 - **What an instance learned doesn't depend on deduplication.** A reply that arrives while the deployed definition is

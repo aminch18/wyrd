@@ -84,7 +84,8 @@ are recognised, finished instances and their histories kept, relayed messages, d
 remove what expired every `CleanupInterval`, in batches (`Take(n)` with `ExecuteDelete`, translated by both
 providers), each in its own short transaction, so cleanup never holds many locks or slows a message. Dates are
 indexed (`finished_at` only for finished instances, a filtered index). Inbox rows that are fences (`fence`) are never
-removed.
+removed. With a history archive, each batch of expired instances is handed to it first, with no transaction open, and
+removed only once it returned.
 
 - **Gives:** tables bounded by the periods the application chose; nobody finds out in production what the default was,
   because there is none.
@@ -93,6 +94,5 @@ removed.
 ## Not yet
 
 - `LISTEN/NOTIFY` on PostgreSQL, for messages queued by another process.
-- The history archive (a finished instance's history handed to the application before retention removes it), and
-  catching up a projection added to an existing store.
+- Catching up a projection added to an existing store.
 - A broker package (`Wyrd.RabbitMq`) implementing `IWyrdTransport`.

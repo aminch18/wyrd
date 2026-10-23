@@ -25,6 +25,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     private readonly List<PublishedMessage> _unrelayed = [];
     private IWyrdTransport? _transport;
     private Retention _retention = Retention.InMemory;
+    private IHistoryArchive? _archive;
     private long _member;
     private long _ids;
 
@@ -58,6 +59,17 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     {
         ArgumentNullException.ThrowIfNull(retention);
         _retention = retention;
+        return this;
+    }
+
+    /// <summary>
+    /// Hands the histories of finished instances to <paramref name="archive"/> before retention removes them; an instance
+    /// is removed only once its history is archived.
+    /// </summary>
+    public InMemoryRuntime UseHistoryArchive(IHistoryArchive archive)
+    {
+        ArgumentNullException.ThrowIfNull(archive);
+        _archive = archive;
         return this;
     }
 
@@ -228,7 +240,8 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
             }
 
             Write(() => _now = until);
-            _store.Forget(_retention, relays: _transport is not null); // only time makes anything expire
+            var archived = await ArchiveExpiredAsync(cancellationToken).ConfigureAwait(false);
+            _store.Forget(_retention, relays: _transport is not null, removeFinished: archived); // only time makes anything expire
         }
         finally
         {
@@ -387,6 +400,26 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     }
 
     public void Dispose() => _gate.Dispose();
+
+    /// <summary>Hands the expired histories to the archive; false when it failed, so the instances stay for the next pass.</summary>
+    private async Task<bool> ArchiveExpiredAsync(CancellationToken cancellationToken)
+    {
+        if (_archive is null || _store.ExpiredHistories(_retention) is not { Count: > 0 } histories)
+        {
+            return true;
+        }
+
+        try
+        {
+            await _archive.ArchiveAsync(histories, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Log(Engine.External, null, $"history archive failed, finished instances kept: {ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
+    }
 
     /// <summary>
     /// Sends what this runtime publishes (integration events) to other services through <paramref name="transport"/>.

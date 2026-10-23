@@ -488,6 +488,44 @@ public abstract class EfCoreRuntimeTests(Database database)
     }
 
     [Fact]
+    public async Task an_expired_instance_is_archived_before_it_is_removed_and_still_replays()
+    {
+        var clock = Database.Clock();
+        var archive = new FlakyArchive();
+        var shop = Database.Shop(await database.NewAsync(), clock, Database.Retention with { FinishedInstances = Keep.For(TimeSpan.FromDays(30)) })
+            .UseHistoryArchive(archive);
+        await ShipAsync(shop, "A-1");
+        clock.Advance(TimeSpan.FromDays(30));
+
+        await shop.ForgetExpiredAsync(); // the archive is down: nothing is removed
+        Assert.Equal(ProcessStatus.Completed, await shop.StatusOfAsync(Fulfillment, "A-1"));
+
+        await shop.ForgetExpiredAsync();
+        Assert.Null(await shop.StatusOfAsync(Fulfillment, "A-1"));
+        var archived = Assert.Single(archive.Histories);
+        (await Urd.ReplayAsync(ShopModule.CreateRuntime, Fulfillment, InstanceHistory.FromJson(archived.ToJson()))).ThrowIfDiverged();
+    }
+
+    private sealed class FlakyArchive : IHistoryArchive
+    {
+        private bool _down = true;
+
+        public List<InstanceHistory> Histories { get; } = [];
+
+        public Task ArchiveAsync(IReadOnlyList<InstanceHistory> histories, CancellationToken cancellationToken)
+        {
+            if (_down)
+            {
+                _down = false;
+                throw new IOException("storage unavailable");
+            }
+
+            Histories.AddRange(histories);
+            return Task.CompletedTask;
+        }
+    }
+
+    [Fact]
     public async Task retention_forgets_what_expired_and_keeps_the_rest()
     {
         var clock = Database.Clock();

@@ -167,11 +167,22 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
         }
     }
 
+    /// <summary>The histories of the finished instances <paramref name="retention"/> no longer keeps, oldest first.</summary>
+    public IReadOnlyList<InstanceHistory> ExpiredHistories(Retention retention)
+    {
+        var at = now();
+        lock (Sync)
+        {
+            return [.. Finished(retention, at).Select(i => new InstanceHistory(i.Process, i.Key, i.Fingerprint, i.History))];
+        }
+    }
+
     /// <summary>
     /// Removes what <paramref name="retention"/> no longer keeps (Q2.3). Suspended and running instances stay; a removed
-    /// instance takes its parked events with it.
+    /// instance takes its parked events with it. Finished instances stay too unless <paramref name="removeFinished"/>:
+    /// their archive failed.
     /// </summary>
-    public void Forget(Retention retention, bool relays)
+    public void Forget(Retention retention, bool relays, bool removeFinished = true)
     {
         var at = now();
         lock (Sync)
@@ -188,11 +199,7 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
                 _handled.Remove(id);
             }
 
-            var finished = _instances.Values
-                .Where(i => i.Status is ProcessStatus.Completed or ProcessStatus.Compensated
-                    && retention.FinishedInstances.Expired(i.History[^1].At, at))
-                .ToList();
-            foreach (var instance in finished)
+            foreach (var instance in removeFinished ? Finished(retention, at) : [])
             {
                 _instances.Remove((instance.Process, instance.Key));
                 _parked.RemoveAll(p => p.Process == instance.Process && p.Key == instance.Key);
@@ -203,6 +210,12 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
             _events.RemoveAll(e => retention.Events.Expired(e.At, at));
         }
     }
+
+    private List<StoredInstance> Finished(Retention retention, DateTimeOffset at) =>
+        [.. _instances.Values
+            .Where(i => i.Status is ProcessStatus.Completed or ProcessStatus.Compensated
+                && retention.FinishedInstances.Expired(i.History[^1].At, at))
+            .OrderBy(i => i.History[^1].At)];
 
     public ValueTask<IReadOnlyList<Envelope>> TakeOutboxAsync(CancellationToken cancellationToken)
     {
