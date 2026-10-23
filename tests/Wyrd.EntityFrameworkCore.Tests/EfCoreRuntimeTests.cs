@@ -493,6 +493,30 @@ public abstract class EfCoreRuntimeTests(Database database)
         Assert.Equal(ProcessStatus.Suspended, await runtime.StatusOfAsync(broken, "A-1"));
     }
 
+    [Fact]
+    public async Task a_fence_outlives_the_deduplication_window()
+    {
+        var clock = Database.Clock();
+        var contexts = await database.NewAsync();
+        var shop = Database.Shop(contexts, clock, Database.Retention with { Deduplication = Keep.For(TimeSpan.FromDays(7)) });
+        Guid fenced = Guid.NewGuid(), answered = Guid.NewGuid();
+        await using (var db = await contexts.CreateDbContextAsync())
+        {
+            var store = new EfCoreStore(db, clock.GetUtcNow());
+            var changes = new Changes();
+            changes.Replies[fenced] = new ReplyMessage(ReplyOutcome.Fenced);
+            changes.Replies[answered] = new ReplyMessage(ReplyOutcome.Rejected);
+            await store.CommitAsync(changes, CancellationToken.None);
+        }
+
+        clock.Advance(TimeSpan.FromDays(365));
+        await shop.ForgetExpiredAsync();
+
+        // A late copy of a fenced command must never run, however late it is (semantics 3.4).
+        await using var check = await contexts.CreateDbContextAsync();
+        Assert.Equal([fenced], await check.Set<InboxRow>().Select(r => r.MessageId).ToListAsync());
+    }
+
     private static async Task<(int Inbox, int Handled, int Published, int Events)> CountAsync(IDbContextFactory<WyrdDbContext> contexts)
     {
         await using var db = await contexts.CreateDbContextAsync();

@@ -176,7 +176,9 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
         var at = now();
         lock (Sync)
         {
-            foreach (var id in _replies.Where(r => retention.Deduplication.Expired(r.Value.At, at)).Select(r => r.Key).ToList())
+            // A fence blocks its command forever (semantics 3.4): it never expires.
+            foreach (var id in _replies.Where(r => r.Value.Reply.Outcome != ReplyOutcome.Fenced && retention.Deduplication.Expired(r.Value.At, at))
+                .Select(r => r.Key).ToList())
             {
                 _replies.Remove(id);
             }

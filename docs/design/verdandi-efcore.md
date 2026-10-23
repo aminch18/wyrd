@@ -73,7 +73,8 @@ The constructor takes a `Retention` with every member required ([semantics](sema
 are recognised, finished instances and their histories kept, relayed messages, domain events and dead letters. Workers
 remove what expired every `CleanupInterval`, in batches (`Take(n)` with `ExecuteDelete`, translated by both
 providers), each in its own short transaction, so cleanup never holds many locks or slows a message. Dates are
-indexed (`finished_at` only for finished instances, a filtered index).
+indexed (`finished_at` only for finished instances, a filtered index). Inbox rows that are fences (`fence`) are never
+removed.
 
 - **Gives:** tables bounded by the periods the application chose; nobody finds out in production what the default was,
   because there is none.

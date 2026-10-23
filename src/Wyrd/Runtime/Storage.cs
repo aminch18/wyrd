@@ -22,7 +22,9 @@ internal sealed record StoredParked(string Process, string Key, int Step, string
 /// without knowing whether they ran to their original command id: their undo fences that command. <c>Fingerprint</c> is
 /// the structure of the process the instance started with (see <see cref="Processes.Process.Fingerprint"/>). <c>Facts</c>
 /// are the events its steps produced and the events it awaited, in order: later steps can read them. <c>History</c> is
-/// what crossed its boundary (Urd), committed with the instance itself.
+/// what crossed its boundary (Urd), committed with the instance itself. <c>KeptReply</c> is the reply to the pending
+/// command that arrived while the deployed definition was not the one the instance started with: the operator's resume
+/// or compensation takes it, because the owner's inbox forgets it after its deduplication retention.
 /// </summary>
 internal sealed record StoredInstance(
     string Process,
@@ -43,7 +45,8 @@ internal sealed record StoredInstance(
     long Version,
     string? Reason = null,
     TraceContext? Trace = null,
-    Guid? Timer = null);
+    Guid? Timer = null,
+    Envelope? KeptReply = null);
 
 internal sealed record Scheduled(DateTimeOffset At, Envelope Envelope);
 

@@ -136,6 +136,10 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("message_id");
 
+                    b.Property<bool>("Fence")
+                        .HasColumnType("boolean")
+                        .HasColumnName("fence");
+
                     b.Property<DateTimeOffset>("RecordedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("recorded_at");

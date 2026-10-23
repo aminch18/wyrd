@@ -405,6 +405,10 @@ internal sealed class Engine(
     /// The instance suspended, when the deployed definition's structure is not the one it started with: continuing
     /// would run the wrong step. Null when it is the same.
     /// </summary>
+    private static StoredInstance KeepReply(StoredInstance instance, Envelope envelope, ReplyMessage reply) =>
+        // A fault says the command didn't run: re-sending it is safe, there is nothing to keep.
+        reply.Outcome == ReplyOutcome.Faulted ? instance : instance with { KeptReply = envelope };
+
     private StoredInstance? DefinitionChanged(Process process, StoredInstance instance) =>
         instance.Fingerprint == process.Fingerprint
             ? null
@@ -528,10 +532,11 @@ internal sealed class Engine(
         var trigger = Trigger(instance);
         var changes = new Changes();
 
-        // The reply stays in the owner's inbox: resuming re-sends the command with the same id and gets it again.
+        // The instance keeps the reply for the operator: the owner's inbox forgets it after its deduplication retention,
+        // and an instance can stay suspended longer than that.
         if (instance.Status != ProcessStatus.Suspended && DefinitionChanged(process, instance) is { } changed)
         {
-            changes.Save(changed);
+            changes.Save(KeepReply(changed, envelope, reply));
             await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
             return;
         }
@@ -539,6 +544,8 @@ internal sealed class Engine(
         if (instance.Fingerprint != process.Fingerprint)
         {
             log(target.Process, target.Key, "reply kept for later: the definition changed");
+            changes.Save(KeepReply(instance, envelope, reply));
+            await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -627,6 +634,28 @@ internal sealed class Engine(
             {
                 Completed = instance.Completed.Add(index),
                 Uncertain = instance.Uncertain.SetItem(index, instance.Pending!.Value),
+            };
+        }
+
+        return StartCompensation(process, instance, trigger, changes);
+    }
+
+    /// <summary>
+    /// Compensates a process whose pending step's reply was kept while its definition was changed: the outcome is known,
+    /// so an accepted step is undone like any completed one, and a rejected one has nothing to undo. No fence needed.
+    /// </summary>
+    private StoredInstance CompensateKnown(Process process, StoredInstance instance, Envelope kept, IEvent trigger, Changes changes)
+    {
+        var target = kept.Process!;
+        var reply = MessageTypes.DeserializeReply(kept.Payload);
+        instance = Record(instance, HistoryKind.Replied, target.Step, target.Compensating, target.Attempt,
+            reply.Type is null ? null : new StoredMessage(reply.Type, reply.Payload!), outcome: reply.Outcome);
+        if (reply.Outcome == ReplyOutcome.Accepted)
+        {
+            instance = instance with
+            {
+                Completed = instance.Completed.Add(target.Step),
+                Facts = instance.Facts.Add(new StoredMessage(reply.Type!, reply.Payload!)),
             };
         }
 
@@ -725,7 +754,10 @@ internal sealed class Engine(
 
     // ── Operators: resume or compensate a suspended instance ─────────────────────────────────
 
-    /// <summary>Re-sends what the suspended instance was doing, with the same message id (the owner's inbox makes it safe).</summary>
+    /// <summary>
+    /// Re-sends what the suspended instance was doing, with the same message id (the owner's inbox makes it safe), or
+    /// delivers the reply it kept while its definition was changed.
+    /// </summary>
     public async ValueTask ResumeAsync(string processName, string key, CancellationToken cancellationToken)
     {
         var (process, instance) = await SuspendedAsync(processName, key, cancellationToken).ConfigureAwait(false);
@@ -737,7 +769,13 @@ internal sealed class Engine(
         instance = Record(instance, HistoryKind.Resumed);
 
         instance = instance with { Status = ProcessStatus.Running, Reason = null };
-        if (!instance.Compensating && process.Nodes[instance.Position] is AwaitNode)
+        if (instance.KeptReply is { } kept)
+        {
+            // The reply arrived while the definition was changed: delivered again, instead of asking the owner again.
+            changes.Outbox.Add(kept with { MessageId = newId() });
+            instance = instance with { KeptReply = null };
+        }
+        else if (!instance.Compensating && process.Nodes[instance.Position] is AwaitNode)
         {
             // Waits again, with a fresh time limit; an event that arrived meanwhile was parked and is taken now.
             instance = await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false);
@@ -778,9 +816,11 @@ internal sealed class Engine(
         log(instance.Process, instance.Key, "compensation requested by an operator");
         instance = Record(instance, HistoryKind.CompensationRequested);
         instance = instance with { Status = ProcessStatus.Running, Reason = null, Deadline = null };
-        changes.Save(process.Nodes[instance.Position] is StepNode step
-            ? CompensateUncertain(process, instance, step, instance.Position, Trigger(instance), changes)
-            : StartCompensation(process, instance, Trigger(instance), changes));
+        changes.Save(instance.KeptReply is { } kept
+            ? CompensateKnown(process, instance with { KeptReply = null }, kept, Trigger(instance), changes)
+            : process.Nodes[instance.Position] is StepNode step
+                ? CompensateUncertain(process, instance, step, instance.Position, Trigger(instance), changes)
+                : StartCompensation(process, instance, Trigger(instance), changes));
         operation?.SetTag("wyrd.process.status", changes.Find(processName, key)?.Status.ToString());
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
     }

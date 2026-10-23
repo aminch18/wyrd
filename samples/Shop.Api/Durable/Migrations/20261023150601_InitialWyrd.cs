@@ -83,7 +83,8 @@ namespace Shop.Api.Durable.Migrations
                 {
                     message_id = table.Column<Guid>(type: "uuid", nullable: false),
                     reply = table.Column<string>(type: "text", nullable: false),
-                    recorded_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                    recorded_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    fence = table.Column<bool>(type: "boolean", nullable: false)
                 },
                 constraints: table =>
                 {

@@ -78,6 +78,9 @@ internal sealed class InboxRow
     public string Reply { get; set; } = "";
 
     public DateTimeOffset RecordedAt { get; set; }
+
+    /// <summary>A fence: it blocks its command forever, so retention never removes it.</summary>
+    public bool Fence { get; set; }
 }
 
 internal sealed class HandledRow
@@ -234,6 +237,7 @@ public static class WyrdModelBuilderExtensions
             e.Property(r => r.MessageId).HasColumnName("message_id").ValueGeneratedNever();
             Text(e.Property(r => r.Reply), "reply");
             e.Property(r => r.RecordedAt).HasColumnName("recorded_at");
+            e.Property(r => r.Fence).HasColumnName("fence");
             e.HasIndex(r => r.RecordedAt).HasDatabaseName("ix_inbox_recorded_at");
         });
 

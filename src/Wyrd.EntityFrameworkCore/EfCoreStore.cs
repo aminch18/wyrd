@@ -77,7 +77,7 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
 
         foreach (var (id, reply) in changes.Replies)
         {
-            db.Add(new InboxRow { MessageId = id, Reply = MessageTypes.SerializeReply(reply), RecordedAt = now });
+            db.Add(new InboxRow { MessageId = id, Reply = MessageTypes.SerializeReply(reply), RecordedAt = now, Fence = reply.Outcome == ReplyOutcome.Fenced });
         }
 
         foreach (var id in changes.Handled)

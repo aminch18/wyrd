@@ -413,7 +413,8 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         var removed = 0;
         if (_retention.Deduplication.Cutoff(now) is { } dedup)
         {
-            removed += await ForgetAsync<InboxRow, Guid>(r => r.RecordedAt <= dedup, r => r.MessageId, batchSize, cancellationToken).ConfigureAwait(false);
+            // A fence blocks its command forever (semantics 3.4): it never expires.
+            removed += await ForgetAsync<InboxRow, Guid>(r => r.RecordedAt <= dedup && !r.Fence, r => r.MessageId, batchSize, cancellationToken).ConfigureAwait(false);
             removed += await ForgetAsync<HandledRow, Guid>(r => r.HandledAt <= dedup, r => r.MessageId, batchSize, cancellationToken).ConfigureAwait(false);
         }
 
