@@ -99,8 +99,10 @@ simulate and version.
   stays scheduled for an instance that no longer waits. **Implemented** in memory and on the EF Core host.
 - **Slowness is not failure.** There are no technical timeouts on steps: durable messaging waits, a slow third party
   only makes processes wait, and latency is *observed* (age of pending steps, alerts), never turned into failures.
-  **Observability planned (v0.5).** A business deadline on a step is modelled as an explicit wait for its
-  confirmation with `.Within`.
+  On a durable host the outside call is made with no transaction open, under a lease: a call slower than its lease
+  is made again by another worker with the same idempotency key, and still never turned into a failure
+  ([integrations](integrations.md), decision 5). **Observability planned (v0.5).** A business deadline on a step is
+  modelled as an explicit wait for its confirmation with `.Within`.
 
 ### 3.6 When Wyrd can't resolve something: suspend
 

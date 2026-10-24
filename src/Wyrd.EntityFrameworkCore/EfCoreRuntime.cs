@@ -434,7 +434,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            await RedeliverLaterAsync(message, ex, _time.GetUtcNow()).ConfigureAwait(false);
+            await RedeliverLaterAsync(message, ex, _time.GetUtcNow(), leasedUntil).ConfigureAwait(false);
             return;
         }
 
@@ -478,7 +478,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                     return;
                 }
 
-                await RedeliverLaterAsync(message, ex, now).ConfigureAwait(false);
+                await RedeliverLaterAsync(message, ex, now, leasedUntil).ConfigureAwait(false);
                 return;
             }
         }
@@ -501,7 +501,12 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         }
     }
 
-    private async Task RedeliverLaterAsync(QueueRow message, Exception error, DateTimeOffset now)
+    /// <summary>
+    /// Records a failed delivery. For a leased message (<paramref name="leasedUntil"/>), only while the lease is still
+    /// this worker's: once it ran out, another worker may hold the row, and its failure or outcome is that worker's to
+    /// record.
+    /// </summary>
+    private async Task RedeliverLaterAsync(QueueRow message, Exception error, DateTimeOffset now, DateTimeOffset? leasedUntil = null)
     {
         // A concurrency conflict is normal between workers: try again right away, without counting it as a failure.
         if (IsConflict(error))
@@ -516,6 +521,10 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         await using var db = await _contexts.CreateDbContextAsync(CancellationToken.None).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None).ConfigureAwait(false);
         var unchanged = db.Set<QueueRow>().Where(r => r.Id == message.Id && r.Attempts == message.Attempts);
+        if (leasedUntil is { } lease)
+        {
+            unchanged = unchanged.Where(r => r.AvailableAt == lease);
+        }
 
         // One retry layer: a process command that can't be handled goes back to its process as a failure, and the
         // step's retry policy decides. The host never retries it on its own (semantics 3.3).
