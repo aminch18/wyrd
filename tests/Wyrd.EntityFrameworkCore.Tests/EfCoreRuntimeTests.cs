@@ -178,6 +178,25 @@ public abstract class EfCoreRuntimeTests(Database database)
     }
 
     [Fact]
+    public async Task workers_projecting_different_streams_into_one_view_lose_no_update()
+    {
+        const int items = 40;
+#pragma warning disable IL2026, IL3050 // reflection JSON: the view is not in the shop's JSON context
+        var shop = ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(await database.NewAsync(), Database.Options))
+            .AddProjection(new AllStocks());
+#pragma warning restore IL2026, IL3050
+        for (var i = 1; i <= items; i++)
+        {
+            await shop.SendAsync(new Restock($"SKU-{i:00}", 1)); // one stream each, one view for all
+        }
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+        await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Task.Run(() => DrainAsync(shop, cancellationToken: timeout.Token))));
+
+        Assert.Equal(new AllStock(items), await shop.ViewAsync<AllStock>("all"));
+    }
+
+    [Fact]
     public async Task a_step_whose_command_nobody_can_handle_suspends_its_instance_without_blocking_the_queue()
     {
         // ShipOrder has no owner here, so the step's command can never be handled: it reaches the process as a

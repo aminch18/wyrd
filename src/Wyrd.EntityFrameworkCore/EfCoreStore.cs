@@ -40,7 +40,7 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
     public async ValueTask<StoredView?> LoadViewAsync(string viewType, string key, CancellationToken cancellationToken) =>
         await db.Set<ViewRow>().AsNoTracking()
             .Where(r => r.ViewType == viewType && r.Key == key)
-            .Select(r => new StoredView(viewType, key, r.Type, r.Payload))
+            .Select(r => new StoredView(viewType, key, r.Type, r.Payload, r.Version))
             .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
 
     public async ValueTask<long> LoadProjectedAsync(string stateType, string key, CancellationToken cancellationToken) =>
@@ -227,19 +227,27 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
 
     private async ValueTask SaveViewAsync(StoredView view, CancellationToken cancellationToken)
     {
-        var rows = db.Set<ViewRow>().Where(r => r.ViewType == view.ViewType && r.Key == view.Key);
-        if (view.Payload is null)
+        // Versioned like states: two workers projecting different streams into one view must not overwrite each other.
+        // A new view is inserted, and a concurrent insert of the same key fails on SaveChanges.
+        if (view.Version == 0)
         {
-            await rows.ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+            if (view.Payload is not null)
+            {
+                db.Add(new ViewRow { ViewType = view.ViewType, Key = view.Key, Type = view.Type!, Payload = view.Payload, Created = now, Version = 1 });
+            }
+
             return;
         }
 
-        var updated = await rows
-            .ExecuteUpdateAsync(s => s.SetProperty(r => r.Type, view.Type!).SetProperty(r => r.Payload, view.Payload), cancellationToken)
-            .ConfigureAwait(false);
-        if (updated == 0)
+        var read = db.Set<ViewRow>().Where(r => r.ViewType == view.ViewType && r.Key == view.Key && r.Version == view.Version);
+        var rows = view.Payload is null
+            ? await read.ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false)
+            : await read.ExecuteUpdateAsync(
+                s => s.SetProperty(r => r.Type, view.Type!).SetProperty(r => r.Payload, view.Payload).SetProperty(r => r.Version, view.Version + 1),
+                cancellationToken).ConfigureAwait(false);
+        if (rows != 1)
         {
-            db.Add(new ViewRow { ViewType = view.ViewType, Key = view.Key, Type = view.Type!, Payload = view.Payload, Created = now });
+            throw new ConcurrencyConflictException($"Concurrency conflict on read model {view.ViewType} '{view.Key}'.");
         }
     }
 }
