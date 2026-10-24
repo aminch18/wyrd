@@ -8,7 +8,7 @@
     "typecheck": "tsc -b",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "build": "npm run check:reference && npm test && npm run typecheck && vite build",
+    "build": "npm run check:reference && npm test && npm run typecheck && vite build && vite build --ssr src/entry-static.tsx --outDir .static && node scripts/prerender.mjs && node --test scripts/seo-output.check.mjs",
     "preview": "vite preview",
     "check:reference": "node scripts/check-reference.mjs",
     "test": "node --experimental-strip-types --test scripts/*.test.mjs"

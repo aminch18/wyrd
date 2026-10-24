@@ -1,5 +1,5 @@
 import { ArrowRight } from 'lucide-react'
-import { navigate } from '../app/navigation'
+import { routePath } from '../app/navigation'
 import styles from '../styles/site.module.css'
 
 export function PhilosophySection() {
@@ -45,20 +45,18 @@ export function PhilosophySection() {
                         it to the rest of the business.
                     </p>
                     <div className={styles['philosophy-links']}>
-                        <button
+                        <a
                             className={styles['text-link']}
-                            type="button"
-                            onClick={() => navigate('docs', 'overview')}
+                            href={routePath('docs', 'overview')}
                         >
                             Read the philosophy <ArrowRight size={16} />
-                        </button>
-                        <button
+                        </a>
+                        <a
                             className={styles['text-link']}
-                            type="button"
-                            onClick={() => navigate('docs', 'from-ddd')}
+                            href={routePath('docs', 'from-ddd')}
                         >
                             From classic DDD to Wyrd <ArrowRight size={16} />
-                        </button>
+                        </a>
                     </div>
                 </div>
             </div>

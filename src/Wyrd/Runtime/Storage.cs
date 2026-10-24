@@ -75,7 +75,18 @@ internal sealed class Changes
 
     public List<StoredMessage> Events { get; } = [];
 
-    public List<PublishedMessage> Published { get; } = [];
+    // Created on first write: most messages publish nothing, cancel no timer and seed nothing, and a Changes is made for
+    // every message. Stores read them through the *Written properties, which allocate nothing when they are empty.
+    private List<PublishedMessage>? _published;
+    private List<Guid>? _cancel;
+    private Dictionary<StoredSeeded, long>? _seeded;
+    private List<StoredState>? _unchanged;
+    private List<string>? _caughtUp;
+    private static readonly Dictionary<StoredSeeded, long> NoSeeds = [];
+
+    public List<PublishedMessage> Published => _published ??= [];
+
+    public IReadOnlyList<PublishedMessage> PublishedWritten => _published ?? (IReadOnlyList<PublishedMessage>)[];
 
     public Dictionary<Guid, ReplyMessage> Replies { get; } = [];
 
@@ -84,7 +95,9 @@ internal sealed class Changes
     public List<Scheduled> Schedule { get; } = [];
 
     /// <summary>Scheduled messages (by id) that are no longer wanted: a wait's timer once the wait is over.</summary>
-    public List<Guid> Cancel { get; } = [];
+    public List<Guid> Cancel => _cancel ??= [];
+
+    public IReadOnlyList<Guid> CancelWritten => _cancel ?? (IReadOnlyList<Guid>)[];
 
     public List<StoredParked> Park { get; } = [];
 
@@ -106,13 +119,19 @@ internal sealed class Changes
     /// its seed was built from: 0 for a stream that began after the projection was added. Later events reach the
     /// projection; earlier ones are in the seed.
     /// </summary>
-    public Dictionary<StoredSeeded, long> Seeded { get; } = [];
+    public Dictionary<StoredSeeded, long> Seeded => _seeded ??= [];
+
+    public IReadOnlyDictionary<StoredSeeded, long> SeededWritten => _seeded ?? NoSeeds;
 
     /// <summary>States a seed was built from: checked on commit, so an event that changed the state meanwhile wins.</summary>
-    public List<StoredState> Unchanged { get; } = [];
+    public List<StoredState> Unchanged => _unchanged ??= [];
+
+    public IReadOnlyList<StoredState> UnchangedWritten => _unchanged ?? (IReadOnlyList<StoredState>)[];
 
     /// <summary>Views whose projection has caught up. Their seed marks stay, refusing a late second seed of a stream.</summary>
-    public List<string> CaughtUp { get; } = [];
+    public List<string> CaughtUp => _caughtUp ??= [];
+
+    public IReadOnlyList<string> CaughtUpWritten => _caughtUp ?? (IReadOnlyList<string>)[];
 
     /// <summary>Events handled by this transaction: a redelivery of the same message id is skipped.</summary>
     public List<Guid> Handled { get; } = [];

@@ -91,6 +91,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     /// <summary>Virtual time elapsed since the runtime started.</summary>
     public TimeSpan Now => Read(() => _now - Epoch);
 
+    /// <summary>A snapshot of the diagnostic journal in handling order. Use instance history for replay.</summary>
     public IReadOnlyList<JournalEntry> Journal => Read(() => (IReadOnlyList<JournalEntry>)[.. _journal]);
 
     /// <summary>Every accepted domain event, in order (as stored, after a JSON round trip).</summary>
@@ -156,6 +157,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     /// <summary>Replaces a process with a new definition of the same name, keeping its instances: a redeploy.</summary>
     internal void Redeploy(Process process) => _application.Redeploy(process);
 
+    /// <summary>Registers a process and checks that its steps can read the events they require before any message is handled.</summary>
     public InMemoryRuntime AddProcess(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
@@ -207,13 +209,14 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     /// Delivers a fact from another context (a webhook, a message from another service...).
     /// Only integration events can come from outside: domain events are produced by slices alone.
     /// </summary>
-    public async Task PublishAsync(IIntegrationEvent integrationEvent, CancellationToken cancellationToken = default)
+    [SuppressMessage("Naming", "CA1725", Justification = "0.4.0 shipped this parameter as 'event'; renaming it breaks callers that name it.")]
+    public async Task PublishAsync(IIntegrationEvent @event, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(integrationEvent);
+        ArgumentNullException.ThrowIfNull(@event);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var (type, payload) = _types.Serialize(integrationEvent, integrationEvent.GetType());
+            var (type, payload) = _types.Serialize(@event, @event.GetType());
             _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload, Trace: Tracing.Capture()));
             await DrainAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -310,6 +313,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         Write(() => _faults[typeof(TCommand)] = _faults.GetValueOrDefault(typeof(TCommand)) + times);
     }
 
+    /// <summary>Returns the instance's current status, or null when this process has no instance for the key.</summary>
     public ProcessStatus? StatusOf(Process process, object key)
     {
         ArgumentNullException.ThrowIfNull(process);
@@ -317,6 +321,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         return Read(() => _store.Instance(process.Name, Keys.Of(key))?.Status);
     }
 
+    /// <summary>Loads a state snapshot after a JSON round trip, or its initial value when the key has not been stored.</summary>
     public TState StateOf<TState>(object key)
         where TState : IState<TState>
     {
@@ -457,6 +462,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         }
     }
 
+    /// <summary>Disposes the host's synchronization resources when the runtime is no longer needed.</summary>
     public void Dispose() => _gate.Dispose();
 
     /// <summary>

@@ -1,0 +1,140 @@
+#nullable enable
+Wyrd.Testing.Invariant
+Wyrd.Testing.Invariant.<Clone>$() -> Wyrd.Testing.Invariant!
+Wyrd.Testing.Invariant.Check.get -> System.Func<Wyrd.Runtime.InMemoryRuntime!, string?>!
+Wyrd.Testing.Invariant.Check.init -> void
+Wyrd.Testing.Invariant.Deconstruct(out string! Name, out System.Func<Wyrd.Runtime.InMemoryRuntime!, string?>! Check) -> void
+Wyrd.Testing.Invariant.Equals(Wyrd.Testing.Invariant? other) -> bool
+Wyrd.Testing.Invariant.Invariant(string! Name, System.Func<Wyrd.Runtime.InMemoryRuntime!, string?>! Check) -> void
+Wyrd.Testing.Invariant.Name.get -> string!
+Wyrd.Testing.Invariant.Name.init -> void
+Wyrd.Testing.ProjectionScenario<TView>
+Wyrd.Testing.ProjectionScenario<TView>.Given(params Wyrd.IEvent![]! events) -> Wyrd.Testing.ProjectionScenario<TView!>!
+Wyrd.Testing.ProjectionScenario<TView>.Then(object! key, TView? expected) -> Wyrd.Testing.ProjectionScenario<TView!>!
+Wyrd.Testing.ReplayDivergence
+Wyrd.Testing.ReplayDivergence.<Clone>$() -> Wyrd.Testing.ReplayDivergence!
+Wyrd.Testing.ReplayDivergence.Deconstruct(out int Index, out Wyrd.Runtime.HistoryEntry? Recorded, out Wyrd.Runtime.HistoryEntry? Replayed) -> void
+Wyrd.Testing.ReplayDivergence.Equals(Wyrd.Testing.ReplayDivergence? other) -> bool
+Wyrd.Testing.ReplayDivergence.Index.get -> int
+Wyrd.Testing.ReplayDivergence.Index.init -> void
+Wyrd.Testing.ReplayDivergence.Recorded.get -> Wyrd.Runtime.HistoryEntry?
+Wyrd.Testing.ReplayDivergence.Recorded.init -> void
+Wyrd.Testing.ReplayDivergence.ReplayDivergence(int Index, Wyrd.Runtime.HistoryEntry? Recorded, Wyrd.Runtime.HistoryEntry? Replayed) -> void
+Wyrd.Testing.ReplayDivergence.Replayed.get -> Wyrd.Runtime.HistoryEntry?
+Wyrd.Testing.ReplayDivergence.Replayed.init -> void
+Wyrd.Testing.ReplayReport
+Wyrd.Testing.ReplayReport.Diverged.get -> bool
+Wyrd.Testing.ReplayReport.Divergence.get -> Wyrd.Testing.ReplayDivergence?
+Wyrd.Testing.ReplayReport.Error.get -> System.Exception?
+Wyrd.Testing.ReplayReport.Error.init -> void
+Wyrd.Testing.ReplayReport.Journal.get -> System.Collections.Generic.IReadOnlyList<Wyrd.Runtime.JournalEntry!>!
+Wyrd.Testing.ReplayReport.Reason.get -> string?
+Wyrd.Testing.ReplayReport.Reason.init -> void
+Wyrd.Testing.ReplayReport.Recorded.get -> Wyrd.Runtime.InstanceHistory!
+Wyrd.Testing.ReplayReport.Replayed.get -> System.Collections.Generic.IReadOnlyList<Wyrd.Runtime.HistoryEntry!>!
+Wyrd.Testing.ReplayReport.ThrowIfDiverged() -> void
+Wyrd.Testing.Scenario
+Wyrd.Testing.ShrunkFuture
+Wyrd.Testing.ShrunkFuture.<Clone>$() -> Wyrd.Testing.ShrunkFuture!
+Wyrd.Testing.ShrunkFuture.Deconstruct(out string! Detail, out System.Collections.Generic.IReadOnlyList<string!>! Perturbations, out System.Collections.Generic.IReadOnlyList<Wyrd.Runtime.JournalEntry!>! Journal, out int Replays) -> void
+Wyrd.Testing.ShrunkFuture.Detail.get -> string!
+Wyrd.Testing.ShrunkFuture.Detail.init -> void
+Wyrd.Testing.ShrunkFuture.Equals(Wyrd.Testing.ShrunkFuture? other) -> bool
+Wyrd.Testing.ShrunkFuture.Journal.get -> System.Collections.Generic.IReadOnlyList<Wyrd.Runtime.JournalEntry!>!
+Wyrd.Testing.ShrunkFuture.Journal.init -> void
+Wyrd.Testing.ShrunkFuture.Perturbations.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Wyrd.Testing.ShrunkFuture.Perturbations.init -> void
+Wyrd.Testing.ShrunkFuture.Replays.get -> int
+Wyrd.Testing.ShrunkFuture.Replays.init -> void
+Wyrd.Testing.ShrunkFuture.ShrunkFuture(string! Detail, System.Collections.Generic.IReadOnlyList<string!>! Perturbations, System.Collections.Generic.IReadOnlyList<Wyrd.Runtime.JournalEntry!>! Journal, int Replays) -> void
+Wyrd.Testing.SimulationOptions
+Wyrd.Testing.SimulationOptions.<Clone>$() -> Wyrd.Testing.SimulationOptions!
+Wyrd.Testing.SimulationOptions.DuplicateRate.get -> double
+Wyrd.Testing.SimulationOptions.DuplicateRate.init -> void
+Wyrd.Testing.SimulationOptions.Equals(Wyrd.Testing.SimulationOptions? other) -> bool
+Wyrd.Testing.SimulationOptions.FaultRate.get -> double
+Wyrd.Testing.SimulationOptions.FaultRate.init -> void
+Wyrd.Testing.SimulationOptions.Only(int seed) -> Wyrd.Testing.SimulationOptions!
+Wyrd.Testing.SimulationOptions.ReorderRate.get -> double
+Wyrd.Testing.SimulationOptions.ReorderRate.init -> void
+Wyrd.Testing.SimulationOptions.Runs.get -> int
+Wyrd.Testing.SimulationOptions.Runs.init -> void
+Wyrd.Testing.SimulationOptions.Seed.get -> int
+Wyrd.Testing.SimulationOptions.Seed.init -> void
+Wyrd.Testing.SimulationOptions.SettleFor.get -> System.TimeSpan
+Wyrd.Testing.SimulationOptions.SettleFor.init -> void
+Wyrd.Testing.SimulationOptions.Shrink.get -> bool
+Wyrd.Testing.SimulationOptions.Shrink.init -> void
+Wyrd.Testing.SimulationOptions.ShrinkBudget.get -> int
+Wyrd.Testing.SimulationOptions.ShrinkBudget.init -> void
+Wyrd.Testing.SimulationOptions.SimulationOptions() -> void
+Wyrd.Testing.SimulationReport
+Wyrd.Testing.SimulationReport.Options.get -> Wyrd.Testing.SimulationOptions!
+Wyrd.Testing.SimulationReport.Passed.get -> bool
+Wyrd.Testing.SimulationReport.Runs.get -> int
+Wyrd.Testing.SimulationReport.SimulationReport(int runs, Wyrd.Testing.SimulationOptions! options, System.Collections.Generic.IReadOnlyList<Wyrd.Testing.Violation!>! violations) -> void
+Wyrd.Testing.SimulationReport.ThrowIfViolated() -> void
+Wyrd.Testing.SimulationReport.Violations.get -> System.Collections.Generic.IReadOnlyList<Wyrd.Testing.Violation!>!
+Wyrd.Testing.Skuld
+Wyrd.Testing.SliceOutcome<TCommand, TState, TEvent, TError>
+Wyrd.Testing.SliceOutcome<TCommand, TState, TEvent, TError>.Then(TEvent expected) -> Wyrd.Testing.SliceOutcome<TCommand, TState, TEvent, TError>!
+Wyrd.Testing.SliceOutcome<TCommand, TState, TEvent, TError>.ThenRejected(TError expected) -> Wyrd.Testing.SliceOutcome<TCommand, TState, TEvent, TError>!
+Wyrd.Testing.SliceOutcome<TCommand, TState, TEvent, TError>.ThenState(TState expected) -> Wyrd.Testing.SliceOutcome<TCommand, TState, TEvent, TError>!
+Wyrd.Testing.SliceScenario<TCommand, TState, TEvent, TError>
+Wyrd.Testing.SliceScenario<TCommand, TState, TEvent, TError>.Given(params Wyrd.IDomainEvent![]! history) -> Wyrd.Testing.SliceScenario<TCommand, TState, TEvent, TError>!
+Wyrd.Testing.SliceScenario<TCommand, TState, TEvent, TError>.GivenState(TState state) -> Wyrd.Testing.SliceScenario<TCommand, TState, TEvent, TError>!
+Wyrd.Testing.SliceScenario<TCommand, TState, TEvent, TError>.When(TCommand command) -> Wyrd.Testing.SliceOutcome<TCommand, TState, TEvent, TError>!
+Wyrd.Testing.Urd
+Wyrd.Testing.Violation
+Wyrd.Testing.Violation.<Clone>$() -> Wyrd.Testing.Violation!
+Wyrd.Testing.Violation.Deconstruct(out int Seed, out string! Invariant, out string! Detail, out System.Collections.Generic.IReadOnlyList<Wyrd.Runtime.JournalEntry!>! Journal) -> void
+Wyrd.Testing.Violation.Detail.get -> string!
+Wyrd.Testing.Violation.Detail.init -> void
+Wyrd.Testing.Violation.Equals(Wyrd.Testing.Violation? other) -> bool
+Wyrd.Testing.Violation.Invariant.get -> string!
+Wyrd.Testing.Violation.Invariant.init -> void
+Wyrd.Testing.Violation.Journal.get -> System.Collections.Generic.IReadOnlyList<Wyrd.Runtime.JournalEntry!>!
+Wyrd.Testing.Violation.Journal.init -> void
+Wyrd.Testing.Violation.Seed.get -> int
+Wyrd.Testing.Violation.Seed.init -> void
+Wyrd.Testing.Violation.Shrunk.get -> Wyrd.Testing.ShrunkFuture?
+Wyrd.Testing.Violation.Shrunk.init -> void
+Wyrd.Testing.Violation.Violation(int Seed, string! Invariant, string! Detail, System.Collections.Generic.IReadOnlyList<Wyrd.Runtime.JournalEntry!>! Journal) -> void
+Wyrd.Testing.WyrdAssertionException
+Wyrd.Testing.WyrdAssertionException.WyrdAssertionException() -> void
+Wyrd.Testing.WyrdAssertionException.WyrdAssertionException(string! message) -> void
+Wyrd.Testing.WyrdAssertionException.WyrdAssertionException(string! message, System.Exception! innerException) -> void
+override Wyrd.Testing.Invariant.Equals(object? obj) -> bool
+override Wyrd.Testing.Invariant.GetHashCode() -> int
+override Wyrd.Testing.Invariant.ToString() -> string!
+override Wyrd.Testing.ReplayDivergence.Equals(object? obj) -> bool
+override Wyrd.Testing.ReplayDivergence.GetHashCode() -> int
+override Wyrd.Testing.ReplayDivergence.ToString() -> string!
+override Wyrd.Testing.ReplayReport.ToString() -> string!
+override Wyrd.Testing.ShrunkFuture.Equals(object? obj) -> bool
+override Wyrd.Testing.ShrunkFuture.GetHashCode() -> int
+override Wyrd.Testing.ShrunkFuture.ToString() -> string!
+override Wyrd.Testing.SimulationOptions.Equals(object? obj) -> bool
+override Wyrd.Testing.SimulationOptions.GetHashCode() -> int
+override Wyrd.Testing.SimulationOptions.ToString() -> string!
+override Wyrd.Testing.SimulationReport.ToString() -> string!
+override Wyrd.Testing.Violation.Equals(object? obj) -> bool
+override Wyrd.Testing.Violation.GetHashCode() -> int
+override Wyrd.Testing.Violation.ToString() -> string!
+static Wyrd.Testing.Invariant.Defaults.get -> System.Collections.Generic.IReadOnlyList<Wyrd.Testing.Invariant!>!
+static Wyrd.Testing.Invariant.NothingNeedsAttention.get -> Wyrd.Testing.Invariant!
+static Wyrd.Testing.Invariant.ProcessesSettle.get -> Wyrd.Testing.Invariant!
+static Wyrd.Testing.Invariant.operator !=(Wyrd.Testing.Invariant? left, Wyrd.Testing.Invariant? right) -> bool
+static Wyrd.Testing.Invariant.operator ==(Wyrd.Testing.Invariant? left, Wyrd.Testing.Invariant? right) -> bool
+static Wyrd.Testing.ReplayDivergence.operator !=(Wyrd.Testing.ReplayDivergence? left, Wyrd.Testing.ReplayDivergence? right) -> bool
+static Wyrd.Testing.ReplayDivergence.operator ==(Wyrd.Testing.ReplayDivergence? left, Wyrd.Testing.ReplayDivergence? right) -> bool
+static Wyrd.Testing.Scenario.For<TCommand, TState, TEvent, TError>(Wyrd.Slice<TCommand, TState, TEvent, TError>! slice) -> Wyrd.Testing.SliceScenario<TCommand, TState, TEvent, TError>!
+static Wyrd.Testing.Scenario.For<TView>(Wyrd.Projection<TView!>! projection) -> Wyrd.Testing.ProjectionScenario<TView!>!
+static Wyrd.Testing.ShrunkFuture.operator !=(Wyrd.Testing.ShrunkFuture? left, Wyrd.Testing.ShrunkFuture? right) -> bool
+static Wyrd.Testing.ShrunkFuture.operator ==(Wyrd.Testing.ShrunkFuture? left, Wyrd.Testing.ShrunkFuture? right) -> bool
+static Wyrd.Testing.SimulationOptions.operator !=(Wyrd.Testing.SimulationOptions? left, Wyrd.Testing.SimulationOptions? right) -> bool
+static Wyrd.Testing.SimulationOptions.operator ==(Wyrd.Testing.SimulationOptions? left, Wyrd.Testing.SimulationOptions? right) -> bool
+static Wyrd.Testing.Skuld.SimulateAsync(System.Func<Wyrd.Runtime.InMemoryRuntime!>! system, System.Func<Wyrd.Runtime.InMemoryRuntime!, System.Threading.Tasks.Task!>! scenario, System.Collections.Generic.IReadOnlyList<Wyrd.Testing.Invariant!>! invariants, Wyrd.Testing.SimulationOptions? options = null) -> System.Threading.Tasks.Task<Wyrd.Testing.SimulationReport!>!
+static Wyrd.Testing.Urd.ReplayAsync(System.Func<Wyrd.Runtime.InMemoryRuntime!>! system, Wyrd.Processes.Process! process, Wyrd.Runtime.InstanceHistory! history) -> System.Threading.Tasks.Task<Wyrd.Testing.ReplayReport!>!
+static Wyrd.Testing.Violation.operator !=(Wyrd.Testing.Violation? left, Wyrd.Testing.Violation? right) -> bool
+static Wyrd.Testing.Violation.operator ==(Wyrd.Testing.Violation? left, Wyrd.Testing.Violation? right) -> bool

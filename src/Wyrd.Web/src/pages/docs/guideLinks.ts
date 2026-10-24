@@ -1,9 +1,10 @@
+import { routePath } from '../../app/navigation.ts'
 import { GITHUB_URL } from '../../app/links.ts'
 
 const GUIDE_ROUTES: Record<string, string> = {
-    'philosophy.md': '#/docs/overview',
-    'from-ddd-to-wyrd.md': '#/docs/from-ddd',
-    'read-models.md': '#/docs/read-models',
+    'philosophy.md': routePath('docs', 'overview'),
+    'from-ddd-to-wyrd.md': routePath('docs', 'from-ddd'),
+    'read-models.md': routePath('docs', 'read-models'),
 }
 
 /** Resolve links against the Markdown file, rather than the deployed site URL. */

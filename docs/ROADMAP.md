@@ -91,16 +91,16 @@ explicit failures, honest tests. **0.5.0 ships only when every rule is enforced,
 then 1.0) only with the whole bar green.** Baseline and rules: [QUALITY.md](QUALITY.md).
 
 - [ ] Benchmarks, with the scaling and allocation gates in CI (Q1)
-- [ ] The Shop's stock forgets shipped orders; the guides teach bounded state (Q2.1, Q6.1)
+- [x] The Shop's stock forgets shipped orders; the guides teach bounded state (Q2.1)
 - [x] A wait's timer is cancelled when the wait ends (Q2.2)
 - [x] Retention for everything a host keeps, in semantics and every host (Q2.3; includes v0.5's instance history
       retention). **Explicit, like every other decision in Wyrd**: a durable host doesn't start without a retention for
       deduplication (inbox, handled), finished instances and their histories, relayed messages and domain events;
       keeping something forever is written down too (`Keep.Forever("why")`). Suspended instances never
       expire. Only the in-memory host has defaults (nothing outlives its process; the journal is bounded)
-- [ ] Public API tracked and documented; package validation against the last release (Q3)
+- [x] Public API tracked and documented; package validation against the last release (Q3)
 - [x] Typed exceptions; no sync-over-async in hosts (Q4.1, Q4.2)
-- [ ] Coverage reported in CI, never lower than the previous release (Q5.2)
+- [x] Coverage reported in CI, never lower than the previous release (Q5.2)
 
 ## v0.5 — Verdandi (run the present)
 

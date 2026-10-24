@@ -372,7 +372,7 @@ internal sealed class Engine(
 
     private async ValueTask ProjectAsync(IEvent @event, StreamRef? stream, Changes changes, CancellationToken cancellationToken)
     {
-        if (stream is { Version: 1 })
+        if (stream is { Version: 1 } && registry.AnyCatchingUp)
         {
             // A stream that begins while a projection catches up is followed from here, whether or not this first event
             // is one the projection handles: otherwise a later event of it would wait for a seed that never comes.
@@ -389,7 +389,7 @@ internal sealed class Engine(
                 if (Accept(@event, handled) is { } projected && await FollowsAsync(projection, stream, changes, cancellationToken).ConfigureAwait(false))
                 {
                     var key = Keys.Of(projection.KeyOf(projected));
-                    await SaveViewAsync(projection, key, current => projection.Apply(current, projected), changes, cancellationToken).ConfigureAwait(false);
+                    await SaveViewAsync(projection, key, static (p, current, e) => p.Apply(current, e), projected, changes, cancellationToken).ConfigureAwait(false);
                 }
             }
         }
@@ -432,8 +432,17 @@ internal sealed class Engine(
         return true;
     }
 
-    private async ValueTask SaveViewAsync(
-        IProjectionHandler projection, string key, Func<object?, object?> update, Changes changes, CancellationToken cancellationToken)
+    /// <summary>
+    /// Updates one view with <paramref name="update"/>, given <paramref name="argument"/>: a static function and its
+    /// argument, so updating a view allocates no closure.
+    /// </summary>
+    private async ValueTask SaveViewAsync<TArgument>(
+        IProjectionHandler projection,
+        string key,
+        Func<IProjectionHandler, object?, TArgument, object?> update,
+        TArgument argument,
+        Changes changes,
+        CancellationToken cancellationToken)
     {
         var viewType = projection.View.FullName!;
         var stored = changes.Views.TryGetValue((viewType, key), out var pending)
@@ -441,7 +450,7 @@ internal sealed class Engine(
             : await store.LoadViewAsync(viewType, key, cancellationToken).ConfigureAwait(false);
         var current = stored?.Payload is null ? null : types.Deserialize(stored.Type!, stored.Payload);
 
-        var next = update(current);
+        var next = update(projection, current, argument);
         var read = stored?.Version ?? 0;
         if (next is null)
         {
@@ -465,7 +474,8 @@ internal sealed class Engine(
         var changes = new Changes();
         var value = types.Deserialize(state.Type, state.Payload);
         var key = Keys.Of(projection.SeedKeyOf(state.Key, value));
-        await SaveViewAsync(projection, key, current => projection.Seed(current, state.Key, value), changes, cancellationToken).ConfigureAwait(false);
+        await SaveViewAsync(projection, key, static (p, current, s) => p.Seed(current, s.Key, s.Value), (state.Key, Value: value), changes, cancellationToken)
+            .ConfigureAwait(false);
         changes.Seeded[new StoredSeeded(projection.View.FullName!, state.StateType, state.Key)] = state.Version;
         changes.Unchanged.Add(state);
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
@@ -542,9 +552,10 @@ internal sealed class Engine(
             log(process.Name, key, $"<- {awaited.GetType().Name}");
             var trigger = Trigger(instance);
             var fact = Parked(process, key, step, wait, awaited).AsFact();
-            instance = EndWait(Record(instance, HistoryKind.Received, step: step, message: fact), changes) with
+            CancelTimer(instance, changes);
+            instance = Record(instance, HistoryKind.Received, step: step, message: fact) with
             {
-                Position = step + 1, Status = ProcessStatus.Running, Facts = instance.Facts.Add(fact),
+                Position = step + 1, Status = ProcessStatus.Running, Facts = instance.Facts.Add(fact), Deadline = null, Timer = null,
             };
             changes.Save(await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false));
         }
@@ -571,12 +582,17 @@ internal sealed class Engine(
     /// </summary>
     private static StoredInstance EndWait(StoredInstance instance, Changes changes)
     {
+        CancelTimer(instance, changes);
+        return instance with { Deadline = null, Timer = null };
+    }
+
+    /// <summary>Cancels the wait's timer with the rest of the changes; the caller clears it on the instance.</summary>
+    private static void CancelTimer(StoredInstance instance, Changes changes)
+    {
         if (instance.Timer is { } timer)
         {
             changes.Cancel.Add(timer);
         }
-
-        return instance with { Deadline = null, Timer = null };
     }
 
     /// <summary>
@@ -728,7 +744,7 @@ internal sealed class Engine(
         }
 
         // Handled now: a reply kept earlier for this command is no longer the operator's to deliver.
-        instance = Record(instance with { KeptReply = null }, HistoryKind.Replied, target.Step, target.Compensating, target.Attempt,
+        instance = Record(instance.KeptReply is null ? instance : instance with { KeptReply = null }, HistoryKind.Replied, target.Step, target.Compensating, target.Attempt,
             reply.Type is null ? null : new StoredMessage(reply.Type, reply.Payload!), outcome: reply.Outcome);
 
         if (target.Step == process.Nodes.Length)

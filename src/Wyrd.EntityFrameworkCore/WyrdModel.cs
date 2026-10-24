@@ -373,5 +373,6 @@ public static class WyrdModelBuilderExtensions
 /// <summary>A ready context holding only Wyrd's tables, for applications without a <see cref="DbContext"/> of their own.</summary>
 public class WyrdDbContext(DbContextOptions<WyrdDbContext> options) : DbContext(options)
 {
+    /// <summary>Wyrd's tables, in the <c>wyrd</c> schema.</summary>
     protected override void OnModelCreating(ModelBuilder modelBuilder) => modelBuilder.AddWyrd();
 }

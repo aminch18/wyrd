@@ -8,11 +8,13 @@ namespace Wyrd;
 /// </summary>
 public class WyrdException : InvalidOperationException
 {
+    /// <summary>Creates the exception with a message that says what failed and what to do about it.</summary>
     public WyrdException(string message)
         : base(message)
     {
     }
 
+    /// <summary>Creates the exception with its message and the failure that caused it.</summary>
     public WyrdException(string message, Exception innerException)
         : base(message, innerException)
     {
@@ -25,11 +27,13 @@ public class WyrdException : InvalidOperationException
 /// </summary>
 public sealed class ConcurrencyConflictException : WyrdException
 {
+    /// <summary>Creates the exception with a message naming what was changed first.</summary>
     public ConcurrencyConflictException(string message)
         : base(message)
     {
     }
 
+    /// <summary>Creates the exception with its message and the database failure that reported the conflict.</summary>
     public ConcurrencyConflictException(string message, Exception innerException)
         : base(message, innerException)
     {
@@ -51,6 +55,7 @@ public sealed class UnknownMessageTypeException(string messageType)
 public sealed class MissingJsonMetadataException(Type type, Exception innerException)
     : WyrdException($"{type.Name} has no JSON metadata. Add [JsonSerializable(typeof({type.Name}))] to your [WyrdJsonContext].", innerException)
 {
+    /// <summary>The type that has no JSON metadata.</summary>
     public Type Type { get; } = type;
 }
 
@@ -61,6 +66,7 @@ public sealed class MissingUpcasterException(string message) : WyrdException(mes
 public sealed class NotAnIntegrationEventException(string messageType)
     : WyrdException($"{messageType} is not an integration event: only integration events cross service boundaries.")
 {
+    /// <summary>The message type that was offered.</summary>
     public string MessageType { get; } = messageType;
 }
 
@@ -70,7 +76,9 @@ public sealed class NotAnIntegrationEventException(string messageType)
 /// </summary>
 public sealed class InstanceStateException(string process, string key, string message) : WyrdException(message)
 {
+    /// <summary>The name of the process the operator asked about.</summary>
     public string Process { get; } = process;
 
+    /// <summary>The key of the instance the operator asked about.</summary>
     public string Key { get; } = key;
 }

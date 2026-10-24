@@ -1,6 +1,6 @@
 import styles from '../../styles/site.module.css'
 import { GITHUB_URL, NUGET_URL } from '../../app/links'
-import { navigate } from '../../app/navigation'
+import { routePath } from '../../app/navigation'
 import { Brand } from './Brand'
 
 export function Footer() {
@@ -16,9 +16,7 @@ export function Footer() {
                     <p>Deterministic event-driven processes for .NET.</p>
                 </div>
                 <div className={styles['footer-links']}>
-                    <button type="button" onClick={() => navigate('docs')}>
-                        Documentation
-                    </button>
+                    <a href={routePath('docs')}>Documentation</a>
                     <a href={GITHUB_URL} target="_blank" rel="noreferrer">
                         GitHub
                     </a>

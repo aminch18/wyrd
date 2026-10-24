@@ -43,6 +43,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// Source-generated JSON from your <c>[WyrdJsonContext]</c>. <paramref name="retention"/> says how long each kind of
     /// data is kept: there is no default, it is your decision.
     /// </summary>
+    [SuppressMessage("ApiDesign", "RS0026", Justification = "The overloads ship together in the package's first release and never bind ambiguously.")]
     public EfCoreRuntime(
         IDbContextFactory<TContext> contexts,
         JsonSerializerContext json,
@@ -57,6 +58,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// <summary>Reflection-based JSON, for development. Use a <c>[WyrdJsonContext]</c> in production.</summary>
     [RequiresUnreferencedCode("Reflection-based System.Text.Json. Pass a [WyrdJsonContext] for trimming.")]
     [RequiresDynamicCode("Reflection-based System.Text.Json. Pass a [WyrdJsonContext] for trimming.")]
+    [SuppressMessage("ApiDesign", "RS0026", Justification = "The overloads ship together in the package's first release and never bind ambiguously.")]
     public EfCoreRuntime(
         IDbContextFactory<TContext> contexts,
         Retention retention,
@@ -172,6 +174,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// Executes a command coming from outside (an API call, a UI action...) in its own transaction and returns the
     /// decision. What it causes — events, process steps — is queued and handled by the workers.
     /// </summary>
+    [SuppressMessage("ApiDesign", "RS0026", Justification = "The overloads ship together in the package's first release and never bind ambiguously.")]
     public async Task<Decision> SendAsync(ICommand command, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
@@ -212,6 +215,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// <see cref="ConcurrencyConflictException"/> for you to retry, since the transaction is yours. An integration command
     /// sent this way calls the outside world inside your transaction.
     /// </summary>
+    [SuppressMessage("ApiDesign", "RS0026", Justification = "The overloads ship together in the package's first release and never bind ambiguously.")]
     public async Task<Decision> SendAsync(ICommand command, TContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);

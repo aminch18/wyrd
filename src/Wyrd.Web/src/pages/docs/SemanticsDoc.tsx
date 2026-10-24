@@ -695,7 +695,10 @@ export function SemanticsDoc() {
             <Callout title="Why each rule exists">
                 The reasoning behind the main choices, with what each one gives
                 you and what it costs, is on the{' '}
-                <a href="#/docs/decisions">Design decisions</a> page.
+                <a href={`${import.meta.env.BASE_URL}docs/decisions/`}>
+                    Design decisions
+                </a>{' '}
+                page.
             </Callout>
         </DocArticle>
     )

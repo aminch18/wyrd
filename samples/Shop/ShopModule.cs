@@ -25,6 +25,7 @@ public static class ShopModule
         .AddSlice(new RestockSlice())
         .AddSlice(new ReserveStockSlice())
         .AddSlice(new ReleaseStockSlice())
+        .AddSlice(new ConsumeStockSlice())
         .AddSlice(new ChargePaymentSlice())
         .AddSlice(new RefundPaymentSlice())
         .AddSlice(new ShipOrderSlice())
@@ -32,5 +33,6 @@ public static class ShopModule
         .AddPublication(new OrderShippedPublication())
         .AddProjection(new OrderSummaries())
         .AddProjection(new OrderDetails())
-        .AddProcess(Processes.OrderFulfillment);
+        .AddProcess(Processes.OrderFulfillment)
+        .AddProcess(Processes.StockConsumption);
 }

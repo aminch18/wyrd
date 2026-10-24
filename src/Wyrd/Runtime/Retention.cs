@@ -38,6 +38,7 @@ public sealed record Keep
     /// <summary>The oldest moment still kept at <paramref name="now"/>, or null when nothing expires.</summary>
     public DateTimeOffset? Cutoff(DateTimeOffset now) => Period is { } period ? now - period : null;
 
+    /// <summary>The decision in words: <c>for 7 days</c>, or <c>forever (why)</c>.</summary>
     public override string ToString() => Period is { } period ? $"for {Durations.Format(period)}" : $"forever ({Reason})";
 }
 

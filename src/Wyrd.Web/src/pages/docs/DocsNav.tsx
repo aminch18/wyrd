@@ -1,6 +1,6 @@
 import styles from '../../styles/site.module.css'
 import { ChevronRight } from 'lucide-react'
-import { navigate } from '../../app/navigation'
+import { navigate, routePath } from '../../app/navigation'
 import { DOC_SECTIONS } from '../../data/docs'
 
 export function DocsNav({ current }: { current: string }) {
@@ -36,22 +36,21 @@ export function DocsNav({ current }: { current: string }) {
                             {DOC_SECTIONS.filter(
                                 (item) => item.group === group,
                             ).map((item) => (
-                                <button
+                                <a
                                     className={
                                         current === item.id
                                             ? styles.current
                                             : ''
                                     }
-                                    type="button"
                                     key={item.id}
                                     aria-current={
                                         current === item.id ? 'page' : undefined
                                     }
-                                    onClick={() => navigate('docs', item.id)}
+                                    href={routePath('docs', item.id)}
                                 >
                                     <span>{item.title}</span>
                                     <ChevronRight size={14} />
-                                </button>
+                                </a>
                             ))}
                         </div>
                     ),

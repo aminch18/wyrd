@@ -5,7 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+
+- The Shop consumes shipped stock reservations through an independent inventory process, keeping per-SKU state bounded by outstanding reservations. Add business and hostile-future specifications and guidance on state that only grows.
+
 ### Breaking
+
+- `Shop.Shipping.ShipOrder` and `Shop.Shipping.OrderShipped` now require `Sku`. Regenerate persisted sample histories created with the previous message shapes before replaying them.
 
 - The tool executable is now `dotnet-wyrd`, so the documented `dotnet wyrd` command works after a global
   installation. Replace direct `wyrd` invocations with `dotnet wyrd` (or `dotnet-wyrd`).
@@ -22,12 +28,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   the invariants and where they are enforced, how to review a PR, and the discrepancies found between the code and
   the design documents) and `docs/design/runtime.md` (the engine branch by branch, the in-memory and EF Core hosts,
   and one order end to end on PostgreSQL with real logs, SQL and rows).
+- Website SEO: prerendered HTML and clean URLs for every documentation chapter, unique metadata, canonical and social links, structured data and a generated sitemap; existing hash bookmarks remain supported.
+- Document all public library and testing members, enforce CS1591, track each package's API against 0.4.0 with PublicApiAnalyzers, and validate library packages against the 0.4.0 NuGet baseline.
+- Ubuntu CI now reports line and branch coverage for `Wyrd` and `Wyrd.Testing`, uploads the full HTML report, and enforces the per-package release floors in `coverage.json`; release floors can only rise.
+- Add BenchmarkDotNet Shop scenarios and fast allocation/scaling gates with a measured baseline. Ubuntu enforces every budget and reports the known single-SKU scaling defect until task 016 lands.
+
 - Add BCL `Wyrd` process tracing with envelope context propagation, lifecycle/outcome tags and links for external continuations; Shop.Api exports to the console when `OTEL_EXPORTER=console`. Deterministic journals, domain state and replay histories are unchanged.
 - Documentation learning path with the shared read-model guide, working repository-relative links, and a searchable API reference checked against public declarations, analyzer rules and code-fix coverage during the website build.
 - `dotnet wyrd mcp`: an official-SDK stdio server exposing the existing Mermaid, AsyncAPI, contract parser and
   Urd replay implementations. Contracts include structured content; failures preserve CLI messages without ending
   the session, and process-discovery diagnostics stay on stderr.
 - Add `dotnet wyrd processes --output/--check` with versioned, readable process snapshots and a Shop CI check; structural, added and removed definitions require review, while retry and time-limit changes remain compatible.
+- `processes` MCP tool: an agent can snapshot process structure or check it against `processes.wyrd.txt` before
+  opening a pull request, with the same output as `dotnet wyrd processes`.
 - Native AOT HTTP verification for `Shop.Api`: generated request delegates and JSON metadata, named response
   records, and a reusable `curl`/`jq` smoke script covering checkout, rich drafts, cancellation and published events.
   Ubuntu CI publishes and runs the native API alongside the existing native console walkthrough.

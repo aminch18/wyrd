@@ -115,7 +115,7 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
                 }
             }
 
-            foreach (var state in changes.Unchanged)
+            foreach (var state in changes.UnchangedWritten)
             {
                 if (_states.GetValueOrDefault((state.StateType, state.Key))?.Version != state.Version)
                 {
@@ -123,7 +123,7 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
                 }
             }
 
-            foreach (var seeded in changes.Seeded.Keys)
+            foreach (var seeded in changes.SeededWritten.Keys)
             {
                 if (_seeded.ContainsKey(seeded))
                 {
@@ -149,12 +149,12 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
                 _projected[(stateType, key)] = version;
             }
 
-            foreach (var (seeded, version) in changes.Seeded)
+            foreach (var (seeded, version) in changes.SeededWritten)
             {
                 _seeded[seeded] = version;
             }
 
-            _caughtUp.UnionWith(changes.CaughtUp); // the seed marks stay, like in a database
+            _caughtUp.UnionWith(changes.CaughtUpWritten); // the seed marks stay, like in a database
 
             _held.AddRange(changes.Hold);
             _held.RemoveAll(changes.Release.Contains);
@@ -187,12 +187,23 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
                 _handled[id] = at;
             }
 
-            _events.AddRange(changes.Events.Select(e => (e, at)));
-            _published.AddRange(changes.Published.Select(m => new PublishedEntry(m, at)));
+            foreach (var e in changes.Events)
+            {
+                _events.Add((e, at));
+            }
+
+            foreach (var message in changes.PublishedWritten)
+            {
+                _published.Add(new PublishedEntry(message, at));
+            }
+
             _parked.AddRange(changes.Park);
             _parked.RemoveAll(changes.Unpark.Contains);
             _outbox.AddRange(changes.Outbox);
-            _scheduled.RemoveAll(s => changes.Cancel.Contains(s.Envelope.MessageId));
+            if (changes.CancelWritten is { Count: > 0 } cancelled)
+            {
+                _scheduled.RemoveAll(s => cancelled.Contains(s.Envelope.MessageId));
+            }
             foreach (var scheduled in changes.Schedule)
             {
                 _scheduled.Add((scheduled.At, _sequence++, scheduled.Envelope));
@@ -218,7 +229,6 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
         }
     }
 
-    /// <summary>The histories of the finished instances <paramref name="retention"/> no longer keeps, oldest first.</summary>
     /// <summary>The finished instances <paramref name="retention"/> no longer keeps, oldest first: one scan per pass.</summary>
     public IReadOnlyList<StoredInstance> ExpiredInstances(Retention retention)
     {

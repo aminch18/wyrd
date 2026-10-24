@@ -606,6 +606,7 @@ Build the application's assembly before calling `diagram`. It loads public proce
 | Tool | When to use it |
 |---|---|
 | `diagram` | Inspect the Mermaid workflows in a compiled assembly (`assemblyPath`). |
+| `processes` | Snapshot the process structure in `assemblyPath`, or pass `snapshotPath` to check it before a pull request. |
 | `asyncapi` | Generate AsyncAPI YAML from `contractsPath`, with optional `title` and `version`. |
 | `contracts` | Read contract names, versions, retired markers and fields as structured content. |
 | `replay` | Inspect `historyPath` as a timeline, or set `asTest` with `runtime` and `process` to generate an xUnit test. |
@@ -613,7 +614,7 @@ Build the application's assembly before calling `diagram`. It loads public proce
 Excerpt from a real SDK client session against the compiled Shop sample:
 
 ```text
-tools/list: asyncapi, contracts, diagram, replay
+tools/list: asyncapi, contracts, diagram, processes, replay
 tools/call diagram:
 # Shop processes
 

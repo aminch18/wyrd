@@ -270,7 +270,7 @@ public abstract class EfCoreRuntimeTests(Database database)
     {
         // ShipOrder has no owner here, so the step's command can never be handled: it reaches the process as a
         // failure, the step has no retries, and the instance is suspended with a reason. No dead letter.
-        Process broken = Process.StartOn<OrderPlaced>(e => e.OrderId, "Broken").Then(e => new ShipOrder(e.OrderId)).NoRetry("test");
+        Process broken = Process.StartOn<OrderPlaced>(e => e.OrderId, "Broken").Then(e => new ShipOrder(e.OrderId, e.Sku)).NoRetry("test");
         var runtime = new EfCoreRuntime<WyrdDbContext>(await database.NewAsync(), ShopJson.Default, Database.Retention, Database.Options with { MaxDeliveryAttempts = 3 })
             .AddSlice(new PlaceOrderSlice())
             .AddSlice(new RestockSlice())
@@ -697,11 +697,12 @@ public abstract class EfCoreRuntimeTests(Database database)
 
         await shop.ForgetExpiredAsync(); // the archive is down: nothing is removed, and the health says so
         Assert.Equal(ProcessStatus.Completed, await shop.StatusOfAsync(Fulfillment, "A-1"));
-        Assert.Equal(1, (await shop.HealthAsync()).ExpiredKept);
+        Assert.Equal(2, (await shop.HealthAsync()).ExpiredKept); // the order's fulfillment and its stock consumption
 
         await shop.ForgetExpiredAsync();
         Assert.Null(await shop.StatusOfAsync(Fulfillment, "A-1"));
-        var archived = Assert.Single(archive.Histories);
+        Assert.Equal(2, archive.Histories.Count);
+        var archived = Assert.Single(archive.Histories, h => h.Process == Fulfillment.Name);
         (await Urd.ReplayAsync(ShopModule.CreateRuntime, Fulfillment, InstanceHistory.FromJson(archived.ToJson()))).ThrowIfDiverged();
     }
 
@@ -789,7 +790,7 @@ public abstract class EfCoreRuntimeTests(Database database)
     public async Task a_suspended_instance_never_expires()
     {
         var clock = Database.Clock();
-        Process broken = Process.StartOn<OrderPlaced>(e => e.OrderId, "Broken").Then(e => new ShipOrder(e.OrderId)).NoRetry("test");
+        Process broken = Process.StartOn<OrderPlaced>(e => e.OrderId, "Broken").Then(e => new ShipOrder(e.OrderId, e.Sku)).NoRetry("test");
         var expiring = new Retention
         {
             Deduplication = Keep.For(TimeSpan.FromDays(1)),

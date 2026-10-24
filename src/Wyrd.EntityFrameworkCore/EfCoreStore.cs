@@ -114,7 +114,7 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
             db.Add(new EventRow { Type = e.Type, Payload = e.Payload, RecordedAt = now });
         }
 
-        foreach (var e in changes.Published)
+        foreach (var e in changes.PublishedWritten)
         {
             db.Add(new PublishedRow
             {
@@ -160,7 +160,7 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
 
         // Catching up a projection: the state a seed was built from must be the current one, and a stream is seeded once
         // (a concurrent mark of the same stream fails on SaveChanges).
-        foreach (var state in changes.Unchanged)
+        foreach (var state in changes.UnchangedWritten)
         {
             if (await db.Set<StateRow>()
                 .Where(r => r.StateType == state.StateType && r.Key == state.Key && r.Version == state.Version)
@@ -170,12 +170,12 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
             }
         }
 
-        foreach (var (seeded, version) in changes.Seeded)
+        foreach (var (seeded, version) in changes.SeededWritten)
         {
             db.Add(new SeededRow { ViewType = seeded.ViewType, StateType = seeded.StateType, Key = seeded.Key, Version = version });
         }
 
-        foreach (var viewType in changes.CaughtUp)
+        foreach (var viewType in changes.CaughtUpWritten)
         {
             // The seed marks stay: their key refuses a second seed of a stream, from a worker that read its batch before.
             db.Add(new CaughtUpRow { ViewType = viewType, CaughtUpAt = now });
@@ -207,9 +207,9 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
             Enqueue(scheduled.Envelope, scheduled.At);
         }
 
-        if (changes.Cancel.Count > 0)
+        if (changes.CancelWritten is { Count: > 0 } cancelled)
         {
-            await db.Set<QueueRow>().Where(r => changes.Cancel.Contains(r.MessageId))
+            await db.Set<QueueRow>().Where(r => cancelled.Contains(r.MessageId))
                 .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
         }
 

@@ -6,8 +6,6 @@
     <IsPackable>true</IsPackable>
     <IsAotCompatible>true</IsAotCompatible>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <!-- TODO: document every public member, then remove this. -->
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
 
     <Authors>Amin Chouaibi</Authors>
     <Copyright>Copyright (c) Amin Chouaibi</Copyright>
@@ -27,6 +25,17 @@
     <MinVerTagPrefix>v</MinVerTagPrefix>
     <MinVerDefaultPreReleaseIdentifiers>alpha.0</MinVerDefaultPreReleaseIdentifiers>
   </PropertyGroup>
+
+  <!-- Analyzer assemblies are bundled in Wyrd; these three projects publish packages of their own. -->
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Wyrd' Or '$(MSBuildProjectName)' == 'Wyrd.Testing' Or '$(MSBuildProjectName)' == 'Wyrd.Tool'">
+    <PackageValidationBaselineVersion>0.4.0</PackageValidationBaselineVersion>
+  </PropertyGroup>
+  <!-- Every package tracks its public API; the hosts first released in 0.5 have no baseline to validate against yet. -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'Wyrd' Or '$(MSBuildProjectName)' == 'Wyrd.Testing' Or '$(MSBuildProjectName)' == 'Wyrd.Tool' Or '$(MSBuildProjectName)' == 'Wyrd.EntityFrameworkCore' Or '$(MSBuildProjectName)' == 'Wyrd.RabbitMq'">
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" />
+    <AdditionalFiles Include="PublicAPI.Shipped.txt" />
+    <AdditionalFiles Include="PublicAPI.Unshipped.txt" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="MinVer" PrivateAssets="all" />

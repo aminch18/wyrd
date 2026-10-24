@@ -47,8 +47,11 @@ export function QuickStartDoc() {
             <h2>Generate documentation from the model</h2>
             <p>
                 The Wyrd CLI exports AsyncAPI contracts and Mermaid process
-                diagrams. <a href="#/docs/tool">Read the CLI guide</a> for
-                commands you can run from the repository today.
+                diagrams.{' '}
+                <a href={`${import.meta.env.BASE_URL}docs/tool/`}>
+                    Read the CLI guide
+                </a>{' '}
+                for commands you can run from the repository today.
             </p>
         </DocArticle>
     )
