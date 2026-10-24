@@ -72,9 +72,9 @@ What the numbers say:
 
 | Id | Rule | Check | |
 |---|---|---|---|
-| Q3.1 | **Every public member is documented**: what it does and when to use it, for a reader who doesn't know Wyrd. CS1591 is not suppressed under `src/`. | Build (warnings are errors) | 🔜 |
-| Q3.2 | **The public API is tracked**: `PublicAPI.Shipped.txt` / `PublicAPI.Unshipped.txt` per package (Microsoft.CodeAnalysis.PublicApiAnalyzers). A release moves Unshipped to Shipped. | Build | 🔜 |
-| Q3.3 | **Package validation against the last release** (`PackageValidationBaselineVersion`). A breaking change is allowed before 1.0 only when it is listed under *Breaking* in the changelog. | `dotnet pack` in CI | 🔜 |
+| Q3.1 | **Every public member is documented**: what it does and when to use it, for a reader who doesn't know Wyrd. CS1591 is not suppressed under `src/`. | Build (warnings are errors) | ✅ |
+| Q3.2 | **The public API is tracked**: `PublicAPI.Shipped.txt` / `PublicAPI.Unshipped.txt` per package (Microsoft.CodeAnalysis.PublicApiAnalyzers). A release moves Unshipped to Shipped. | Build | ✅ |
+| Q3.3 | **Package validation against the last release** (`PackageValidationBaselineVersion`). A breaking change is allowed before 1.0 only when it is listed under *Breaking* in the changelog. | `dotnet pack` in CI | ✅ |
 
 ### Q4. Failures and concurrency are explicit
 
@@ -89,7 +89,7 @@ What the numbers say:
 | Id | Rule | Check | |
 |---|---|---|---|
 | Q5.1 | `dotnet test -c Release` stays under **30 s** on the reference machine (today ~9 s). Expensive explorations take a budget. | Review | ✅ |
-| Q5.2 | **Coverage is reported** for `src/Wyrd` and `src/Wyrd.Testing` in every CI run, and **never decreases from one release to the next** (the floor is the previous release's number). | CI summary; release checklist | 🔜 |
+| Q5.2 | **Coverage is reported** for `src/Wyrd` and `src/Wyrd.Testing` in every CI run, and **never decreases from one release to the next** (the floor is the previous release's number). | CI summary; release checklist | ✅ |
 | Q5.3 | `samples/Shop.Tests/SkuldSpecs` green; `samples/Shop.Console` publishes and runs with Native AOT. | CI | ✅ |
 
 ### Q6. The samples are the reference

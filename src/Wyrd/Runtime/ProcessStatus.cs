@@ -1,10 +1,15 @@
 namespace Wyrd.Runtime;
 
+/// <summary>The execution state of one process instance, for progress reporting and operator decisions.</summary>
 public enum ProcessStatus
 {
+    /// <summary>Executing forward steps or compensating previous work.</summary>
     Running,
+    /// <summary>Waiting for a correlated event within its business deadline.</summary>
     Awaiting,
+    /// <summary>All forward steps finished.</summary>
     Completed,
+    /// <summary>The required undos and compensation outcome finished.</summary>
     Compensated,
 
     /// <summary>

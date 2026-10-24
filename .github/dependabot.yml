@@ -4,6 +4,12 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # The analyzers target an old enough Roslyn to run on every supported SDK (Directory.Packages.props): moving it
+      # is a decision, not an update.
+      - dependency-name: "Microsoft.CodeAnalysis.CSharp"
+      - dependency-name: "Microsoft.CodeAnalysis.CSharp.Workspaces"
+      - dependency-name: "Microsoft.CodeAnalysis.Analyzers"
   - package-ecosystem: github-actions
     directory: /
     schedule:
