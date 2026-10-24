@@ -164,7 +164,11 @@ the host doesn't start without a `Retention`, whose every member is required, ea
   events with it.
 - **A history archive** (`IHistoryArchive`, optional, `UseHistoryArchive`) receives the histories of expired finished
   instances before they are removed, and an instance is removed only once the archive returned: a failed archive keeps
-  it for the next pass. An archived history still replays with Urd. Without an archive, expiring deletes.
+  it for the next pass. Delivery is at least once: a history can be archived again (the host stopped in between). A
+  failed batch is tried again, oldest first, so a history the archive can never store blocks the removal of the
+  instances behind it, and the archive must store it elsewhere rather than fail for it; the EF Core host counts what
+  is kept past its retention (`ExpiredKept`). An archived history still replays with Urd. Without an archive,
+  expiring deletes.
   **Implemented** in memory and on the EF Core host.
 - **Fences never expire**: a fenced command is blocked forever (3.4). There is one per step given up on without knowing
   whether it ran, so they grow with failures, not with traffic.

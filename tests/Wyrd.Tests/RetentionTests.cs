@@ -232,11 +232,28 @@ public class RetentionTests
         Assert.Single(archive.Histories);
     }
 
+    [Fact]
+    public async Task an_archive_that_times_out_keeps_the_instance_and_lets_the_rest_expire()
+    {
+        var archive = new Archive { TimeOutNext = true };
+        _runtime.UseHistoryArchive(archive);
+        await CompleteAsync("A-1");
+
+        await _runtime.AdvanceAsync(1.Hours); // no exception: the clock moved, and what isn't archived still expires
+
+        Assert.Equal(ProcessStatus.Completed, _runtime.StatusOf(Fulfillment, "A-1"));
+        Assert.Empty(_runtime.History);
+        Assert.Contains(_runtime.Journal, e => e.Message == "history archive failed, finished instances kept: TaskCanceledException: The archive timed out.");
+    }
+
     private sealed class Archive : IHistoryArchive
     {
         public List<InstanceHistory> Histories { get; } = [];
 
         public bool FailNext { get; set; }
+
+        /// <summary>The next call times out on its own, as an HttpClient does: a cancellation nobody asked for.</summary>
+        public bool TimeOutNext { get; set; }
 
         public Task ArchiveAsync(IReadOnlyList<InstanceHistory> histories, CancellationToken cancellationToken)
         {
@@ -244,6 +261,12 @@ public class RetentionTests
             {
                 FailNext = false;
                 throw new IOException("storage unavailable");
+            }
+
+            if (TimeOutNext)
+            {
+                TimeOutNext = false;
+                throw new TaskCanceledException("The archive timed out.");
             }
 
             Histories.AddRange(histories);

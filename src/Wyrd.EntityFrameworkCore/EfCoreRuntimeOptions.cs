@@ -17,7 +17,7 @@ public sealed record EfCoreRuntimeOptions
     /// <summary>
     /// How often workers measure the queue's health for the <c>Wyrd</c> meter (<see cref="QueueHealth"/>). Each
     /// measurement counts the queue, and the counts cost more the longer the backlog they report: with many runtime
-    /// instances and large backlogs, measure less often.
+    /// instances and large backlogs, measure less often. Must be positive.
     /// </summary>
     public TimeSpan HealthInterval { get; init; } = TimeSpan.FromSeconds(15);
 
@@ -29,7 +29,7 @@ public sealed record EfCoreRuntimeOptions
 
     /// <summary>
     /// How often a worker removes what the retention no longer keeps. A pass removes a bounded amount (ten batches of
-    /// each kind); when more expired, the next loop goes on, between messages.
+    /// each kind); when more expired, the next loop goes on, between messages. Must be positive.
     /// </summary>
     public TimeSpan CleanupInterval { get; init; } = TimeSpan.FromMinutes(1);
 
