@@ -33,7 +33,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   Ubuntu CI publishes and runs the native API alongside the existing native console walkthrough.
 - **Verdandi** (`Wyrd.EntityFrameworkCore`, in progress): the durable runtime on PostgreSQL and SQL Server.
   `EfCoreRuntime<TContext>` handles every message in one transaction that also takes it off the queue — state,
-  events, instances, inbox, outbox, timers and read models commit together or not at all. The queue is a table shared
+  events, instances, inbox, outbox, timers and read models commit together or not at all (an integration's outside
+  call is made before that transaction, under a lease: see *Integrations*). The queue is a table shared
   by any number of workers (`FOR UPDATE SKIP LOCKED` / `READPAST`, the only raw SQL); failures are redelivered with
   backoff and poison messages go to dead letters; processes survive restarts. `modelBuilder.AddWyrd()` puts Wyrd's
   tables in your own `DbContext` and migrations, and `SendAsync(command, context)` joins your transaction. JIT only:
@@ -41,7 +42,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - **Integrations** (`Integration<TCommand, TEvent, TError>`, `AddIntegration`): the only I/O. An integration owns a
   command like a slice; its event is recorded and published like a domain event, its error is a business rejection,
   and an exception is a transient failure for the process's retry policy. `IntegrationContext.IdempotencyKey` is the
-  command's message id, stable across retries and redeliveries. Design: `docs/design/integrations.md`.
+  command's message id, stable across retries and redeliveries. On the EF Core host the call is made with no
+  transaction open: the command is leased (`EfCoreRuntimeOptions.IntegrationLease`, five minutes), and its outcome is
+  recorded in a second transaction, also after the lease ran out (the first outcome recorded wins). A third party's
+  timeout is a failure for the retry policy, not a cancellation. A step owned by an integration that never answered
+  is undone on compensation in case it acted, instead of being taken as never run (its undo treats "nothing to undo"
+  as done). Design: `docs/design/integrations.md`.
 - Operators on every host: `IWyrdRuntime.ResumeAsync` / `CompensateAsync`.
 - One retry layer on the durable host: a process command it can't handle goes back to its process as a failure (the
   step's retry policy decides, then the instance is suspended); dead letters are only for messages no process decides

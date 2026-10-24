@@ -21,7 +21,10 @@ next message and of the relay's batch, where each database has its own locking h
 
 Queue rows carry the envelope and an availability time; timers and retries are queue rows that become due later. A
 worker claims one due row with `FOR UPDATE SKIP LOCKED` (PostgreSQL) or `UPDLOCK, READPAST, ROWLOCK` (SQL Server),
-handles it, and deletes it in the same transaction.
+handles it, and deletes it in the same transaction. An integration command is leased instead: its row becomes
+available again only after `IntegrationLease`, and its outcome is recorded in a second transaction, by whichever worker
+gets there first
+([integrations](integrations.md), decision 5).
 
 - **Gives:** no broker inside a service; any number of workers, in one process or many; nothing lost on a crash.
 - **Costs:** polling and database load proportional to the message rate.

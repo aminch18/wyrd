@@ -91,6 +91,10 @@ simulate and version.
   inbox, undoes the original command if it ran, or blocks it forever if it didn't. A domain rejection of an undo is
   never taken as proof that there was nothing to undo. **Implemented.** *Requirement:* an undo is handled by the same
   service (inbox) as its step.
+- A step **owned by an integration** that never answered (every attempt failed: a timeout, a connection cut after the
+  provider acted) has an unknown outcome even without an answer in the inbox: a late copy is fenced, and its undo
+  runs anyway, in case the call acted. So an integration's undo treats "nothing to undo" as done, by its idempotency
+  key; if it refuses instead, the instance is suspended for an operator (3.6). **Implemented.**
 
 ### 3.5 Waits and time
 
@@ -104,9 +108,12 @@ simulate and version.
   stays scheduled for an instance that no longer waits. **Implemented** in memory and on the EF Core host.
 - **Slowness is not failure.** There are no technical timeouts on steps: durable messaging waits, a slow third party
   only makes processes wait, and latency is *observed* (age of pending steps, alerts), never turned into failures.
-  A business deadline on a step is modelled as an explicit wait for its confirmation with `.Within`. **Implemented**
-  on the EF Core host: `HealthAsync` and the `Wyrd` meter. In memory there is no queue to watch: the journal and
-  `StatusOf` show it.
+  When a durable host's workers handle an integration command, the outside call is made with no transaction open,
+  under a lease: a call slower than its lease may be made again by another worker with the same idempotency key, and
+  is still never turned into a failure ([integrations](integrations.md), decision 5). `SendAsync(command, context)`
+  is the exception: it joins your transaction, so the call is made inside it. A business deadline on a step is
+  modelled as an explicit wait for its confirmation with `.Within`. **Implemented** on the EF Core host:
+  `HealthAsync` and the `Wyrd` meter. In memory there is no queue to watch: the journal and `StatusOf` show it.
 
 ### 3.6 When Wyrd can't resolve something: suspend
 

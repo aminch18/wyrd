@@ -175,13 +175,25 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     public async Task<Decision> SendAsync(ICommand command, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
+        var envelope = Envelope(command);
+        IntegrationCall? call = null;
+        await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+        {
+            // An integration calls the outside world once, before any transaction: a conflict records its outcome again.
+            var engine = Engine(db, _time.GetUtcNow());
+            if (engine.IsIntegrationCommand(envelope))
+            {
+                call = await engine.CallAsync(envelope, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
         for (var attempt = 1; ; attempt++)
         {
             try
             {
                 await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
                 await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-                var decision = await HandleAsync(db, command, cancellationToken).ConfigureAwait(false);
+                var decision = (await Engine(db, _time.GetUtcNow()).HandleAsync(envelope, call, cancellationToken).ConfigureAwait(false))!;
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                 Wake();
                 return decision;
@@ -197,7 +209,8 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// Executes a command inside <paramref name="context"/>'s current transaction, which you begin and commit: your own
     /// changes in that context and Wyrd's are saved together, or not at all. The context's model must include Wyrd's
     /// tables (<see cref="WyrdModelBuilderExtensions.AddWyrd"/>). A concurrency conflict surfaces as a
-    /// <see cref="ConcurrencyConflictException"/> for you to retry, since the transaction is yours.
+    /// <see cref="ConcurrencyConflictException"/> for you to retry, since the transaction is yours. An integration command
+    /// sent this way calls the outside world inside your transaction.
     /// </summary>
     public async Task<Decision> SendAsync(ICommand command, TContext context, CancellationToken cancellationToken = default)
     {
@@ -211,7 +224,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
         try
         {
-            var decision = await HandleAsync(context, command, cancellationToken).ConfigureAwait(false);
+            var decision = (await Engine(context, _time.GetUtcNow()).HandleAsync(Envelope(command), cancellationToken).ConfigureAwait(false))!;
             // Early, before your commit: a worker that finds nothing yet goes back to waiting, and sees the message on its
             // next look, at most MaxPollInterval later.
             Wake();
@@ -259,12 +272,10 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         Wake();
     }
 
-    private async Task<Decision> HandleAsync(TContext db, ICommand command, CancellationToken cancellationToken)
+    private Envelope Envelope(ICommand command)
     {
         var (type, payload) = _application.Types.Serialize(command, command.GetType());
-        var envelope = new Envelope(Guid.CreateVersion7(), MessageKind.Command, type, payload);
-        var now = _time.GetUtcNow();
-        return (await Engine(db, now).HandleAsync(envelope, cancellationToken).ConfigureAwait(false))!;
+        return new Envelope(Guid.CreateVersion7(), MessageKind.Command, type, payload);
     }
 
     // ── Workers ──────────────────────────────────────────────────────────────────────────────
@@ -500,22 +511,115 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             return false;
         }
 
+        Envelope envelope;
+        DateTimeOffset? leasedUntil = null;
         try
         {
-            var envelope = JsonSerializer.Deserialize(message.Envelope, WyrdJsonContext.Default.Envelope)!;
-            await Engine(db, now).HandleAsync(envelope, cancellationToken).ConfigureAwait(false);
-            await db.Set<QueueRow>().Where(r => r.Id == message.Id).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+            envelope = JsonSerializer.Deserialize(message.Envelope, WyrdJsonContext.Default.Envelope)!;
+            var engine = Engine(db, now);
+            if (engine.IsIntegrationCommand(envelope))
+            {
+                // Leased, not locked: the outside call is made with no transaction open (CallLeasedAsync).
+                leasedUntil = Microseconds(now + _options.IntegrationLease);
+                await db.Set<QueueRow>().Where(r => r.Id == message.Id)
+                    .ExecuteUpdateAsync(s => s.SetProperty(r => r.AvailableAt, leasedUntil.Value), cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await engine.HandleAsync(envelope, cancellationToken).ConfigureAwait(false);
+                await db.Set<QueueRow>().Where(r => r.Id == message.Id).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-            QueueMetrics.Handled.Add(1, QueueTag(db));
+            if (leasedUntil is null)
+            {
+                QueueMetrics.Handled.Add(1, QueueTag(db));
+            }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
             await RedeliverLaterAsync(message, ex, now).ConfigureAwait(false);
+            return true;
+        }
+
+        if (leasedUntil is { } until)
+        {
+            await CallLeasedAsync(message, envelope, until, cancellationToken).ConfigureAwait(false);
         }
 
         return true;
     }
+
+    /// <summary>
+    /// An integration command, leased instead of locked: the outside call is made with no transaction open, so a slow
+    /// third party holds no connection and no lock; then its outcome is recorded in a new transaction, if the lease is
+    /// still this worker's. A worker that stops in between leaves the lease to expire, and another one calls again with
+    /// the same idempotency key.
+    /// </summary>
+    private async Task CallLeasedAsync(QueueRow message, Envelope envelope, DateTimeOffset leasedUntil, CancellationToken cancellationToken)
+    {
+        IntegrationCall call;
+        try
+        {
+            await using var reader = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            call = await Engine(reader, _time.GetUtcNow()).CallAsync(envelope, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            await RedeliverLaterAsync(message, ex, _time.GetUtcNow(), leasedUntil).ConfigureAwait(false);
+            return;
+        }
+
+        for (var attempt = 1; ; attempt++)
+        {
+            var now = _time.GetUtcNow();
+            await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            // By id only: an outcome that arrives after the lease ran out is still a fact, and recorded, or a call that
+            // always outlives its lease would never be recorded. While the row is there nobody has recorded one yet;
+            // writing it locks it until the commit, so another worker that called meanwhile finds it gone.
+            var row = db.Set<QueueRow>().Where(r => r.Id == message.Id);
+            try
+            {
+                if (await row.ExecuteUpdateAsync(s => s.SetProperty(r => r.Attempts, r => r.Attempts), cancellationToken).ConfigureAwait(false) == 0)
+                {
+                    LogLeaseLost(message.Id);
+                    return;
+                }
+
+                await Engine(db, now).HandleAsync(envelope, call, cancellationToken).ConfigureAwait(false);
+                await row.ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                QueueMetrics.Handled.Add(1, QueueTag(db)); // only the worker that recorded it: a lost or released lease isn't handled
+                return;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
+                if (attempt < _options.MaxConflictRetries && IsConflict(ex))
+                {
+                    // The call's outcome is a fact: record it again, don't call again.
+                    LogConflict(message.Id);
+                    continue;
+                }
+
+                if (ex is IntegrationCallNeededException || IsConflict(ex))
+                {
+                    // Handled again right away, from the start.
+                    await db.Set<QueueRow>().Where(r => r.Id == message.Id && r.AvailableAt == leasedUntil)
+                        .ExecuteUpdateAsync(s => s.SetProperty(r => r.AvailableAt, now), CancellationToken.None).ConfigureAwait(false);
+                    return;
+                }
+
+                await RedeliverLaterAsync(message, ex, now, leasedUntil).ConfigureAwait(false);
+                return;
+            }
+        }
+    }
+
+    /// <summary>PostgreSQL keeps microseconds: a lease compared for equality must not carry more.</summary>
+    private static DateTimeOffset Microseconds(DateTimeOffset at) => new(at.Ticks - at.Ticks % TimeSpan.TicksPerMicrosecond, at.Offset);
 
     /// <summary>
     /// Catches up the projections added to a store that already has states (see
@@ -813,7 +917,12 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         }
     }
 
-    private async Task RedeliverLaterAsync(QueueRow message, Exception error, DateTimeOffset now)
+    /// <summary>
+    /// Records a failed delivery. For a leased message (<paramref name="leasedUntil"/>), only while the lease is still
+    /// this worker's: once it ran out, another worker may hold the row, and its failure or outcome is that worker's to
+    /// record.
+    /// </summary>
+    private async Task RedeliverLaterAsync(QueueRow message, Exception error, DateTimeOffset now, DateTimeOffset? leasedUntil = null)
     {
         // A concurrency conflict is normal between workers: try again right away, without counting it as a failure.
         if (IsConflict(error))
@@ -829,6 +938,10 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None).ConfigureAwait(false);
         QueueMetrics.Failed.Add(1, QueueTag(db));
         var unchanged = db.Set<QueueRow>().Where(r => r.Id == message.Id && r.Attempts == message.Attempts);
+        if (leasedUntil is { } lease)
+        {
+            unchanged = unchanged.Where(r => r.AvailableAt == lease);
+        }
 
         // One retry layer: a process command that can't be handled goes back to its process as a failure, and the
         // step's retry policy decides. The host never retries it on its own (semantics 3.3).
@@ -1111,6 +1224,9 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Catching up {View} failed on {StateType} '{Key}': the view stays catching up, the rest goes on")]
     private partial void LogCatchUpFailed(string view, string stateType, string key, Exception error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Integration command {Id}: another worker recorded its outcome first, this one is not recorded twice")]
+    private partial void LogLeaseLost(long id);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Message {Id} was taken by another worker meanwhile: its failure is not recorded twice")]
     private partial void LogTakenMeanwhile(long id);

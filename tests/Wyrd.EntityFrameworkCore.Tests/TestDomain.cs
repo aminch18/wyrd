@@ -64,6 +64,19 @@ public sealed class BrokenJobs : Projection<JobView>
     public BrokenJobs() => On<JobStarted>(e => e.Id, (_, _) => throw new InvalidOperationException("bug in BrokenJobs"));
 }
 
+/// <summary>RunJob carried out by another system: <paramref name="call"/> stands for it, and every call is counted.</summary>
+public sealed class JobGateway(Func<RunJob, IntegrationContext, Task> call) : Integration<RunJob, JobRan, string>
+{
+    public List<Guid> Keys { get; } = [];
+
+    public override async Task<Result<JobRan, string>> ExecuteAsync(RunJob command, IntegrationContext context, CancellationToken cancellationToken)
+    {
+        Keys.Add(context.IdempotencyKey);
+        await call(command, context);
+        return new JobRan(command.Id);
+    }
+}
+
 public static class JobSteps
 {
     public static RunJob Run(JobStarted started) => new(started.Id);

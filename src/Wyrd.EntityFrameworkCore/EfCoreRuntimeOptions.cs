@@ -36,6 +36,13 @@ public sealed record EfCoreRuntimeOptions
     /// <summary>How many published messages the relay sends per transaction.</summary>
     public int RelayBatchSize { get; init; } = 100;
 
+    /// <summary>
+    /// How long a worker holds an integration command while it calls the outside world, with no transaction open. A
+    /// worker that stops meanwhile leaves it to another one after this time, which calls again with the same idempotency
+    /// key; so does a call that takes longer. Longer than your slowest integration call.
+    /// </summary>
+    public TimeSpan IntegrationLease { get; init; } = TimeSpan.FromMinutes(5);
+
     /// <summary>How many times a command sent from outside is retried on a concurrency conflict.</summary>
     public int MaxConflictRetries { get; init; } = 5;
 }

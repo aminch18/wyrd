@@ -14,6 +14,24 @@ public sealed class FakeGateway : Integration<ChargePayment, PaymentCharged, Pay
     /// <summary>Calls that throw before reaching the provider (a network failure).</summary>
     public int FailNext { get; set; }
 
+    /// <summary>Calls that time out on the client side, as <c>HttpClient</c> does: a cancellation nobody asked for.</summary>
+    public int TimeOutNext { get; set; }
+
+    /// <summary>Calls that charge, then time out before the answer comes back: the provider acted, Wyrd can't know.</summary>
+    public int ChargeThenTimeOutNext { get; set; }
+
+    /// <summary>Charges made and not refunded, by order.</summary>
+    public IEnumerable<string> Charged => _charges.Values.Select(c => c.OrderId);
+
+    /// <summary>A refund by order, as a provider would: refunding what was never charged is nothing to do, not an error.</summary>
+    public void Refund(string orderId)
+    {
+        foreach (var key in _charges.Where(c => c.Value.OrderId == orderId).Select(c => c.Key).ToList())
+        {
+            _charges.Remove(key);
+        }
+    }
+
     /// <summary>Distinct charges actually made, whatever the number of calls.</summary>
     public int Charges => _charges.Count;
 
@@ -29,6 +47,12 @@ public sealed class FakeGateway : Integration<ChargePayment, PaymentCharged, Pay
             throw new HttpRequestException("connection reset");
         }
 
+        if (TimeOutNext > 0)
+        {
+            TimeOutNext--;
+            throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.");
+        }
+
         if (command.Amount > 1000)
         {
             return Task.FromResult<Result<PaymentCharged, PaymentError>>(PaymentError.Declined);
@@ -40,7 +64,26 @@ public sealed class FakeGateway : Integration<ChargePayment, PaymentCharged, Pay
             _charges[context.IdempotencyKey] = charged;
         }
 
+        if (ChargeThenTimeOutNext > 0)
+        {
+            ChargeThenTimeOutNext--;
+            throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.");
+        }
+
         return Task.FromResult<Result<PaymentCharged, PaymentError>>(charged);
+    }
+}
+
+/// <summary>The provider's refund, an integration too: idempotent, and done when there is nothing to refund.</summary>
+public sealed class FakeRefunds(FakeGateway gateway) : Integration<RefundPayment, PaymentRefunded, PaymentError>
+{
+    public override object KeyOf(RefundPayment command) => command.OrderId;
+
+    public override Task<Result<PaymentRefunded, PaymentError>> ExecuteAsync(
+        RefundPayment command, IntegrationContext context, CancellationToken cancellationToken)
+    {
+        gateway.Refund(command.OrderId);
+        return Task.FromResult<Result<PaymentRefunded, PaymentError>>(new PaymentRefunded(command.OrderId));
     }
 }
 
@@ -60,6 +103,61 @@ public class IntegrationTests
         Assert.Equal(ProcessStatus.Completed, runtime.StatusOf(Fulfillment, "A-1"));
         Assert.Contains(new PaymentCharged("A-1", 50), runtime.History);
         Assert.Single(runtime.Published.OfType<PaymentChargedV1>()); // publications apply to its events too
+    }
+
+    [Fact]
+    public async Task a_third_party_timeout_is_a_failure_the_process_retries()
+    {
+        var gateway = new FakeGateway { TimeOutNext = 1 };
+        var runtime = TestSystem.WithGateway(gateway, Fulfillment);
+
+        await runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+        await runtime.AdvanceAsync(1.Minutes);
+
+        Assert.Equal(2, gateway.Calls.Count);
+        Assert.Equal(1, gateway.Charges);
+        Assert.Equal(ProcessStatus.Awaiting, runtime.StatusOf(Fulfillment, "A-1"));
+    }
+
+    [Fact]
+    public async Task a_call_that_never_answered_is_undone_in_case_it_acted()
+    {
+        var gateway = new FakeGateway { TimeOutNext = 10 }; // every attempt times out: did the provider charge? Unknown.
+        var runtime = TestSystem.WithGateway(gateway, Fulfillment);
+
+        await runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+        await runtime.AdvanceAsync(1.Hours); // retries exhausted: suspended
+        await runtime.CompensateAsync(Fulfillment, "A-1");
+
+        // Not "never ran, fenced": the refund is asked for. This shop's refund finds no charge it knows of and refuses,
+        // so the instance waits for an operator again instead of compensating as if nothing could have happened.
+        Assert.Contains(runtime.Journal, e => e.Message == "RefundPayment: the original call's outcome is unknown, fenced and undone");
+        Assert.DoesNotContain(runtime.Journal, e => e.Message.EndsWith("the original command never ran, fenced", StringComparison.Ordinal));
+        Assert.Equal(ProcessStatus.Suspended, runtime.StatusOf(Fulfillment, "A-1"));
+    }
+
+    [Fact]
+    public async Task a_charge_that_timed_out_after_the_provider_charged_is_refunded_on_compensation()
+    {
+        var gateway = new FakeGateway { ChargeThenTimeOutNext = 10 }; // charged on the first call; no answer ever came back
+        var runtime = new InMemoryRuntime()
+            .AddIntegration(gateway)
+            .AddIntegration(new FakeRefunds(gateway))
+            .AddSlice(new PlaceOrderSlice())
+            .AddSlice(new ReserveStockSlice())
+            .AddSlice(new ReleaseStockSlice())
+            .AddSlice(new ShipOrderSlice())
+            .AddSlice(new CancelOrderSlice())
+            .AddProcess(Fulfillment);
+
+        await runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+        await runtime.AdvanceAsync(1.Hours); // retries exhausted: suspended
+        Assert.Equal(["A-1"], gateway.Charged);
+
+        await runtime.CompensateAsync(Fulfillment, "A-1");
+
+        Assert.Empty(gateway.Charged); // refunded, though Wyrd never saw the charge succeed
+        Assert.Equal(ProcessStatus.Compensated, runtime.StatusOf(Fulfillment, "A-1"));
     }
 
     [Fact]
