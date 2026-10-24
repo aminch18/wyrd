@@ -92,11 +92,14 @@ then 1.0) only with the whole bar green.** Baseline and rules: [QUALITY.md](QUAL
 
 - [ ] Benchmarks, with the scaling and allocation gates in CI (Q1)
 - [x] The Shop's stock forgets shipped orders; the guides teach bounded state (Q2.1)
-- [ ] A wait's timer is cancelled when the wait ends (Q2.2)
-- [ ] Retention for everything a host keeps, in semantics and the in-memory host (Q2.3; includes v0.5's instance
-      history retention)
+- [x] A wait's timer is cancelled when the wait ends (Q2.2)
+- [x] Retention for everything a host keeps, in semantics and every host (Q2.3; includes v0.5's instance history
+      retention). **Explicit, like every other decision in Wyrd**: a durable host doesn't start without a retention for
+      deduplication (inbox, handled), finished instances and their histories, relayed messages and domain events;
+      keeping something forever is written down too (`Keep.Forever("why")`). Suspended instances never
+      expire. Only the in-memory host has defaults (nothing outlives its process; the journal is bounded)
 - [x] Public API tracked and documented; package validation against the last release (Q3)
-- [ ] Typed exceptions; no sync-over-async in hosts (Q4.1, Q4.2)
+- [x] Typed exceptions; no sync-over-async in hosts (Q4.1, Q4.2)
 - [x] Coverage reported in CI, never lower than the previous release (Q5.2)
 
 ## v0.5 — Verdandi (run the present)
@@ -109,18 +112,29 @@ Work happens on `feature/verdandi` (PR #11), in this order:
       ports first planned here: separate ports can't commit atomically
 - [x] Durable scheduler for timeouts and retries: queue rows with an availability time (PostgreSQL prototype)
 - [x] `IWyrdRuntime` and `IWyrdBuilder<T>`: application code and modules are the same on every host
-- [ ] **Integrations** (`IIntegration<...>`): the only I/O, with idempotency keys and recorded outcomes
-- [ ] **EF Core** host for state, inbox, outbox and queue (PostgreSQL, SQL Server), with migrations and an option to
+- [x] **Integrations** (`Integration<TCommand, TEvent, TError>`, [design](design/integrations.md)): the only I/O, with
+      idempotency keys and recorded outcomes
+- [x] **EF Core** host for state, inbox, outbox and queue (PostgreSQL, SQL Server), with migrations and an option to
       share the application's `DbContext` transaction; only the queue's dequeue (`FOR UPDATE SKIP LOCKED` / `READPAST`)
-      is raw SQL. Replaces the hand-written Npgsql prototype
-- [ ] One retry layer on durable hosts: a process command that ends in dead letters reaches its process as a failure
+      is raw SQL. Replaces the hand-written Npgsql prototype ([design](design/verdandi-efcore.md); JIT only: EF Core's
+      Native AOT is experimental). Wyrd's tables live in the application's own model and migrations (`AddWyrd`)
+- [x] One retry layer on durable hosts: a process command that ends in dead letters reaches its process as a failure
       ([semantics](design/semantics.md) 3.3)
-- [ ] Operators on durable hosts: resume and compensate suspended instances
-- [ ] A hardened queue: `LISTEN/NOTIFY` (or polling backoff) instead of busy polling, batched cleanup, metrics for
-      queue depth and the age of pending steps ([semantics](design/semantics.md) 3.5)
-- [ ] RabbitMQ transport between services (the outbox stays in the database; the broker carries what leaves it)
+- [x] Operators on durable hosts: resume and compensate suspended instances
+- [x] A hardened queue: polling backoff (with an immediate wake-up for what the runtime queues itself) instead of busy
+      polling, batched cleanup, metrics for queue depth and the age of pending steps ([semantics](design/semantics.md) 3.5)
+- [x] RabbitMQ transport between services (the outbox stays in the database; the broker carries what leaves it):
+      the port (`IWyrdTransport`, `ReceiveAsync`, only integration events cross services), `InMemoryTransport`, the
+      EF Core outbox relay, trace context across services, and `Wyrd.RabbitMq` (`RabbitMqTransport`,
+      `RabbitMqSubscriber`), kept thin
 - [x] OpenTelemetry with process-level traces
-- [ ] Instance history retention and catching up a projection added to an existing store
+- [x] Catching up a projection added to an existing store: seeded from the current states it names (`Seed<TState>`),
+      then from their events, with no event applied twice or missed
+- [x] **History archive** (`IHistoryArchive`): before retention removes a finished instance, its history
+      (`InstanceHistory`, the JSON Urd replays) is handed to the application — blob storage, a cold table, a data lake —
+      and removed only once the archive confirms; a failed archive keeps the instance for the next pass. Hot tables
+      stay small, the process audit trail is kept, and an archived instance still replays as a test
+      (`dotnet wyrd replay`). Optional: without an archive, expiring is deleting
 
 ## Documentation & adoption (continuous, required before going public)
 

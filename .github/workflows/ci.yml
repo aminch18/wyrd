@@ -28,9 +28,10 @@ jobs:
 
       - run: dotnet restore
       - run: dotnet build --no-restore -c Release
+      # Container tests need Docker with Linux images: only the Linux runner has it (and measures coverage).
       - name: Tests
         if: matrix.os != 'ubuntu-latest'
-        run: dotnet test --no-build -c Release
+        run: dotnet test --no-build -c Release --filter "Category!=Containers"
 
       - name: Tests with coverage
         if: matrix.os == 'ubuntu-latest'
@@ -131,9 +132,10 @@ jobs:
               raise SystemExit("\n".join(failures))
       - name: Allocation gates (Q1.2, Q1.3)
         if: matrix.os == 'ubuntu-latest'
-        # Task016/PR35 removes this known Q1.2 failure; allocation budgets remain strict.
-        run: dotnet run --no-build -c Release --project benchmarks/Wyrd.Benchmarks -- --gate --known-single-sku-failure
+        run: dotnet run --no-build -c Release --project benchmarks/Wyrd.Benchmarks -- --gate
 
+      - name: Build the durable Shop.Api (EF Core, JIT)
+        run: dotnet build -c Release samples/Shop.Api -p:WyrdHost=EfCore
       - name: Sample smoke test
         run: dotnet run --no-build -c Release --project samples/Shop.Console
 

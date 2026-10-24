@@ -1,0 +1,233 @@
+using System.Diagnostics.CodeAnalysis;
+using Wyrd.Runtime;
+
+namespace Wyrd.Tests;
+
+public class ProjectionCatchUpTests
+{
+    public sealed record OrderLog(string OrderId, int Events);
+
+    /// <summary>Counts the events of each order (adding, so an event applied twice shows): a seed takes the count from the state.</summary>
+    private sealed class OrderLogs : Projection<OrderLog>
+    {
+        public OrderLogs()
+        {
+            Seed<EventLog>((orderId, _) => orderId, (_, orderId, log) => new OrderLog(orderId, log.Events.Count));
+            On<OrderPlaced>(e => e.OrderId, (view, e) => new OrderLog(e.OrderId, (view?.Events ?? 0) + 1));
+            On<PaymentCharged>(e => e.OrderId, (view, _) => view! with { Events = view.Events + 1 });
+        }
+    }
+
+    [Fact]
+    public async Task a_projection_added_to_a_runtime_with_states_catches_up_from_them()
+    {
+        var runtime = TestSystem.Create();
+        await runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+        await runtime.SendAsync(new ChargePayment("A-1", 50));
+        await runtime.SendAsync(new PlaceOrder("A-2", Quantity: 1, Amount: 70));
+
+        runtime.AddProjection(new OrderLogs());
+        await runtime.CatchUpAsync();
+
+        Assert.Equal(new OrderLog("A-1", 2), runtime.View<OrderLog>("A-1"));
+        Assert.Equal(new OrderLog("A-2", 1), runtime.View<OrderLog>("A-2"));
+        Assert.Contains(runtime.Journal, e => e.Message == "OrderLog caught up from existing states");
+
+        await runtime.SendAsync(new ChargePayment("A-2", 70));
+        Assert.Equal(new OrderLog("A-2", 2), runtime.View<OrderLog>("A-2"));
+    }
+
+    private sealed class BrokenSeed : Projection<OrderLog>
+    {
+        public BrokenSeed() => Seed<EventLog>((orderId, _) => orderId, (_, _, _) => throw new InvalidOperationException("bug in the seed"));
+    }
+
+    [Fact]
+    public async Task a_failing_seed_is_logged_and_never_fails_a_command_that_was_decided()
+    {
+        var runtime = TestSystem.Create();
+        await runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+        runtime.AddProjection(new BrokenSeed());
+
+        Assert.IsType<Decision.Accepted>(await runtime.SendAsync(new PlaceOrder("A-2", Quantity: 1, Amount: 70)));
+        Assert.Contains(runtime.Journal, e => Equals(e.Key, "A-1") && e.Message == $"catching up OrderLog failed on {typeof(EventLog).FullName}: InvalidOperationException: bug in the seed");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.CatchUpAsync());
+    }
+
+    [Fact]
+    public async Task a_projection_with_seeds_on_a_new_runtime_follows_every_stream_from_its_first_event()
+    {
+        var runtime = TestSystem.Create().AddProjection(new OrderLogs());
+
+        await runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+        await runtime.SendAsync(new ChargePayment("A-1", 50));
+
+        Assert.Equal(new OrderLog("A-1", 2), runtime.View<OrderLog>("A-1"));
+    }
+
+    [Fact]
+    [RequiresUnreferencedCode("Reflection-based JSON in a test.")]
+    [RequiresDynamicCode("Reflection-based JSON in a test.")]
+    public async Task events_already_in_a_seed_are_not_applied_again_when_they_arrive()
+    {
+        var application = new Application(MessageTypes.Reflection());
+        application.Add(new PlaceOrderSlice());
+        application.Add(new ChargePaymentSlice());
+        var store = new InMemoryStore(() => DateTimeOffset.UnixEpoch);
+        var ids = 0;
+        var engine = new Engine(
+            application.Registry, store, application.Types, () => DateTimeOffset.UnixEpoch, () => new Guid(++ids, 0, 0, new byte[8]), (_, _) => false, (_, _, _) => { });
+
+        await engine.HandleAsync(Command(application, new PlaceOrder("A-1", Quantity: 1, Amount: 50)), default);
+        await engine.HandleAsync(Command(application, new ChargePayment("A-1", 50)), default);
+        var inFlight = await store.TakeOutboxAsync(default); // OrderPlaced and PaymentCharged, not delivered yet
+
+        var projection = new OrderLogs();
+        application.Add(projection);
+        await engine.SeedAsync(projection, store.State(typeof(EventLog).FullName!, "A-1")!, default);
+        Assert.Equal(new OrderLog("A-1", 2), View(application, store, "A-1"));
+        Assert.False(await engine.CompleteCatchUpAsync(projection, default)); // what the seed holds is still on its way
+
+        foreach (var envelope in inFlight)
+        {
+            await engine.HandleAsync(envelope, default);
+        }
+
+        Assert.Equal(new OrderLog("A-1", 2), View(application, store, "A-1"));
+        Assert.True(await engine.CompleteCatchUpAsync(projection, default));
+
+        await engine.HandleAsync(Command(application, new ChargePayment("A-1", 50)), default);
+        foreach (var envelope in await store.TakeOutboxAsync(default))
+        {
+            await engine.HandleAsync(envelope, default);
+        }
+
+        Assert.Equal(new OrderLog("A-1", 3), View(application, store, "A-1"));
+    }
+
+    [Fact]
+    [RequiresUnreferencedCode("Reflection-based JSON in a test.")]
+    [RequiresDynamicCode("Reflection-based JSON in a test.")]
+    public async Task a_seed_built_from_a_state_an_event_changed_meanwhile_is_not_committed()
+    {
+        var application = new Application(MessageTypes.Reflection());
+        application.Add(new PlaceOrderSlice());
+        application.Add(new ChargePaymentSlice());
+        var store = new InMemoryStore(() => DateTimeOffset.UnixEpoch);
+        var ids = 0;
+        var engine = new Engine(
+            application.Registry, store, application.Types, () => DateTimeOffset.UnixEpoch, () => new Guid(++ids, 0, 0, new byte[8]), (_, _) => false, (_, _, _) => { });
+
+        await engine.HandleAsync(Command(application, new PlaceOrder("A-1", Quantity: 1, Amount: 50)), default);
+        var read = store.State(typeof(EventLog).FullName!, "A-1")!;
+        await engine.HandleAsync(Command(application, new ChargePayment("A-1", 50)), default);
+
+        var projection = new OrderLogs();
+        application.Add(projection);
+        await Assert.ThrowsAsync<ConcurrencyConflictException>(async () => await engine.SeedAsync(projection, read, default));
+        Assert.Null(View(application, store, "A-1"));
+    }
+
+    [Fact]
+    [RequiresUnreferencedCode("Reflection-based JSON in a test.")]
+    [RequiresDynamicCode("Reflection-based JSON in a test.")]
+    public async Task a_seed_that_comes_after_the_projection_caught_up_is_refused()
+    {
+        var application = new Application(MessageTypes.Reflection());
+        application.Add(new PlaceOrderSlice());
+        var store = new InMemoryStore(() => DateTimeOffset.UnixEpoch);
+        var ids = 0;
+        var engine = new Engine(
+            application.Registry, store, application.Types, () => DateTimeOffset.UnixEpoch, () => new Guid(++ids, 0, 0, new byte[8]), (_, _) => false, (_, _, _) => { });
+        await engine.HandleAsync(Command(application, new PlaceOrder("A-1", Quantity: 1, Amount: 50)), default);
+        await DeliverAsync(engine, store);
+        var projection = new OrderLogs();
+        application.Add(projection);
+
+        // A worker reads its batch; another one seeds the same state and completes the catch-up first.
+        var read = store.State(typeof(EventLog).FullName!, "A-1")!;
+        await engine.SeedAsync(projection, read, default);
+        Assert.True(await engine.CompleteCatchUpAsync(projection, default));
+
+        await Assert.ThrowsAsync<ConcurrencyConflictException>(async () => await engine.SeedAsync(projection, read, default));
+        Assert.Equal(new OrderLog("A-1", 1), View(application, store, "A-1"));
+    }
+
+    /// <summary>Counts the charges of each order only: the first event of an order (OrderPlaced) is not one it handles.</summary>
+    private sealed class OrderCharges : Projection<OrderLog>
+    {
+        public OrderCharges()
+        {
+            Seed<EventLog>((orderId, _) => orderId, (_, orderId, log) => new OrderLog(orderId, log.Events.Count(e => e == nameof(PaymentCharged))));
+            On<PaymentCharged>(e => e.OrderId, (view, e) => new OrderLog(e.OrderId, (view?.Events ?? 0) + 1));
+        }
+    }
+
+    [Fact]
+    [RequiresUnreferencedCode("Reflection-based JSON in a test.")]
+    [RequiresDynamicCode("Reflection-based JSON in a test.")]
+    public async Task a_stream_that_begins_while_catching_up_is_followed_even_if_its_first_event_isnt_handled()
+    {
+        var application = new Application(MessageTypes.Reflection());
+        application.Add(new PlaceOrderSlice());
+        application.Add(new ChargePaymentSlice());
+        var projection = new OrderCharges();
+        application.Add(projection); // catching up: not completed yet
+        var store = new InMemoryStore(() => DateTimeOffset.UnixEpoch);
+        var ids = 0;
+        var engine = new Engine(
+            application.Registry, store, application.Types, () => DateTimeOffset.UnixEpoch, () => new Guid(++ids, 0, 0, new byte[8]), (_, _) => false, (_, _, _) => { });
+
+        await engine.HandleAsync(Command(application, new PlaceOrder("A-1", Quantity: 1, Amount: 50)), default);
+        await DeliverAsync(engine, store); // OrderPlaced: the projection doesn't handle it
+        await engine.HandleAsync(Command(application, new ChargePayment("A-1", 50)), default);
+        await DeliverAsync(engine, store); // PaymentCharged, the stream's second event
+
+        Assert.Equal(new OrderLog("A-1", 1), View(application, store, "A-1"));
+    }
+
+    private static async Task DeliverAsync(Engine engine, InMemoryStore store)
+    {
+        foreach (var envelope in await store.TakeOutboxAsync(default))
+        {
+            await engine.HandleAsync(envelope, default);
+        }
+    }
+
+    public abstract record Light : IState<Light>
+    {
+        public static Light Initial { get; } = new Off();
+
+        public Light Evolve(IDomainEvent domainEvent) => this;
+
+        public sealed record Off : Light;
+
+        public sealed record Lit(int Level) : Light;
+    }
+
+    public sealed record LightView(string Key, int Level);
+
+    private sealed class LightViews : Projection<LightView>
+    {
+        public LightViews() =>
+            Seed<Light>((key, _) => key, (_, key, light) => new LightView(key, light is Light.Lit lit ? lit.Level : 0));
+    }
+
+    [Fact]
+    public void a_state_stored_as_one_of_its_cases_is_seeded_by_the_seed_of_its_declared_type()
+    {
+        IProjectionHandler projection = new LightViews();
+
+        Assert.Equal("L-1", projection.SeedKeyOf("L-1", new Light.Lit(3)));
+        Assert.Equal(new LightView("L-1", 3), projection.Seed(null, "L-1", new Light.Lit(3)));
+    }
+
+    private static Envelope Command(Application application, ICommand command)
+    {
+        var (type, payload) = application.Types.Serialize(command, command.GetType());
+        return new Envelope(Guid.NewGuid(), MessageKind.Command, type, payload);
+    }
+
+    private static OrderLog? View(Application application, InMemoryStore store, string key) =>
+        store.View(typeof(OrderLog).FullName!, key) is { } view ? (OrderLog)application.Types.Deserialize(view.Type!, view.Payload!) : null;
+}

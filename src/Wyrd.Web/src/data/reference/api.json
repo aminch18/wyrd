@@ -358,15 +358,19 @@
     "name": "InMemoryRuntime",
     "group": "Runtime",
     "source": "src/Wyrd/Runtime/InMemoryRuntime.cs",
-    "description": "Hosts the deterministic engine with JSON boundaries, an in-memory store and a virtual clock.",
+    "description": "Hosts the deterministic engine with JSON boundaries, an in-memory store and a virtual clock: tests, development, simulation and replay. Same builder and runtime contract as the durable EF Core host.",
     "signatures": [
-      "public sealed class InMemoryRuntime : IDisposable",
+      "public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntime, IDisposable",
       "public InMemoryRuntime()",
       "public InMemoryRuntime(JsonSerializerContext json)",
+      "public InMemoryRuntime UseRetention(Retention retention)",
+      "public InMemoryRuntime UseHistoryArchive(IHistoryArchive archive)",
+      "public int JournalLimit",
       "public TimeSpan Now",
       "public IReadOnlyList<JournalEntry> Journal",
       "public IReadOnlyList<IDomainEvent> History",
       "public IReadOnlyList<IIntegrationEvent> Published",
+      "public InMemoryRuntime AddIntegration<TCommand, TEvent, TError>(Integration<TCommand, TEvent, TError> integration)",
       "public InMemoryRuntime AddSlice<TCommand, TState, TEvent, TError>(Slice<TCommand, TState, TEvent, TError> slice)",
       "public InMemoryRuntime AddPublication<TDomainEvent, TIntegrationEvent>(Publication<TDomainEvent, TIntegrationEvent> publication)",
       "public InMemoryRuntime AddUpcaster<TFrom, TTo>(Upcaster<TFrom, TTo> upcaster)",
@@ -384,7 +388,11 @@
       "public TState StateOf<TState>(object key)",
       "public TView? View<TView>(object key)",
       "public IReadOnlyList<TView> Views<TView>()",
-      "public void Dispose()"
+      "public async Task CatchUpAsync(CancellationToken cancellationToken = default)",
+      "public void Dispose()",
+      "public InMemoryRuntime UseTransport(IWyrdTransport transport)",
+      "public IReadOnlyList<string> Subscriptions",
+      "public async Task ReceiveAsync(TransportMessage message, CancellationToken cancellationToken = default)"
     ],
     "example": "using var shop = ShopModule.CreateRuntime();\nawait shop.SendAsync(new PlaceOrder(\"A-1\", \"KEYBOARD\", 1, 89m));\nawait shop.PublishAsync(new PaymentConfirmed(\"A-1\"));\nawait shop.AdvanceAsync(15.Minutes);\nvar order = shop.View<OrderSummary>(\"A-1\");",
     "members": [
@@ -397,6 +405,21 @@
         "signature": "public InMemoryRuntime(JsonSerializerContext json)",
         "description": "Constructs the host; the parameterless reflection entry point is for development, while the JSON-context overload supports Native AOT.",
         "example": "using var shop = new InMemoryRuntime(ShopJson.Default);"
+      },
+      {
+        "signature": "public InMemoryRuntime UseRetention(Retention retention)",
+        "description": "How long this runtime keeps what it handled, on its virtual clock. Nothing expires by default; expired data goes when the clock moves.",
+        "example": "var shop = ShopModule.CreateRuntime().UseRetention(new Retention\n{\n    Deduplication = Keep.For(1.Days),\n    FinishedInstances = Keep.For(1.Days),\n    RelayedMessages = Keep.For(1.Days),\n    Events = Keep.For(1.Days),\n    DeadLetters = Keep.For(1.Days),\n});"
+      },
+      {
+        "signature": "public InMemoryRuntime UseHistoryArchive(IHistoryArchive archive)",
+        "description": "Hands the histories of finished instances to an archive before retention removes them; an instance is removed only once its history is archived.",
+        "example": "shop.UseHistoryArchive(new BlobArchive(container));"
+      },
+      {
+        "signature": "public int JournalLimit",
+        "description": "The journal keeps at least this many recent entries (10,000 by default), so a long run stays bounded.",
+        "example": "shop.JournalLimit = 1_000;"
       },
       {
         "signature": "public TimeSpan Now",
@@ -417,6 +440,11 @@
         "signature": "public IReadOnlyList<IIntegrationEvent> Published",
         "description": "Returns the integration events mapped by publications.",
         "example": "var publicFacts = shop.Published;"
+      },
+      {
+        "signature": "public InMemoryRuntime AddIntegration<TCommand, TEvent, TError>(Integration<TCommand, TEvent, TError> integration)",
+        "description": "Registers the integration that owns a command carried out by another system: the only I/O in Wyrd.",
+        "example": "shop.AddIntegration(new PaymentGateway(http));"
       },
       {
         "signature": "public InMemoryRuntime AddSlice<TCommand, TState, TEvent, TError>(Slice<TCommand, TState, TEvent, TError> slice)",
@@ -504,9 +532,29 @@
         "example": "var rows = shop.Views<OrderSummary>();"
       },
       {
+        "signature": "public async Task CatchUpAsync(CancellationToken cancellationToken = default)",
+        "description": "Seeds projections added to a runtime that already has states from those states. The runtime does it on its own when idle; call it to have the views before the next message.",
+        "example": "shop.AddProjection(new StockLevels());\nawait shop.CatchUpAsync();"
+      },
+      {
         "signature": "public void Dispose()",
         "description": "Disposes the host's synchronization gate.",
         "example": "using var shop = ShopModule.CreateRuntime();"
+      },
+      {
+        "signature": "public InMemoryRuntime UseTransport(IWyrdTransport transport)",
+        "description": "Sends the integration events this runtime publishes to other services through a transport.",
+        "example": "var transport = new InMemoryTransport();\nvar payments = PaymentsModule.CreateRuntime().UseTransport(transport);"
+      },
+      {
+        "signature": "public IReadOnlyList<string> Subscriptions",
+        "description": "The integration-event contracts from other services this runtime uses: what a transport subscribes to.",
+        "example": "foreach (var contract in shop.Subscriptions) Console.WriteLine(contract);"
+      },
+      {
+        "signature": "public async Task ReceiveAsync(TransportMessage message, CancellationToken cancellationToken = default)",
+        "description": "Delivers an integration event another service published, keeping its message id: a redelivery is handled once.",
+        "example": "await shipping.ReceiveAsync(message);"
       }
     ]
   },
@@ -894,6 +942,231 @@
       "public WyrdAssertionException(string message, Exception innerException)"
     ],
     "example": "report.ThrowIfViolated(); // throws WyrdAssertionException if any invariant failed",
+    "members": []
+  },
+  {
+    "name": "Integration",
+    "group": "Decisions",
+    "source": "src/Wyrd/Integrations/Integration.cs",
+    "description": "The only place Wyrd code performs I/O: the single owner of a command carried out by another system. Its event is recorded like a domain event, its error is a business rejection, and an exception is a transient failure for the process retry policy.",
+    "signatures": [
+      "public abstract class Integration<TCommand, TEvent, TError> : IIntegrationHandler",
+      "public abstract Task<Result<TEvent, TError>> ExecuteAsync(TCommand command, IntegrationContext context, CancellationToken cancellationToken);",
+      "public virtual object KeyOf(TCommand command) => typeof(TCommand).Name;"
+    ],
+    "example": "public sealed class PaymentGateway(HttpClient http) : Integration<ChargeCard, CardCharged, PaymentError>\n{\n    public override async Task<Result<CardCharged, PaymentError>> ExecuteAsync(\n        ChargeCard command, IntegrationContext context, CancellationToken cancellationToken)\n    {\n        // Pass context.IdempotencyKey to the provider: a retry never charges twice.\n        ...\n    }\n}",
+    "members": []
+  },
+  {
+    "name": "IntegrationContext",
+    "group": "Decisions",
+    "source": "src/Wyrd/Integrations/Integration.cs",
+    "description": "What an integration knows about the call it makes: the idempotency key (the command message id, the same on every retry and redelivery) and the attempt number.",
+    "signatures": [
+      "public sealed record IntegrationContext(Guid IdempotencyKey, int Attempt);"
+    ],
+    "example": "request.Headers.Add(\"Idempotency-Key\", context.IdempotencyKey.ToString());",
+    "members": []
+  },
+  {
+    "name": "IWyrdBuilder",
+    "group": "Runtime",
+    "source": "src/Wyrd/Runtime/IWyrdBuilder.cs",
+    "description": "What every host accepts: register a module once and run it in memory or on a durable host.",
+    "signatures": [
+      "public interface IWyrdBuilder<out TSelf>",
+      "TSelf AddSlice<TCommand, TState, TEvent, TError>(Slice<TCommand, TState, TEvent, TError> slice)",
+      "TSelf AddIntegration<TCommand, TEvent, TError>(Integration<TCommand, TEvent, TError> integration)",
+      "TSelf AddPublication<TDomainEvent, TIntegrationEvent>(Publication<TDomainEvent, TIntegrationEvent> publication)",
+      "TSelf AddUpcaster<TFrom, TTo>(Upcaster<TFrom, TTo> upcaster)",
+      "TSelf AddProjection<TView>(Projection<TView> projection)",
+      "TSelf AddProcess(Process process);"
+    ],
+    "example": "public static TRuntime Register<TRuntime>(TRuntime runtime) where TRuntime : IWyrdBuilder<TRuntime> =>\n    runtime.AddSlice(new ChargePaymentSlice()).AddProcess(Processes.OrderFulfillment);",
+    "members": []
+  },
+  {
+    "name": "IWyrdRuntime",
+    "group": "Runtime",
+    "source": "src/Wyrd/Runtime/IWyrdRuntime.cs",
+    "description": "What application code needs from Wyrd whatever the host: send commands, deliver facts, receive events from other services, read states and views, and operate suspended instances.",
+    "signatures": [
+      "public interface IWyrdRuntime",
+      "Task<Decision> SendAsync(ICommand command, CancellationToken cancellationToken = default);",
+      "Task PublishAsync(IIntegrationEvent integrationEvent, CancellationToken cancellationToken = default);",
+      "Task ReceiveAsync(TransportMessage message, CancellationToken cancellationToken = default);",
+      "IReadOnlyList<string> Subscriptions { get; }",
+      "Task<ProcessStatus?> StatusOfAsync(Process process, object key, CancellationToken cancellationToken = default);",
+      "Task ResumeAsync(Process process, object key, CancellationToken cancellationToken = default);",
+      "Task CompensateAsync(Process process, object key, CancellationToken cancellationToken = default);",
+      "Task<InstanceHistory?> HistoryOfAsync(Process process, object key, CancellationToken cancellationToken = default);",
+      "Task<TState> StateOfAsync<TState>(object key, CancellationToken cancellationToken = default)",
+      "Task<TView?> ViewAsync<TView>(object key, CancellationToken cancellationToken = default)",
+      "Task<IReadOnlyList<TView>> ViewsAsync<TView>(CancellationToken cancellationToken = default)"
+    ],
+    "example": "app.MapPost(\"/orders\", async (PlaceOrderRequest request, IWyrdRuntime wyrd) =>\n    await wyrd.SendAsync(request.ToCommand()) switch\n    {\n        Decision.Accepted => Results.Accepted(),\n        Decision.Rejected rejected => Results.Problem(rejected.Error.ToString(), statusCode: 409),\n    });",
+    "members": []
+  },
+  {
+    "name": "IHistoryArchive",
+    "group": "Runtime",
+    "source": "src/Wyrd/Runtime/IHistoryArchive.cs",
+    "description": "Where the histories of finished instances go before retention removes them. At least once: store each history by process, key and first entry, overwriting; an exception keeps the batch for the next pass.",
+    "signatures": [
+      "public interface IHistoryArchive",
+      "Task ArchiveAsync(IReadOnlyList<InstanceHistory> histories, CancellationToken cancellationToken);"
+    ],
+    "example": "public sealed class BlobArchive(BlobContainerClient container) : IHistoryArchive\n{\n    public async Task ArchiveAsync(IReadOnlyList<InstanceHistory> histories, CancellationToken cancellationToken)\n    {\n        foreach (var history in histories)\n            await container.GetBlobClient($\"{history.Process}/{history.Key}/{history.Entries[0].At:O}.json\")\n                .UploadAsync(BinaryData.FromString(history.ToJson()), overwrite: true, cancellationToken);\n    }\n}",
+    "members": []
+  },
+  {
+    "name": "Retention",
+    "group": "Runtime",
+    "source": "src/Wyrd/Runtime/Retention.cs",
+    "description": "How long a host keeps what it handled. On a durable host every member is required: retention is a decision written in the application, never a default.",
+    "signatures": [
+      "public sealed record Retention",
+      "public required Keep Deduplication { get; init; }",
+      "public required Keep FinishedInstances { get; init; }",
+      "public required Keep RelayedMessages { get; init; }",
+      "public required Keep Events { get; init; }",
+      "public required Keep DeadLetters { get; init; }",
+      "public static Retention InMemory { get; } = new()"
+    ],
+    "example": "new Retention\n{\n    Deduplication = Keep.For(7.Days),\n    FinishedInstances = Keep.For(30.Days),\n    RelayedMessages = Keep.For(7.Days),\n    Events = Keep.Forever(\"the shop's record of what happened\"),\n    DeadLetters = Keep.Forever(\"an operator reviews each one\"),\n}",
+    "members": []
+  },
+  {
+    "name": "Keep",
+    "group": "Runtime",
+    "source": "src/Wyrd/Runtime/Retention.cs",
+    "description": "One retention decision: keep something for a period, or forever with the reason written down.",
+    "signatures": [
+      "public sealed record Keep",
+      "public static Keep For(TimeSpan period)",
+      "public static Keep Forever(string why)",
+      "public TimeSpan? Period { get; }",
+      "public string? Reason { get; }"
+    ],
+    "example": "Deduplication = Keep.For(7.Days),\nEvents = Keep.Forever(\"audited by finance\")",
+    "members": []
+  },
+  {
+    "name": "TransportMessage",
+    "group": "Runtime",
+    "source": "src/Wyrd/Runtime/Transport.cs",
+    "description": "An integration event on its way between services: its contract, its JSON payload, the id it keeps end to end, and the trace context it was published in.",
+    "signatures": [
+      "public sealed record TransportMessage(Guid MessageId, string Type, string Payload)",
+      "public string? TraceParent { get; init; }",
+      "public string? TraceState { get; init; }"
+    ],
+    "example": "var message = new TransportMessage(id, \"shipping.order-shipped v1\", payload) { TraceParent = traceParent };",
+    "members": []
+  },
+  {
+    "name": "IWyrdTransport",
+    "group": "Runtime",
+    "source": "src/Wyrd/Runtime/Transport.cs",
+    "description": "Carries published integration events to other services, at least once (Wyrd.RabbitMq, or InMemoryTransport in tests). Only integration events cross service boundaries.",
+    "signatures": [
+      "public interface IWyrdTransport",
+      "Task SendAsync(TransportMessage message, CancellationToken cancellationToken = default);"
+    ],
+    "example": "var runtime = ShopModule.CreateRuntime().UseTransport(await RabbitMqTransport.CreateAsync(connection));",
+    "members": []
+  },
+  {
+    "name": "InMemoryTransport",
+    "group": "Runtime",
+    "source": "src/Wyrd/Runtime/Transport.cs",
+    "description": "Connects runtimes in one process deterministically: every message reaches every subscriber, in order, before SendAsync returns.",
+    "signatures": [
+      "public sealed class InMemoryTransport : IWyrdTransport",
+      "public InMemoryTransport Subscribe(IWyrdRuntime runtime)",
+      "public IReadOnlyList<TransportMessage> Sent",
+      "public async Task SendAsync(TransportMessage message, CancellationToken cancellationToken = default)"
+    ],
+    "example": "var transport = new InMemoryTransport();\nvar payments = PaymentsModule.CreateRuntime().UseTransport(transport);\ntransport.Subscribe(ShippingModule.CreateRuntime());",
+    "members": []
+  },
+  {
+    "name": "WyrdException",
+    "group": "Runtime",
+    "source": "src/Wyrd/WyrdException.cs",
+    "description": "A failure a host or an application can handle: retry it, report it, dead-letter it or answer an operator. Derives from InvalidOperationException, so existing catch blocks still work.",
+    "signatures": [
+      "public class WyrdException : InvalidOperationException",
+      "public WyrdException(string message)",
+      "public WyrdException(string message, Exception innerException)"
+    ],
+    "example": "catch (WyrdException ex) { logger.LogWarning(ex, \"Wyrd could not handle the request\"); }",
+    "members": []
+  },
+  {
+    "name": "ConcurrencyConflictException",
+    "group": "Runtime",
+    "source": "src/Wyrd/WyrdException.cs",
+    "description": "Another transaction changed the same state, instance or read model first. Retrying is always safe; hosts retry on their own, so you see it only when Wyrd joins your transaction.",
+    "signatures": [
+      "public sealed class ConcurrencyConflictException : WyrdException"
+    ],
+    "example": "catch (ConcurrencyConflictException) { await transaction.RollbackAsync(); /* and retry */ }",
+    "members": []
+  },
+  {
+    "name": "UnknownMessageTypeException",
+    "group": "Runtime",
+    "source": "src/Wyrd/WyrdException.cs",
+    "description": "A message names a type nothing registered here uses.",
+    "signatures": [
+      "public sealed class UnknownMessageTypeException(string messageType)"
+    ],
+    "example": "catch (UnknownMessageTypeException ex) { logger.LogError(\"Unknown contract {Type}\", ex.MessageType); }",
+    "members": []
+  },
+  {
+    "name": "MissingJsonMetadataException",
+    "group": "Runtime",
+    "source": "src/Wyrd/WyrdException.cs",
+    "description": "A type has no JSON metadata in the application [WyrdJsonContext]: add [JsonSerializable(typeof(T))].",
+    "signatures": [
+      "public sealed class MissingJsonMetadataException(Type type, Exception innerException)"
+    ],
+    "example": "[WyrdJsonContext]\n[JsonSerializable(typeof(OrderSummary))]\npublic partial class ShopJson : JsonSerializerContext;",
+    "members": []
+  },
+  {
+    "name": "MissingUpcasterException",
+    "group": "Runtime",
+    "source": "src/Wyrd/WyrdException.cs",
+    "description": "A subscriber expects a newer version of a contract than was published, and no upcaster bridges the gap.",
+    "signatures": [
+      "public sealed class MissingUpcasterException(string message) : WyrdException(message);"
+    ],
+    "example": "runtime.AddUpcaster(new PaymentChargedV1ToV2());",
+    "members": []
+  },
+  {
+    "name": "NotAnIntegrationEventException",
+    "group": "Runtime",
+    "source": "src/Wyrd/WyrdException.cs",
+    "description": "Something other than an integration event was offered across a service boundary.",
+    "signatures": [
+      "public sealed class NotAnIntegrationEventException(string messageType)"
+    ],
+    "example": "catch (NotAnIntegrationEventException ex) { /* reject the message: ex.MessageType */ }",
+    "members": []
+  },
+  {
+    "name": "InstanceStateException",
+    "group": "Runtime",
+    "source": "src/Wyrd/WyrdException.cs",
+    "description": "An operator asked a process instance for something it cannot do now: it does not exist, is not suspended, or was already compensating.",
+    "signatures": [
+      "public sealed class InstanceStateException(string process, string key, string message) : WyrdException(message)"
+    ],
+    "example": "catch (InstanceStateException ex) { return Results.Conflict(ex.Message); }",
     "members": []
   }
 ]

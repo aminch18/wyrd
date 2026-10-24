@@ -1,1 +1,132 @@
 #nullable enable
+Wyrd.ConcurrencyConflictException
+Wyrd.ConcurrencyConflictException.ConcurrencyConflictException(string! message) -> void
+Wyrd.ConcurrencyConflictException.ConcurrencyConflictException(string! message, System.Exception! innerException) -> void
+Wyrd.InstanceStateException
+Wyrd.InstanceStateException.InstanceStateException(string! process, string! key, string! message) -> void
+Wyrd.InstanceStateException.Key.get -> string!
+Wyrd.InstanceStateException.Process.get -> string!
+Wyrd.Integration<TCommand, TEvent, TError>
+Wyrd.Integration<TCommand, TEvent, TError>.Integration() -> void
+Wyrd.IntegrationContext
+Wyrd.IntegrationContext.<Clone>$() -> Wyrd.IntegrationContext!
+Wyrd.IntegrationContext.Attempt.get -> int
+Wyrd.IntegrationContext.Attempt.init -> void
+Wyrd.IntegrationContext.Deconstruct(out System.Guid IdempotencyKey, out int Attempt) -> void
+Wyrd.IntegrationContext.Equals(Wyrd.IntegrationContext? other) -> bool
+Wyrd.IntegrationContext.IdempotencyKey.get -> System.Guid
+Wyrd.IntegrationContext.IdempotencyKey.init -> void
+Wyrd.IntegrationContext.IntegrationContext(System.Guid IdempotencyKey, int Attempt) -> void
+Wyrd.MissingJsonMetadataException
+Wyrd.MissingJsonMetadataException.MissingJsonMetadataException(System.Type! type, System.Exception! innerException) -> void
+Wyrd.MissingJsonMetadataException.Type.get -> System.Type!
+Wyrd.MissingUpcasterException
+Wyrd.MissingUpcasterException.MissingUpcasterException(string! message) -> void
+Wyrd.NotAnIntegrationEventException
+Wyrd.NotAnIntegrationEventException.MessageType.get -> string!
+Wyrd.NotAnIntegrationEventException.NotAnIntegrationEventException(string! messageType) -> void
+Wyrd.Projection<TView>.Seed<TState>(System.Func<string!, TState, object!>! key, System.Func<TView?, string!, TState, TView?>! seed) -> void
+Wyrd.Runtime.IHistoryArchive
+Wyrd.Runtime.IHistoryArchive.ArchiveAsync(System.Collections.Generic.IReadOnlyList<Wyrd.Runtime.InstanceHistory!>! histories, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+Wyrd.Runtime.IWyrdBuilder<TSelf>
+Wyrd.Runtime.IWyrdBuilder<TSelf>.AddIntegration<TCommand, TEvent, TError>(Wyrd.Integration<TCommand, TEvent, TError>! integration) -> TSelf
+Wyrd.Runtime.IWyrdBuilder<TSelf>.AddProcess(Wyrd.Processes.Process! process) -> TSelf
+Wyrd.Runtime.IWyrdBuilder<TSelf>.AddProjection<TView>(Wyrd.Projection<TView!>! projection) -> TSelf
+Wyrd.Runtime.IWyrdBuilder<TSelf>.AddPublication<TDomainEvent, TIntegrationEvent>(Wyrd.Publication<TDomainEvent, TIntegrationEvent>! publication) -> TSelf
+Wyrd.Runtime.IWyrdBuilder<TSelf>.AddSlice<TCommand, TState, TEvent, TError>(Wyrd.Slice<TCommand, TState, TEvent, TError>! slice) -> TSelf
+Wyrd.Runtime.IWyrdBuilder<TSelf>.AddUpcaster<TFrom, TTo>(Wyrd.Upcaster<TFrom, TTo>! upcaster) -> TSelf
+Wyrd.Runtime.IWyrdRuntime
+Wyrd.Runtime.IWyrdRuntime.CompensateAsync(Wyrd.Processes.Process! process, object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.Runtime.IWyrdRuntime.HistoryOfAsync(Wyrd.Processes.Process! process, object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Wyrd.Runtime.InstanceHistory?>!
+Wyrd.Runtime.IWyrdRuntime.PublishAsync(Wyrd.IIntegrationEvent! integrationEvent, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.Runtime.IWyrdRuntime.ReceiveAsync(Wyrd.Runtime.TransportMessage! message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.Runtime.IWyrdRuntime.ResumeAsync(Wyrd.Processes.Process! process, object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.Runtime.IWyrdRuntime.SendAsync(Wyrd.ICommand! command, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Wyrd.Decision!>!
+Wyrd.Runtime.IWyrdRuntime.StateOfAsync<TState>(object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<TState>!
+Wyrd.Runtime.IWyrdRuntime.StatusOfAsync(Wyrd.Processes.Process! process, object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Wyrd.Runtime.ProcessStatus?>!
+Wyrd.Runtime.IWyrdRuntime.Subscriptions.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Wyrd.Runtime.IWyrdRuntime.ViewAsync<TView>(object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<TView?>!
+Wyrd.Runtime.IWyrdRuntime.ViewsAsync<TView>(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<TView!>!>!
+Wyrd.Runtime.IWyrdTransport
+Wyrd.Runtime.IWyrdTransport.SendAsync(Wyrd.Runtime.TransportMessage! message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.Runtime.InMemoryRuntime.AddIntegration<TCommand, TEvent, TError>(Wyrd.Integration<TCommand, TEvent, TError>! integration) -> Wyrd.Runtime.InMemoryRuntime!
+Wyrd.Runtime.InMemoryRuntime.CatchUpAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.Runtime.InMemoryRuntime.JournalLimit.get -> int
+Wyrd.Runtime.InMemoryRuntime.JournalLimit.set -> void
+Wyrd.Runtime.InMemoryRuntime.ReceiveAsync(Wyrd.Runtime.TransportMessage! message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.Runtime.InMemoryRuntime.Subscriptions.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Wyrd.Runtime.InMemoryRuntime.UseHistoryArchive(Wyrd.Runtime.IHistoryArchive! archive) -> Wyrd.Runtime.InMemoryRuntime!
+Wyrd.Runtime.InMemoryRuntime.UseRetention(Wyrd.Runtime.Retention! retention) -> Wyrd.Runtime.InMemoryRuntime!
+Wyrd.Runtime.InMemoryRuntime.UseTransport(Wyrd.Runtime.IWyrdTransport! transport) -> Wyrd.Runtime.InMemoryRuntime!
+Wyrd.Runtime.InMemoryTransport
+Wyrd.Runtime.InMemoryTransport.InMemoryTransport() -> void
+Wyrd.Runtime.InMemoryTransport.SendAsync(Wyrd.Runtime.TransportMessage! message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.Runtime.InMemoryTransport.Sent.get -> System.Collections.Generic.IReadOnlyList<Wyrd.Runtime.TransportMessage!>!
+Wyrd.Runtime.InMemoryTransport.Subscribe(Wyrd.Runtime.IWyrdRuntime! runtime) -> Wyrd.Runtime.InMemoryTransport!
+Wyrd.Runtime.Keep
+Wyrd.Runtime.Keep.<Clone>$() -> Wyrd.Runtime.Keep!
+Wyrd.Runtime.Keep.Cutoff(System.DateTimeOffset now) -> System.DateTimeOffset?
+Wyrd.Runtime.Keep.Equals(Wyrd.Runtime.Keep? other) -> bool
+Wyrd.Runtime.Keep.Expired(System.DateTimeOffset at, System.DateTimeOffset now) -> bool
+Wyrd.Runtime.Keep.Period.get -> System.TimeSpan?
+Wyrd.Runtime.Keep.Reason.get -> string?
+Wyrd.Runtime.Retention
+Wyrd.Runtime.Retention.<Clone>$() -> Wyrd.Runtime.Retention!
+Wyrd.Runtime.Retention.DeadLetters.get -> Wyrd.Runtime.Keep!
+Wyrd.Runtime.Retention.DeadLetters.init -> void
+Wyrd.Runtime.Retention.Deduplication.get -> Wyrd.Runtime.Keep!
+Wyrd.Runtime.Retention.Deduplication.init -> void
+Wyrd.Runtime.Retention.Equals(Wyrd.Runtime.Retention? other) -> bool
+Wyrd.Runtime.Retention.Events.get -> Wyrd.Runtime.Keep!
+Wyrd.Runtime.Retention.Events.init -> void
+Wyrd.Runtime.Retention.FinishedInstances.get -> Wyrd.Runtime.Keep!
+Wyrd.Runtime.Retention.FinishedInstances.init -> void
+Wyrd.Runtime.Retention.RelayedMessages.get -> Wyrd.Runtime.Keep!
+Wyrd.Runtime.Retention.RelayedMessages.init -> void
+Wyrd.Runtime.Retention.Retention() -> void
+Wyrd.Runtime.TransportMessage
+Wyrd.Runtime.TransportMessage.<Clone>$() -> Wyrd.Runtime.TransportMessage!
+Wyrd.Runtime.TransportMessage.Deconstruct(out System.Guid MessageId, out string! Type, out string! Payload) -> void
+Wyrd.Runtime.TransportMessage.Equals(Wyrd.Runtime.TransportMessage? other) -> bool
+Wyrd.Runtime.TransportMessage.MessageId.get -> System.Guid
+Wyrd.Runtime.TransportMessage.MessageId.init -> void
+Wyrd.Runtime.TransportMessage.Payload.get -> string!
+Wyrd.Runtime.TransportMessage.Payload.init -> void
+Wyrd.Runtime.TransportMessage.TraceParent.get -> string?
+Wyrd.Runtime.TransportMessage.TraceParent.init -> void
+Wyrd.Runtime.TransportMessage.TraceState.get -> string?
+Wyrd.Runtime.TransportMessage.TraceState.init -> void
+Wyrd.Runtime.TransportMessage.TransportMessage(System.Guid MessageId, string! Type, string! Payload) -> void
+Wyrd.Runtime.TransportMessage.Type.get -> string!
+Wyrd.Runtime.TransportMessage.Type.init -> void
+Wyrd.UnknownMessageTypeException
+Wyrd.UnknownMessageTypeException.MessageType.get -> string!
+Wyrd.UnknownMessageTypeException.UnknownMessageTypeException(string! messageType) -> void
+Wyrd.WyrdException
+Wyrd.WyrdException.WyrdException(string! message) -> void
+Wyrd.WyrdException.WyrdException(string! message, System.Exception! innerException) -> void
+abstract Wyrd.Integration<TCommand, TEvent, TError>.ExecuteAsync(TCommand command, Wyrd.IntegrationContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<Wyrd.Result<TEvent, TError>>!
+override Wyrd.IntegrationContext.Equals(object? obj) -> bool
+override Wyrd.IntegrationContext.GetHashCode() -> int
+override Wyrd.IntegrationContext.ToString() -> string!
+override Wyrd.Runtime.Keep.Equals(object? obj) -> bool
+override Wyrd.Runtime.Keep.GetHashCode() -> int
+override Wyrd.Runtime.Keep.ToString() -> string!
+override Wyrd.Runtime.Retention.Equals(object? obj) -> bool
+override Wyrd.Runtime.Retention.GetHashCode() -> int
+override Wyrd.Runtime.Retention.ToString() -> string!
+override Wyrd.Runtime.TransportMessage.Equals(object? obj) -> bool
+override Wyrd.Runtime.TransportMessage.GetHashCode() -> int
+override Wyrd.Runtime.TransportMessage.ToString() -> string!
+static Wyrd.IntegrationContext.operator !=(Wyrd.IntegrationContext? left, Wyrd.IntegrationContext? right) -> bool
+static Wyrd.IntegrationContext.operator ==(Wyrd.IntegrationContext? left, Wyrd.IntegrationContext? right) -> bool
+static Wyrd.Runtime.Keep.For(System.TimeSpan period) -> Wyrd.Runtime.Keep!
+static Wyrd.Runtime.Keep.Forever(string! why) -> Wyrd.Runtime.Keep!
+static Wyrd.Runtime.Keep.operator !=(Wyrd.Runtime.Keep? left, Wyrd.Runtime.Keep? right) -> bool
+static Wyrd.Runtime.Keep.operator ==(Wyrd.Runtime.Keep? left, Wyrd.Runtime.Keep? right) -> bool
+static Wyrd.Runtime.Retention.InMemory.get -> Wyrd.Runtime.Retention!
+static Wyrd.Runtime.Retention.operator !=(Wyrd.Runtime.Retention? left, Wyrd.Runtime.Retention? right) -> bool
+static Wyrd.Runtime.Retention.operator ==(Wyrd.Runtime.Retention? left, Wyrd.Runtime.Retention? right) -> bool
+static Wyrd.Runtime.TransportMessage.operator !=(Wyrd.Runtime.TransportMessage? left, Wyrd.Runtime.TransportMessage? right) -> bool
+static Wyrd.Runtime.TransportMessage.operator ==(Wyrd.Runtime.TransportMessage? left, Wyrd.Runtime.TransportMessage? right) -> bool
+virtual Wyrd.Integration<TCommand, TEvent, TError>.KeyOf(TCommand command) -> object!

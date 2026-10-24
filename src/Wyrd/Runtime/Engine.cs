@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Runtime.ExceptionServices;
 using Wyrd.Processes;
 
 namespace Wyrd.Runtime;
@@ -20,7 +21,14 @@ internal sealed class Engine(
     private const string ReplyType = "wyrd.reply";
     private const string TimeoutType = "wyrd.timeout";
 
-    public async ValueTask<Decision?> HandleAsync(Envelope envelope, CancellationToken cancellationToken)
+    public ValueTask<Decision?> HandleAsync(Envelope envelope, CancellationToken cancellationToken) =>
+        HandleAsync(envelope, call: null, cancellationToken);
+
+    /// <summary>
+    /// Handles <paramref name="envelope"/> with the outside call its integration command already made
+    /// (<see cref="CallAsync"/>), or calls it inline when <paramref name="call"/> is null.
+    /// </summary>
+    public async ValueTask<Decision?> HandleAsync(Envelope envelope, IntegrationCall? call, CancellationToken cancellationToken)
     {
         using var trace = Tracing.Begin(envelope);
         try
@@ -29,7 +37,7 @@ internal sealed class Engine(
             switch (envelope.Kind)
             {
                 case MessageKind.Command:
-                    return await HandleCommandAsync(envelope, cancellationToken).ConfigureAwait(false);
+                    return await HandleCommandAsync(envelope, call, cancellationToken).ConfigureAwait(false);
                 case MessageKind.Event:
                     await HandleEventAsync(envelope, cancellationToken).ConfigureAwait(false);
                     return null;
@@ -52,11 +60,53 @@ internal sealed class Engine(
 
     // ── Commands: the owner decides ───────────────────────────────────────────────────────────
 
-    private async ValueTask<Decision?> HandleCommandAsync(Envelope envelope, CancellationToken cancellationToken)
+    /// <summary>Whether <paramref name="envelope"/> is a command an integration handles: one that calls the outside world.</summary>
+    public bool IsIntegrationCommand(Envelope envelope) =>
+        envelope.Kind == MessageKind.Command
+        && types.TryTypeOf(envelope.Type, out var type)
+        && registry.FindOwner(type) is IIntegrationHandler;
+
+    /// <summary>
+    /// The outside call of an integration command, made by a durable host before the transaction that records it, so no
+    /// transaction waits on a third party. <see cref="IntegrationCall.None"/> when handling the command won't call it:
+    /// a duplicate, a faulted delivery, or an undo its fence answers. Only reads the store.
+    /// </summary>
+    public async ValueTask<IntegrationCall> CallAsync(Envelope envelope, CancellationToken cancellationToken)
+    {
+        using var trace = Tracing.Begin(envelope);
+        var command = (ICommand)types.Deserialize(envelope.Type, envelope.Payload);
+        if (registry.OwnerOf(command.GetType()) is not IIntegrationHandler integration
+            || await store.FindReplyAsync(envelope.MessageId, cancellationToken).ConfigureAwait(false) is not null
+            || (envelope.Process is not null && fault(envelope, command.GetType()))
+            || (envelope.Fences is { } original && await FenceAnswersAsync(envelope, original, cancellationToken).ConfigureAwait(false)))
+        {
+            return IntegrationCall.None;
+        }
+
+        return await CallIntegrationAsync(integration, command, envelope, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async ValueTask<IntegrationCall> CallIntegrationAsync(
+        IIntegrationHandler integration, ICommand command, Envelope envelope, CancellationToken cancellationToken)
+    {
+        using var activity = Tracing.Integration(envelope);
+        try
+        {
+            return new IntegrationCall(await integration.ExecuteAsync(
+                command, new IntegrationContext(envelope.MessageId, envelope.Process?.Attempt ?? 1), cancellationToken).ConfigureAwait(false));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            Tracing.Failed(activity, ex);
+            return new IntegrationCall(Failure: ExceptionDispatchInfo.Capture(ex));
+        }
+    }
+
+    private async ValueTask<Decision?> HandleCommandAsync(Envelope envelope, IntegrationCall? call, CancellationToken cancellationToken)
     {
         var command = (ICommand)types.Deserialize(envelope.Type, envelope.Payload);
-        var slice = registry.OwnerOf(command.GetType());
-        var key = Keys.Of(slice.KeyOf(command));
+        var owner = registry.OwnerOf(command.GetType());
+        var key = Keys.Of(owner.KeyOf(command));
         Tracing.Key(key);
         var changes = new Changes();
 
@@ -85,36 +135,61 @@ internal sealed class Engine(
             return null;
         }
 
-        var stateType = slice.State.FullName!;
-        var current = await store.LoadStateAsync(stateType, key, cancellationToken).ConfigureAwait(false);
-        var state = current is null ? slice.Initial : types.Deserialize(current.Type, current.Payload);
-        var decision = slice.Decide(command, state);
-
-        ReplyMessage reply;
-        if (decision is Decision.Accepted accepted)
+        Decision decision;
+        if (owner is IIntegrationHandler integration)
         {
-            var version = (current?.Version ?? 0) + 1;
-            var (nextType, nextPayload) = types.Serialize(((IState)state).Apply(accepted.Event), slice.State);
-            changes.States.Add(new StoredState(stateType, key, nextType, nextPayload, version));
-
-            var (eventType, eventPayload) = types.Serialize(accepted.Event, slice.Event);
-            changes.Events.Add(new StoredMessage(eventType, eventPayload));
-            changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, eventType, eventPayload, Stream: new StreamRef(stateType, key, version), Trace: Tracing.Capture()));
-
-            foreach (var publication in registry.PublicationsOf(accepted.Event.GetType()))
+            // The only I/O: outside world first, then the outcome is recorded like any decision. A crash in between
+            // redelivers the command with the same id — the idempotency key — so the other system doesn't repeat it.
+            // A durable host made the call before this transaction; in memory it is made here.
+            call = call == IntegrationCall.None
+                ? throw new IntegrationCallNeededException()
+                : call ?? await CallIntegrationAsync(integration, command, envelope, cancellationToken).ConfigureAwait(false);
+            if (call.Failure is { } failure)
             {
-                var published = publication.Map(accepted.Event);
-                var (publishedType, publishedPayload) = types.Serialize(published, published.GetType());
-                changes.Published.Add(new StoredMessage(publishedType, publishedPayload));
-                changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, publishedType, publishedPayload, Trace: Tracing.Capture()));
-                log(External, key, $"published {types.TypeOf(publishedType).Name}");
+                if (envelope.Process is null)
+                {
+                    failure.Throw();
+                }
+
+                log(External, key, $"{command.GetType().Name} failed: {failure.SourceException.GetType().Name}: {failure.SourceException.Message}");
+                Tracing.Outcome(ReplyOutcome.Faulted);
+                Reply(envelope, new ReplyMessage(ReplyOutcome.Faulted), changes);
+                await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+                return null;
             }
 
+            decision = call.Decision!;
+
+            if (decision is Decision.Accepted done)
+            {
+                Accept(done.Event, owner, key, stream: null, changes);
+            }
+        }
+        else
+        {
+            var slice = (ISliceHandler)owner;
+            var stateType = slice.State.FullName!;
+            var current = await store.LoadStateAsync(stateType, key, cancellationToken).ConfigureAwait(false);
+            var state = current is null ? slice.Initial : types.Deserialize(current.Type, current.Payload);
+            decision = slice.Decide(command, state);
+            if (decision is Decision.Accepted accepted)
+            {
+                var version = (current?.Version ?? 0) + 1;
+                var (nextType, nextPayload) = types.Serialize(((IState)state).Apply(accepted.Event), slice.State);
+                changes.States.Add(new StoredState(stateType, key, nextType, nextPayload, version));
+                Accept(accepted.Event, owner, key, new StreamRef(stateType, key, version), changes);
+            }
+        }
+
+        ReplyMessage reply;
+        if (decision is Decision.Accepted { Event: var @event })
+        {
+            var (eventType, eventPayload) = types.Serialize(@event, owner.Event);
             reply = new ReplyMessage(ReplyOutcome.Accepted, eventType, eventPayload);
         }
         else
         {
-            var (errorType, errorPayload) = types.Serialize(((Decision.Rejected)decision).Error, slice.Error);
+            var (errorType, errorPayload) = types.Serialize(((Decision.Rejected)decision).Error, owner.Error);
             reply = new ReplyMessage(ReplyOutcome.Rejected, errorType, errorPayload);
         }
 
@@ -123,6 +198,25 @@ internal sealed class Engine(
         Reply(envelope, reply, changes);
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
         return decision;
+    }
+
+    /// <summary>Records an accepted event: stored, delivered to whoever reacts to it, and mapped to its publications.</summary>
+    private void Accept(IDomainEvent @event, ICommandOwner owner, string key, StreamRef? stream, Changes changes)
+    {
+        var (eventType, eventPayload) = types.Serialize(@event, owner.Event);
+        changes.Events.Add(new StoredMessage(eventType, eventPayload));
+        changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, eventType, eventPayload, Stream: stream, Trace: Tracing.Capture()));
+
+        foreach (var publication in registry.PublicationsOf(@event.GetType()))
+        {
+            var published = publication.Map(@event);
+            var (publishedType, publishedPayload) = types.Serialize(published, published.GetType());
+            var id = newId();
+            var trace = Tracing.Capture();
+            changes.Published.Add(new PublishedMessage(id, publishedType, publishedPayload, trace));
+            changes.Outbox.Add(new Envelope(id, MessageKind.Event, publishedType, publishedPayload, Trace: trace));
+            log(External, key, $"published {types.TypeOf(publishedType).Name}");
+        }
     }
 
     /// <summary>
@@ -142,6 +236,14 @@ internal sealed class Engine(
         if (outcome is null)
         {
             changes.Replies[original] = new ReplyMessage(ReplyOutcome.Fenced);
+            if (CallsOutside(undo))
+            {
+                // A failed call to the outside world is no proof it didn't act (a timeout, a connection cut after the
+                // provider charged): a late copy is fenced, and the undo runs in case the call did.
+                log(External, key, $"{command.GetType().Name}: the original call's outcome is unknown, fenced and undone");
+                return false;
+            }
+
             log(External, key, $"{command.GetType().Name}: the original command never ran, fenced");
         }
 
@@ -152,6 +254,23 @@ internal sealed class Engine(
         return true;
     }
 
+    /// <summary>Whether the fence answers an undo without running it: the original never ran, or was rejected.</summary>
+    private async ValueTask<bool> FenceAnswersAsync(Envelope undo, Guid original, CancellationToken cancellationToken) =>
+        await store.FindReplyAsync(original, cancellationToken).ConfigureAwait(false) switch
+        {
+            { Outcome: ReplyOutcome.Accepted } => false,
+            null => !CallsOutside(undo),
+            _ => true,
+        };
+
+    /// <summary>Whether the step an undo compensates calls the outside world: its owner is an integration.</summary>
+    private bool CallsOutside(Envelope undo) =>
+        undo.Process is { } target
+        && registry.ProcessNamed(target.Process).Nodes is var nodes
+        && target.Step < nodes.Length
+        && nodes[target.Step] is StepNode { Action.Output: { } command }
+        && registry.FindOwner(command) is IIntegrationHandler;
+
     private void Reply(Envelope command, ReplyMessage reply, Changes changes)
     {
         if (command.Process is not null)
@@ -159,6 +278,13 @@ internal sealed class Engine(
             changes.Outbox.Add(ReplyTo(command, reply));
         }
     }
+
+    /// <summary>
+    /// The failure reply a durable host sends when it can't handle a process command: the process's retry policy
+    /// decides what happens next, so hosts never retry behind its back (one retry layer).
+    /// </summary>
+    internal static Envelope Faulted(Envelope command, Guid id) =>
+        new(id, MessageKind.Reply, ReplyType, MessageTypes.SerializeReply(new ReplyMessage(ReplyOutcome.Faulted)), command.Process, command.MessageId);
 
     /// <summary>The reply envelope to a process command (also used by Urd to answer from a recording).</summary>
     internal Envelope ReplyTo(Envelope command, ReplyMessage reply) =>
@@ -205,20 +331,23 @@ internal sealed class Engine(
     /// </summary>
     private async ValueTask ProjectInOrderAsync(Envelope envelope, IEvent @event, Changes changes, CancellationToken cancellationToken)
     {
-        if (registry.Projections.Count == 0)
-        {
-            return;
-        }
-
         if (envelope.Stream is not { } stream)
         {
-            await ProjectAsync(@event, changes, cancellationToken).ConfigureAwait(false); // From outside: no stream to order by.
+            await ProjectAsync(@event, stream: null, changes, cancellationToken).ConfigureAwait(false); // From outside: no stream to order by.
             return;
         }
 
         var projected = await store.LoadProjectedAsync(stream.StateType, stream.Key, cancellationToken).ConfigureAwait(false);
         if (stream.Version <= projected)
         {
+            return;
+        }
+
+        if (registry.Projections.Count == 0)
+        {
+            // Nothing to order yet, but a projection added later catches up from the states, and needs to know which
+            // events of a stream have arrived.
+            changes.Projected[(stream.StateType, stream.Key)] = (projected, stream.Version);
             return;
         }
 
@@ -229,50 +358,155 @@ internal sealed class Engine(
             return;
         }
 
-        await ProjectAsync(@event, changes, cancellationToken).ConfigureAwait(false);
+        await ProjectAsync(@event, stream, changes, cancellationToken).ConfigureAwait(false);
         var version = stream.Version;
         while (await store.FindHeldAsync(stream.StateType, stream.Key, version + 1, cancellationToken).ConfigureAwait(false) is { } held)
         {
             changes.Release.Add(held);
-            await ProjectAsync((IEvent)types.Deserialize(held.Type, held.Payload), changes, cancellationToken).ConfigureAwait(false);
+            await ProjectAsync((IEvent)types.Deserialize(held.Type, held.Payload), stream with { Version = version + 1 }, changes, cancellationToken).ConfigureAwait(false);
             version++;
         }
 
         changes.Projected[(stream.StateType, stream.Key)] = (projected, version);
     }
 
-    private async ValueTask ProjectAsync(IEvent @event, Changes changes, CancellationToken cancellationToken)
+    private async ValueTask ProjectAsync(IEvent @event, StreamRef? stream, Changes changes, CancellationToken cancellationToken)
     {
+        if (stream is { Version: 1 } && registry.AnyCatchingUp)
+        {
+            // A stream that begins while a projection catches up is followed from here, whether or not this first event
+            // is one the projection handles: otherwise a later event of it would wait for a seed that never comes.
+            foreach (var projection in registry.CatchingUp.Where(p => p.Seeds.Any(s => s.FullName == stream.StateType)))
+            {
+                await FollowsAsync(projection, stream, changes, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
         foreach (var projection in registry.Projections)
         {
             foreach (var handled in projection.Events)
             {
-                if (Accept(@event, handled) is { } projected)
+                if (Accept(@event, handled) is { } projected && await FollowsAsync(projection, stream, changes, cancellationToken).ConfigureAwait(false))
                 {
-                    await ProjectAsync(projection, projected, changes, cancellationToken).ConfigureAwait(false);
+                    var key = Keys.Of(projection.KeyOf(projected));
+                    await SaveViewAsync(projection, key, static (p, current, e) => p.Apply(current, e), projected, changes, cancellationToken).ConfigureAwait(false);
                 }
             }
         }
     }
 
-    private async ValueTask ProjectAsync(IProjectionHandler projection, IEvent @event, Changes changes, CancellationToken cancellationToken)
+    /// <summary>
+    /// Whether an event of <paramref name="stream"/> reaches a projection that is still catching up from existing
+    /// states: when it is newer than the state the stream's seed was built from, or when the stream begins with it (there
+    /// is nothing to seed). Any other event is in the state a seed is built from, now or on a later pass.
+    /// </summary>
+    private async ValueTask<bool> FollowsAsync(IProjectionHandler projection, StreamRef? stream, Changes changes, CancellationToken cancellationToken)
+    {
+        if (stream is null || registry.IsCaughtUp(projection) || !projection.Seeds.Any(s => s.FullName == stream.StateType))
+        {
+            return true;
+        }
+
+        var viewType = projection.View.FullName!;
+        if (await store.IsCaughtUpAsync(viewType, cancellationToken).ConfigureAwait(false))
+        {
+            registry.CaughtUp(projection);
+            return true;
+        }
+
+        var seeded = new StoredSeeded(viewType, stream.StateType, stream.Key);
+        var from = changes.Seeded.TryGetValue(seeded, out var pending)
+            ? pending
+            : await store.LoadSeededAsync(seeded, cancellationToken).ConfigureAwait(false);
+        if (from is not null)
+        {
+            return stream.Version > from;
+        }
+
+        if (stream.Version != 1)
+        {
+            return false;
+        }
+
+        changes.Seeded[seeded] = 0;
+        return true;
+    }
+
+    /// <summary>
+    /// Updates one view with <paramref name="update"/>, given <paramref name="argument"/>: a static function and its
+    /// argument, so updating a view allocates no closure.
+    /// </summary>
+    private async ValueTask SaveViewAsync<TArgument>(
+        IProjectionHandler projection,
+        string key,
+        Func<IProjectionHandler, object?, TArgument, object?> update,
+        TArgument argument,
+        Changes changes,
+        CancellationToken cancellationToken)
     {
         var viewType = projection.View.FullName!;
-        var key = Keys.Of(projection.KeyOf(@event));
         var stored = changes.Views.TryGetValue((viewType, key), out var pending)
             ? pending
             : await store.LoadViewAsync(viewType, key, cancellationToken).ConfigureAwait(false);
         var current = stored?.Payload is null ? null : types.Deserialize(stored.Type!, stored.Payload);
 
-        var next = projection.Apply(current, @event);
+        var next = update(projection, current, argument);
+        var read = stored?.Version ?? 0;
         if (next is null)
         {
-            changes.Views[(viewType, key)] = new StoredView(viewType, key, null, null);
+            changes.Views[(viewType, key)] = new StoredView(viewType, key, null, null, read);
             return;
         }
 
         var (type, payload) = types.Serialize(next, projection.View);
-        changes.Views[(viewType, key)] = new StoredView(viewType, key, type, payload);
+        changes.Views[(viewType, key)] = new StoredView(viewType, key, type, payload, read);
+    }
+
+    // ── Catching up a projection added to a store with data ──────────────────────────────────
+
+    /// <summary>
+    /// Seeds a catching-up projection's view from one existing state and commits it, with the state's version: the
+    /// stream's events up to it are in the seed and skipped when they arrive, later ones are applied. The version is
+    /// checked on commit, so an event that changed the state meanwhile wins and the stream is seeded on a later pass.
+    /// </summary>
+    public async ValueTask SeedAsync(IProjectionHandler projection, StoredState state, CancellationToken cancellationToken)
+    {
+        var changes = new Changes();
+        var value = types.Deserialize(state.Type, state.Payload);
+        var key = Keys.Of(projection.SeedKeyOf(state.Key, value));
+        await SaveViewAsync(projection, key, static (p, current, s) => p.Seed(current, s.Key, s.Value), (state.Key, Value: value), changes, cancellationToken)
+            .ConfigureAwait(false);
+        changes.Seeded[new StoredSeeded(projection.View.FullName!, state.StateType, state.Key)] = state.Version;
+        changes.Unchanged.Add(state);
+        await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Marks a projection caught up once it follows every stream of the states it seeds from and every event its seeds
+    /// include has been projected. Returns false while either is left.
+    /// </summary>
+    public async ValueTask<bool> CompleteCatchUpAsync(IProjectionHandler projection, CancellationToken cancellationToken)
+    {
+        var viewType = projection.View.FullName!;
+        foreach (var seed in projection.Seeds)
+        {
+            if ((await store.UnseededAsync(viewType, seed.FullName!, 1, cancellationToken).ConfigureAwait(false)).Count > 0)
+            {
+                return false;
+            }
+        }
+
+        if (await store.SeedsAheadAsync(viewType, cancellationToken).ConfigureAwait(false))
+        {
+            return false;
+        }
+
+        var changes = new Changes();
+        changes.CaughtUp.Add(viewType);
+        await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+        registry.CaughtUp(projection);
+        log(External, null, $"{projection.View.Name} caught up from existing states");
+        return true;
     }
 
     private async ValueTask StartAsync(Process process, IEvent trigger, Changes changes, CancellationToken cancellationToken)
@@ -311,16 +545,17 @@ internal sealed class Engine(
         {
             // Kept at the step the instance waits at, in case it is what it waits for once its definition is back.
             changes.Park.Add(Parked(process, key, instance.Position, wait, awaited));
-            changes.Save(changed);
+            changes.Save(EndWait(changed, changes));
         }
         else if (instance is { Status: ProcessStatus.Awaiting } && instance.Position == step)
         {
             log(process.Name, key, $"<- {awaited.GetType().Name}");
             var trigger = Trigger(instance);
             var fact = Parked(process, key, step, wait, awaited).AsFact();
+            CancelTimer(instance, changes);
             instance = Record(instance, HistoryKind.Received, step: step, message: fact) with
             {
-                Position = step + 1, Status = ProcessStatus.Running, Deadline = null, Facts = instance.Facts.Add(fact),
+                Position = step + 1, Status = ProcessStatus.Running, Facts = instance.Facts.Add(fact), Deadline = null, Timer = null,
             };
             changes.Save(await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false));
         }
@@ -340,6 +575,32 @@ internal sealed class Engine(
         var (type, payload) = types.Serialize(awaited, wait.Event);
         return new StoredParked(process.Name, key, step, type, payload);
     }
+
+    /// <summary>
+    /// A wait is over before its time limit: its timer is cancelled with the rest of the changes, so nothing is left
+    /// scheduled for an instance that no longer waits (Q2.2).
+    /// </summary>
+    private static StoredInstance EndWait(StoredInstance instance, Changes changes)
+    {
+        CancelTimer(instance, changes);
+        return instance with { Deadline = null, Timer = null };
+    }
+
+    /// <summary>Cancels the wait's timer with the rest of the changes; the caller clears it on the instance.</summary>
+    private static void CancelTimer(StoredInstance instance, Changes changes)
+    {
+        if (instance.Timer is { } timer)
+        {
+            changes.Cancel.Add(timer);
+        }
+    }
+
+    /// <summary>
+    /// The instance keeping a reply for its operator. A fault says the command didn't run: re-sending it is safe, there is
+    /// nothing to keep.
+    /// </summary>
+    private static StoredInstance KeepReply(StoredInstance instance, Envelope envelope, ReplyMessage reply) =>
+        reply.Outcome == ReplyOutcome.Faulted ? instance : instance with { KeptReply = envelope };
 
     /// <summary>
     /// The instance suspended, when the deployed definition's structure is not the one it started with: continuing
@@ -373,7 +634,7 @@ internal sealed class Engine(
         IIntegrationEvent current = (IIntegrationEvent)@event;
         for (var version = source.Version; version < target.Version; version++)
         {
-            var upcaster = registry.Upcaster(target.Name, version) ?? throw new InvalidOperationException(
+            var upcaster = registry.Upcaster(target.Name, version) ?? throw new MissingUpcasterException(
                 $"A subscriber expects {target} but {target.Name} v{version} was published, and there is no upcaster from v{version}. Register one with AddUpcaster().");
             current = upcaster.Map(current);
         }
@@ -408,17 +669,19 @@ internal sealed class Engine(
                     }
 
                     DateTimeOffset? deadline = wait.Timeout is { } timeout ? now() + timeout : null;
+                    Guid? timer = null;
                     if (deadline is { } at)
                     {
+                        timer = newId();
                         changes.Schedule.Add(new Scheduled(at, new Envelope(
-                            newId(), MessageKind.Timeout, TimeoutType, "{}", new ProcessRef(instance.Process, instance.Key, instance.Position, false), Trace: Tracing.Capture(instance))));
+                            timer.Value, MessageKind.Timeout, TimeoutType, "{}", new ProcessRef(instance.Process, instance.Key, instance.Position, false), Trace: Tracing.Capture(instance))));
                     }
 
                     log(instance.Process, instance.Key, wait.Timeout is { } t
                         ? $"awaiting {wait.Event.Name} (within {Durations.Format(t)})"
                         : $"awaiting {wait.Event.Name}");
                     Tracing.Event("wyrd.waiting", instance, instance.Position);
-                    return instance with { Status = ProcessStatus.Awaiting, Deadline = deadline };
+                    return instance with { Status = ProcessStatus.Awaiting, Deadline = deadline, Timer = timer };
             }
         }
 
@@ -466,10 +729,11 @@ internal sealed class Engine(
         var trigger = Trigger(instance);
         var changes = new Changes();
 
-        // The reply stays in the owner's inbox: resuming re-sends the command with the same id and gets it again.
+        // The instance keeps the reply for the operator: the owner's inbox forgets it after its deduplication retention,
+        // and an instance can stay suspended longer than that.
         if (instance.Status != ProcessStatus.Suspended && DefinitionChanged(process, instance) is { } changed)
         {
-            changes.Save(changed);
+            changes.Save(KeepReply(changed, envelope, reply));
             await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
             return;
         }
@@ -477,10 +741,13 @@ internal sealed class Engine(
         if (instance.Fingerprint != process.Fingerprint)
         {
             log(target.Process, target.Key, "reply kept for later: the definition changed");
+            changes.Save(KeepReply(instance, envelope, reply));
+            await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
             return;
         }
 
-        instance = Record(instance, HistoryKind.Replied, target.Step, target.Compensating, target.Attempt,
+        // Handled now: a reply kept earlier for this command is no longer the operator's to deliver.
+        instance = Record(instance.KeptReply is null ? instance : instance with { KeptReply = null }, HistoryKind.Replied, target.Step, target.Compensating, target.Attempt,
             reply.Type is null ? null : new StoredMessage(reply.Type, reply.Payload!), outcome: reply.Outcome);
 
         if (target.Step == process.Nodes.Length)
@@ -565,6 +832,28 @@ internal sealed class Engine(
             {
                 Completed = instance.Completed.Add(index),
                 Uncertain = instance.Uncertain.SetItem(index, instance.Pending!.Value),
+            };
+        }
+
+        return StartCompensation(process, instance, trigger, changes);
+    }
+
+    /// <summary>
+    /// Compensates a process whose pending step's reply was kept while its definition was changed: the outcome is known,
+    /// so an accepted step is undone like any completed one, and a rejected one has nothing to undo. No fence needed.
+    /// </summary>
+    private StoredInstance CompensateKnown(Process process, StoredInstance instance, Envelope kept, IEvent trigger, Changes changes)
+    {
+        var target = kept.Process!;
+        var reply = MessageTypes.DeserializeReply(kept.Payload);
+        instance = Record(instance, HistoryKind.Replied, target.Step, target.Compensating, target.Attempt,
+            reply.Type is null ? null : new StoredMessage(reply.Type, reply.Payload!), outcome: reply.Outcome);
+        if (reply.Outcome == ReplyOutcome.Accepted)
+        {
+            instance = instance with
+            {
+                Completed = instance.Completed.Add(target.Step),
+                Facts = instance.Facts.Add(new StoredMessage(reply.Type!, reply.Payload!)),
             };
         }
 
@@ -663,7 +952,10 @@ internal sealed class Engine(
 
     // ── Operators: resume or compensate a suspended instance ─────────────────────────────────
 
-    /// <summary>Re-sends what the suspended instance was doing, with the same message id (the owner's inbox makes it safe).</summary>
+    /// <summary>
+    /// Re-sends what the suspended instance was doing, with the same message id (the owner's inbox makes it safe), or
+    /// delivers the reply it kept while its definition was changed.
+    /// </summary>
     public async ValueTask ResumeAsync(string processName, string key, CancellationToken cancellationToken)
     {
         var (process, instance) = await SuspendedAsync(processName, key, cancellationToken).ConfigureAwait(false);
@@ -674,8 +966,14 @@ internal sealed class Engine(
         log(instance.Process, instance.Key, "resumed by an operator");
         instance = Record(instance, HistoryKind.Resumed);
 
-        instance = instance with { Status = ProcessStatus.Running, Reason = null };
-        if (!instance.Compensating && process.Nodes[instance.Position] is AwaitNode)
+        var kept = KeptFor(instance);
+        instance = instance with { Status = ProcessStatus.Running, Reason = null, KeptReply = null };
+        if (kept is not null)
+        {
+            // The reply arrived while the definition was changed: delivered again, instead of asking the owner again.
+            changes.Outbox.Add(kept with { MessageId = newId() });
+        }
+        else if (!instance.Compensating && process.Nodes[instance.Position] is AwaitNode)
         {
             // Waits again, with a fresh time limit; an event that arrived meanwhile was parked and is taken now.
             instance = await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false);
@@ -707,7 +1005,7 @@ internal sealed class Engine(
         using var operation = Tracing.Operator("compensate", instance);
         if (instance.Compensating)
         {
-            throw new InvalidOperationException(
+            throw new InstanceStateException(processName, key,
                 $"{processName} '{key}' was already compensating when it was suspended: resume it to finish the compensation.");
         }
 
@@ -715,26 +1013,33 @@ internal sealed class Engine(
         var changes = new Changes();
         log(instance.Process, instance.Key, "compensation requested by an operator");
         instance = Record(instance, HistoryKind.CompensationRequested);
-        instance = instance with { Status = ProcessStatus.Running, Reason = null, Deadline = null };
-        changes.Save(process.Nodes[instance.Position] is StepNode step
-            ? CompensateUncertain(process, instance, step, instance.Position, Trigger(instance), changes)
-            : StartCompensation(process, instance, Trigger(instance), changes));
+        var kept = KeptFor(instance);
+        instance = instance with { Status = ProcessStatus.Running, Reason = null, Deadline = null, KeptReply = null };
+        changes.Save(kept is not null
+            ? CompensateKnown(process, instance, kept, Trigger(instance), changes)
+            : process.Nodes[instance.Position] is StepNode step
+                ? CompensateUncertain(process, instance, step, instance.Position, Trigger(instance), changes)
+                : StartCompensation(process, instance, Trigger(instance), changes));
         operation?.SetTag("wyrd.process.status", changes.Find(processName, key)?.Status.ToString());
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>The kept reply, when it answers the command the instance is waiting for; any other is stale.</summary>
+    private static Envelope? KeptFor(StoredInstance instance) =>
+        instance.KeptReply is { } kept && kept.ReplyTo == instance.Pending ? kept : null;
 
     private async ValueTask<(Process Process, StoredInstance Instance)> SuspendedAsync(string processName, string key, CancellationToken cancellationToken)
     {
         var instance = await store.LoadInstanceAsync(processName, key, cancellationToken).ConfigureAwait(false);
         if (instance is not { Status: ProcessStatus.Suspended })
         {
-            throw new InvalidOperationException($"{processName} '{key}' is not suspended (it is {instance?.Status.ToString() ?? "unknown"}).");
+            throw new InstanceStateException(processName, key, $"{processName} '{key}' is not suspended (it is {instance?.Status.ToString() ?? "unknown"}).");
         }
 
         var process = registry.ProcessNamed(processName);
         return instance.Fingerprint == process.Fingerprint
             ? (process, instance)
-            : throw new InvalidOperationException(
+            : throw new InstanceStateException(processName, key,
                 $"{processName} '{key}' started with another definition ({instance.Fingerprint}; deployed: {process.Fingerprint}). "
                 + "Deploy the definition it started with to resume or compensate it; migrating instances comes with process versioning.");
     }
@@ -780,7 +1085,7 @@ internal sealed class Engine(
         var wait = (AwaitNode)process.Nodes[target.Step];
         log(instance.Process, instance.Key, $"timeout: {wait.Event.Name} not received in time");
         instance = Record(instance, HistoryKind.TimedOut, step: target.Step);
-        changes.Save(StartCompensation(process, instance with { Deadline = null }, Trigger(instance), changes));
+        changes.Save(StartCompensation(process, instance with { Deadline = null, Timer = null }, Trigger(instance), changes));
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
     }
 

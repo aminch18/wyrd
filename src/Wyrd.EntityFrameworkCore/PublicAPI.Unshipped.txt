@@ -1,0 +1,90 @@
+#nullable enable
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.AddIntegration<TCommand, TEvent, TError>(Wyrd.Integration<TCommand, TEvent, TError>! integration) -> Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext!>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.AddProcess(Wyrd.Processes.Process! process) -> Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext!>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.AddProjection<TView>(Wyrd.Projection<TView!>! projection) -> Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext!>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.AddPublication<TDomainEvent, TIntegrationEvent>(Wyrd.Publication<TDomainEvent, TIntegrationEvent>! publication) -> Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext!>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.AddSlice<TCommand, TState, TEvent, TError>(Wyrd.Slice<TCommand, TState, TEvent, TError>! slice) -> Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext!>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.AddUpcaster<TFrom, TTo>(Wyrd.Upcaster<TFrom, TTo>! upcaster) -> Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext!>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.BacklogAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<(long Queued, long DeadLetters)>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.CatchUpAsync(int batchSize = 1000, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.CompensateAsync(Wyrd.Processes.Process! process, object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.Dispose() -> void
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.EfCoreRuntime(Microsoft.EntityFrameworkCore.IDbContextFactory<TContext!>! contexts, System.Text.Json.Serialization.JsonSerializerContext! json, Wyrd.Runtime.Retention! retention, Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions? options = null, System.TimeProvider? time = null, Microsoft.Extensions.Logging.ILogger<Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext!>!>? logger = null) -> void
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.EfCoreRuntime(Microsoft.EntityFrameworkCore.IDbContextFactory<TContext!>! contexts, Wyrd.Runtime.Retention! retention, Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions? options = null, System.TimeProvider? time = null, Microsoft.Extensions.Logging.ILogger<Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext!>!>? logger = null) -> void
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.ForgetExpiredAsync(int batchSize = 1000, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.HealthAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Wyrd.EntityFrameworkCore.QueueHealth!>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.HistoryOfAsync(Wyrd.Processes.Process! process, object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Wyrd.Runtime.InstanceHistory?>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.ProcessPendingAsync(int max = 1000, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.PublishAsync(Wyrd.IIntegrationEvent! integrationEvent, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.ReceiveAsync(Wyrd.Runtime.TransportMessage! message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.RelayPendingAsync(int max = 1000, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.ResumeAsync(Wyrd.Processes.Process! process, object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.RunAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.SendAsync(Wyrd.ICommand! command, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Wyrd.Decision!>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.SendAsync(Wyrd.ICommand! command, TContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Wyrd.Decision!>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.StateOfAsync<TState>(object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<TState>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.StatusOfAsync(Wyrd.Processes.Process! process, object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Wyrd.Runtime.ProcessStatus?>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.Subscriptions.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.UseHistoryArchive(Wyrd.Runtime.IHistoryArchive! archive) -> Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext!>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.UseTransport(Wyrd.Runtime.IWyrdTransport! transport) -> Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext!>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.ViewAsync<TView>(object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<TView?>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.ViewsAsync<TView>(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<TView!>!>!
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.<Clone>$() -> Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions!
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.CleanupInterval.get -> System.TimeSpan
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.CleanupInterval.init -> void
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.EfCoreRuntimeOptions() -> void
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.Equals(Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions? other) -> bool
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.HealthInterval.get -> System.TimeSpan
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.HealthInterval.init -> void
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.IntegrationLease.get -> System.TimeSpan
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.IntegrationLease.init -> void
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.MaxConflictRetries.get -> int
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.MaxConflictRetries.init -> void
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.MaxDeliveryAttempts.get -> int
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.MaxDeliveryAttempts.init -> void
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.MaxPollInterval.get -> System.TimeSpan
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.MaxPollInterval.init -> void
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.PollInterval.get -> System.TimeSpan
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.PollInterval.init -> void
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.RedeliveryDelay.get -> System.TimeSpan
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.RedeliveryDelay.init -> void
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.RelayBatchSize.get -> int
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.RelayBatchSize.init -> void
+Wyrd.EntityFrameworkCore.QueueHealth
+Wyrd.EntityFrameworkCore.QueueHealth.<Clone>$() -> Wyrd.EntityFrameworkCore.QueueHealth!
+Wyrd.EntityFrameworkCore.QueueHealth.DeadLetters.get -> long
+Wyrd.EntityFrameworkCore.QueueHealth.DeadLetters.init -> void
+Wyrd.EntityFrameworkCore.QueueHealth.Deconstruct(out long Due, out System.TimeSpan OldestDue, out long Scheduled, out long DeadLetters, out long PendingSteps, out System.TimeSpan OldestPendingStep, out long Suspended, out long ExpiredKept) -> void
+Wyrd.EntityFrameworkCore.QueueHealth.Due.get -> long
+Wyrd.EntityFrameworkCore.QueueHealth.Due.init -> void
+Wyrd.EntityFrameworkCore.QueueHealth.Equals(Wyrd.EntityFrameworkCore.QueueHealth? other) -> bool
+Wyrd.EntityFrameworkCore.QueueHealth.ExpiredKept.get -> long
+Wyrd.EntityFrameworkCore.QueueHealth.ExpiredKept.init -> void
+Wyrd.EntityFrameworkCore.QueueHealth.OldestDue.get -> System.TimeSpan
+Wyrd.EntityFrameworkCore.QueueHealth.OldestDue.init -> void
+Wyrd.EntityFrameworkCore.QueueHealth.OldestPendingStep.get -> System.TimeSpan
+Wyrd.EntityFrameworkCore.QueueHealth.OldestPendingStep.init -> void
+Wyrd.EntityFrameworkCore.QueueHealth.PendingSteps.get -> long
+Wyrd.EntityFrameworkCore.QueueHealth.PendingSteps.init -> void
+Wyrd.EntityFrameworkCore.QueueHealth.QueueHealth(long Due, System.TimeSpan OldestDue, long Scheduled, long DeadLetters, long PendingSteps, System.TimeSpan OldestPendingStep, long Suspended, long ExpiredKept) -> void
+Wyrd.EntityFrameworkCore.QueueHealth.Scheduled.get -> long
+Wyrd.EntityFrameworkCore.QueueHealth.Scheduled.init -> void
+Wyrd.EntityFrameworkCore.QueueHealth.Suspended.get -> long
+Wyrd.EntityFrameworkCore.QueueHealth.Suspended.init -> void
+Wyrd.EntityFrameworkCore.WyrdDbContext
+Wyrd.EntityFrameworkCore.WyrdDbContext.WyrdDbContext(Microsoft.EntityFrameworkCore.DbContextOptions<Wyrd.EntityFrameworkCore.WyrdDbContext!>! options) -> void
+Wyrd.EntityFrameworkCore.WyrdModelBuilderExtensions
+override Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.Equals(object? obj) -> bool
+override Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.GetHashCode() -> int
+override Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.ToString() -> string!
+override Wyrd.EntityFrameworkCore.QueueHealth.Equals(object? obj) -> bool
+override Wyrd.EntityFrameworkCore.QueueHealth.GetHashCode() -> int
+override Wyrd.EntityFrameworkCore.QueueHealth.ToString() -> string!
+override Wyrd.EntityFrameworkCore.WyrdDbContext.OnModelCreating(Microsoft.EntityFrameworkCore.ModelBuilder! modelBuilder) -> void
+static Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.operator !=(Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions? left, Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions? right) -> bool
+static Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.operator ==(Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions? left, Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions? right) -> bool
+static Wyrd.EntityFrameworkCore.QueueHealth.operator !=(Wyrd.EntityFrameworkCore.QueueHealth? left, Wyrd.EntityFrameworkCore.QueueHealth? right) -> bool
+static Wyrd.EntityFrameworkCore.QueueHealth.operator ==(Wyrd.EntityFrameworkCore.QueueHealth? left, Wyrd.EntityFrameworkCore.QueueHealth? right) -> bool
+static Wyrd.EntityFrameworkCore.WyrdModelBuilderExtensions.AddWyrd(this Microsoft.EntityFrameworkCore.ModelBuilder! modelBuilder, string! schema = "wyrd") -> Microsoft.EntityFrameworkCore.ModelBuilder!

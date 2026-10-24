@@ -24,6 +24,28 @@ public class RuntimeTests
     }
 
     [Fact]
+    public async Task a_wait_that_ends_cancels_its_timer()
+    {
+        await _runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+        Assert.Contains(_runtime.Scheduled(), m => m.Kind == MessageKind.Timeout);
+
+        await _runtime.PublishAsync(new PaymentConfirmed("A-1"));
+
+        Assert.Empty(_runtime.Scheduled());
+    }
+
+    [Fact]
+    public async Task a_wait_that_times_out_leaves_nothing_scheduled()
+    {
+        await _runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+
+        await _runtime.AdvanceAsync(15.Minutes);
+
+        Assert.Equal(ProcessStatus.Compensated, _runtime.StatusOf(Fulfillment, "A-1"));
+        Assert.Empty(_runtime.Scheduled());
+    }
+
+    [Fact]
     public async Task a_rejected_step_compensates_only_what_completed()
     {
         await _runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 5_000));

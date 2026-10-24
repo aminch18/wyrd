@@ -44,6 +44,16 @@ export function QuickStartDoc() {
                 walkthrough includes happy paths, gateway failures, timeouts,
                 compensation, and duplicate delivery.
             </Callout>
+            <h2>Run it durable</h2>
+            <p>
+                The same module runs on PostgreSQL or SQL Server through EF
+                Core: you choose the retention, run workers, and connect
+                services over RabbitMQ.{' '}
+                <a href={`${import.meta.env.BASE_URL}docs/running-durable/`}>
+                    Read the Running durable guide
+                </a>
+                .
+            </p>
             <h2>Generate documentation from the model</h2>
             <p>
                 The Wyrd CLI exports AsyncAPI contracts and Mermaid process

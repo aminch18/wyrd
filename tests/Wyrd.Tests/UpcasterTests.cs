@@ -60,7 +60,7 @@ public class UpcasterTests
     {
         var runtime = TestSystem.Create(ShipWhenPaidV2);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.SendAsync(new ChargePayment("A-1", 50)));
+        var ex = await Assert.ThrowsAsync<MissingUpcasterException>(() => runtime.SendAsync(new ChargePayment("A-1", 50)));
 
         Assert.Contains("expects payments.payment-charged v2", ex.Message, StringComparison.Ordinal);
         Assert.Contains("no upcaster from v1", ex.Message, StringComparison.Ordinal);

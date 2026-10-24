@@ -1,0 +1,25 @@
+#nullable enable
+Wyrd.RabbitMq.RabbitMqOptions
+Wyrd.RabbitMq.RabbitMqOptions.<Clone>$() -> Wyrd.RabbitMq.RabbitMqOptions!
+Wyrd.RabbitMq.RabbitMqOptions.ConfirmTimeout.get -> System.TimeSpan
+Wyrd.RabbitMq.RabbitMqOptions.ConfirmTimeout.init -> void
+Wyrd.RabbitMq.RabbitMqOptions.Equals(Wyrd.RabbitMq.RabbitMqOptions? other) -> bool
+Wyrd.RabbitMq.RabbitMqOptions.Exchange.get -> string!
+Wyrd.RabbitMq.RabbitMqOptions.Exchange.init -> void
+Wyrd.RabbitMq.RabbitMqOptions.Prefetch.get -> ushort
+Wyrd.RabbitMq.RabbitMqOptions.Prefetch.init -> void
+Wyrd.RabbitMq.RabbitMqOptions.RabbitMqOptions() -> void
+Wyrd.RabbitMq.RabbitMqOptions.RetryDelay.get -> System.TimeSpan
+Wyrd.RabbitMq.RabbitMqOptions.RetryDelay.init -> void
+Wyrd.RabbitMq.RabbitMqSubscriber
+Wyrd.RabbitMq.RabbitMqSubscriber.DisposeAsync() -> System.Threading.Tasks.ValueTask
+Wyrd.RabbitMq.RabbitMqTransport
+Wyrd.RabbitMq.RabbitMqTransport.DisposeAsync() -> System.Threading.Tasks.ValueTask
+Wyrd.RabbitMq.RabbitMqTransport.SendAsync(Wyrd.Runtime.TransportMessage! message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+override Wyrd.RabbitMq.RabbitMqOptions.Equals(object? obj) -> bool
+override Wyrd.RabbitMq.RabbitMqOptions.GetHashCode() -> int
+override Wyrd.RabbitMq.RabbitMqOptions.ToString() -> string!
+static Wyrd.RabbitMq.RabbitMqOptions.operator !=(Wyrd.RabbitMq.RabbitMqOptions? left, Wyrd.RabbitMq.RabbitMqOptions? right) -> bool
+static Wyrd.RabbitMq.RabbitMqOptions.operator ==(Wyrd.RabbitMq.RabbitMqOptions? left, Wyrd.RabbitMq.RabbitMqOptions? right) -> bool
+static Wyrd.RabbitMq.RabbitMqSubscriber.StartAsync(RabbitMQ.Client.IConnection! connection, Wyrd.Runtime.IWyrdRuntime! runtime, string! queue, Wyrd.RabbitMq.RabbitMqOptions? options = null, Microsoft.Extensions.Logging.ILogger<Wyrd.RabbitMq.RabbitMqSubscriber!>? logger = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Wyrd.RabbitMq.RabbitMqSubscriber!>!
+static Wyrd.RabbitMq.RabbitMqTransport.CreateAsync(RabbitMQ.Client.IConnection! connection, Wyrd.RabbitMq.RabbitMqOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Wyrd.RabbitMq.RabbitMqTransport!>!

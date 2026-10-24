@@ -30,7 +30,8 @@
   <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Wyrd' Or '$(MSBuildProjectName)' == 'Wyrd.Testing' Or '$(MSBuildProjectName)' == 'Wyrd.Tool'">
     <PackageValidationBaselineVersion>0.4.0</PackageValidationBaselineVersion>
   </PropertyGroup>
-  <ItemGroup Condition="'$(MSBuildProjectName)' == 'Wyrd' Or '$(MSBuildProjectName)' == 'Wyrd.Testing' Or '$(MSBuildProjectName)' == 'Wyrd.Tool'">
+  <!-- Every package tracks its public API; the hosts first released in 0.5 have no baseline to validate against yet. -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'Wyrd' Or '$(MSBuildProjectName)' == 'Wyrd.Testing' Or '$(MSBuildProjectName)' == 'Wyrd.Tool' Or '$(MSBuildProjectName)' == 'Wyrd.EntityFrameworkCore' Or '$(MSBuildProjectName)' == 'Wyrd.RabbitMq'">
     <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" />
     <AdditionalFiles Include="PublicAPI.Shipped.txt" />
     <AdditionalFiles Include="PublicAPI.Unshipped.txt" />
@@ -38,6 +39,8 @@
 
   <ItemGroup>
     <PackageReference Include="MinVer" PrivateAssets="all" />
+    <!-- Q4.2: no sync-over-async (VSTHRD002 and friends); see src/.editorconfig for the rules in force. -->
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" PrivateAssets="all" />
     <None Include="$(MSBuildThisFileDirectory)../README.md" Pack="true" PackagePath="/" Visible="false" />
   </ItemGroup>
 </Project>

@@ -6,6 +6,12 @@ internal sealed record StoredState(string StateType, string Key, string Type, st
 
 internal sealed record StoredMessage(string Type, string Payload);
 
+/// <summary>
+/// An integration event this service published, with the id it keeps when it travels to other services and the trace
+/// context it was published in (diagnostic only).
+/// </summary>
+internal sealed record PublishedMessage(Guid Id, string Type, string Payload, TraceContext? Trace = null);
+
 internal sealed record StoredParked(string Process, string Key, int Step, string Type, string Payload)
 {
     public StoredMessage AsFact() => new(Type, Payload);
@@ -16,7 +22,9 @@ internal sealed record StoredParked(string Process, string Key, int Step, string
 /// without knowing whether they ran to their original command id: their undo fences that command. <c>Fingerprint</c> is
 /// the structure of the process the instance started with (see <see cref="Processes.Process.Fingerprint"/>). <c>Facts</c>
 /// are the events its steps produced and the events it awaited, in order: later steps can read them. <c>History</c> is
-/// what crossed its boundary (Urd), committed with the instance itself.
+/// what crossed its boundary (Urd), committed with the instance itself. <c>KeptReply</c> is the reply to the pending
+/// command that arrived while the deployed definition was not the one the instance started with: the operator's resume
+/// or compensation takes it, because the owner's inbox forgets it after its deduplication retention.
 /// </summary>
 internal sealed record StoredInstance(
     string Process,
@@ -36,15 +44,24 @@ internal sealed record StoredInstance(
     ImmutableList<HistoryEntry> History,
     long Version,
     string? Reason = null,
-    TraceContext? Trace = null);
+    TraceContext? Trace = null,
+    Guid? Timer = null,
+    Envelope? KeptReply = null);
 
 internal sealed record Scheduled(DateTimeOffset At, Envelope Envelope);
 
 /// <summary>A domain event that arrived before an earlier event of its stream: read models get it once the gap is filled.</summary>
 internal sealed record StoredHeld(string StateType, string Key, long Version, string Type, string Payload);
 
-/// <summary>A read-model document. A null payload deletes it.</summary>
-internal sealed record StoredView(string ViewType, string Key, string? Type, string? Payload);
+/// <summary>A stream a catching-up projection follows: its view was seeded from the state, or the stream is newer.</summary>
+/// <remarks>The stream's key, not the view's: one view can be seeded from many states.</remarks>
+internal sealed record StoredSeeded(string ViewType, string StateType, string Key);
+
+/// <summary>
+/// A read-model document. A null payload deletes it. <c>Version</c> is the version read (0 when new), checked on commit:
+/// a view built from several streams is written by workers handling different streams at once.
+/// </summary>
+internal sealed record StoredView(string ViewType, string Key, string? Type, string? Payload, long Version = 0);
 
 /// <summary>
 /// Everything that handling one message changes. A store commits it atomically: state, events, process
@@ -58,13 +75,29 @@ internal sealed class Changes
 
     public List<StoredMessage> Events { get; } = [];
 
-    public List<StoredMessage> Published { get; } = [];
+    // Created on first write: most messages publish nothing, cancel no timer and seed nothing, and a Changes is made for
+    // every message. Stores read them through the *Written properties, which allocate nothing when they are empty.
+    private List<PublishedMessage>? _published;
+    private List<Guid>? _cancel;
+    private Dictionary<StoredSeeded, long>? _seeded;
+    private List<StoredState>? _unchanged;
+    private List<string>? _caughtUp;
+    private static readonly Dictionary<StoredSeeded, long> NoSeeds = [];
+
+    public List<PublishedMessage> Published => _published ??= [];
+
+    public IReadOnlyList<PublishedMessage> PublishedWritten => _published ?? (IReadOnlyList<PublishedMessage>)[];
 
     public Dictionary<Guid, ReplyMessage> Replies { get; } = [];
 
     public List<Envelope> Outbox { get; } = [];
 
     public List<Scheduled> Schedule { get; } = [];
+
+    /// <summary>Scheduled messages (by id) that are no longer wanted: a wait's timer once the wait is over.</summary>
+    public List<Guid> Cancel => _cancel ??= [];
+
+    public IReadOnlyList<Guid> CancelWritten => _cancel ?? (IReadOnlyList<Guid>)[];
 
     public List<StoredParked> Park { get; } = [];
 
@@ -81,6 +114,25 @@ internal sealed class Changes
 
     public List<StoredHeld> Release { get; } = [];
 
+    /// <summary>
+    /// Streams a catching-up projection now follows (see <see cref="Projection{TView}.Seed{TState}"/>), with the version
+    /// its seed was built from: 0 for a stream that began after the projection was added. Later events reach the
+    /// projection; earlier ones are in the seed.
+    /// </summary>
+    public Dictionary<StoredSeeded, long> Seeded => _seeded ??= [];
+
+    public IReadOnlyDictionary<StoredSeeded, long> SeededWritten => _seeded ?? NoSeeds;
+
+    /// <summary>States a seed was built from: checked on commit, so an event that changed the state meanwhile wins.</summary>
+    public List<StoredState> Unchanged => _unchanged ??= [];
+
+    public IReadOnlyList<StoredState> UnchangedWritten => _unchanged ?? (IReadOnlyList<StoredState>)[];
+
+    /// <summary>Views whose projection has caught up. Their seed marks stay, refusing a late second seed of a stream.</summary>
+    public List<string> CaughtUp => _caughtUp ??= [];
+
+    public IReadOnlyList<string> CaughtUpWritten => _caughtUp ?? (IReadOnlyList<string>)[];
+
     /// <summary>Events handled by this transaction: a redelivery of the same message id is skipped.</summary>
     public List<Guid> Handled { get; } = [];
 
@@ -95,7 +147,10 @@ internal sealed class Changes
         Instances.TryGetValue((process, key), out var instance) ? instance : null;
 }
 
-/// <summary>The persistence port. In memory today; PostgreSQL and others implement the same contract.</summary>
+/// <summary>
+/// What the engine needs from persistence: read, and commit one message's changes atomically. In-memory and
+/// PostgreSQL implement it; how committed messages and timers are delivered is up to each host.
+/// </summary>
 internal interface IWyrdStore
 {
     ValueTask<StoredState?> LoadStateAsync(string stateType, string key, CancellationToken cancellationToken);
@@ -115,9 +170,21 @@ internal interface IWyrdStore
 
     ValueTask<bool> WasHandledAsync(Guid messageId, CancellationToken cancellationToken);
 
+    /// <summary>Whether the projection of a view has caught up from existing states.</summary>
+    ValueTask<bool> IsCaughtUpAsync(string viewType, CancellationToken cancellationToken);
+
+    /// <summary>The version a catching-up projection's seed of a stream was built from (null while not seeded).</summary>
+    ValueTask<long?> LoadSeededAsync(StoredSeeded seeded, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether an event already in one of a catching-up projection's seeds is still to be projected: until it is, the
+    /// seed marks are what keeps it from being applied twice.
+    /// </summary>
+    ValueTask<bool> SeedsAheadAsync(string viewType, CancellationToken cancellationToken);
+
+    /// <summary>States of a type that a catching-up projection doesn't follow yet, at most <paramref name="max"/>.</summary>
+    ValueTask<IReadOnlyList<StoredState>> UnseededAsync(string viewType, string stateType, int max, CancellationToken cancellationToken);
+
     ValueTask CommitAsync(Changes changes, CancellationToken cancellationToken);
 
-    ValueTask<IReadOnlyList<Envelope>> TakeOutboxAsync(CancellationToken cancellationToken);
-
-    ValueTask<Scheduled?> TakeNextDueAsync(DateTimeOffset until, CancellationToken cancellationToken);
 }

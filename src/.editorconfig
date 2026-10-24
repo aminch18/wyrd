@@ -1,0 +1,4 @@
+# Q4.2 (docs/QUALITY.md): the threading analyzers guard against sync-over-async (VSTHRD002, VSTHRD103...).
+[*.cs]
+# Naming only ("Async" suffix), not about blocking: Roslyn code-fix overrides must keep their names.
+dotnet_diagnostic.VSTHRD200.severity = none

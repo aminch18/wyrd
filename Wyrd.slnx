@@ -11,12 +11,16 @@
   <Folder Name="/src/">
     <Project Path="src/Wyrd.Analyzers.CodeFixes/Wyrd.Analyzers.CodeFixes.csproj" />
     <Project Path="src/Wyrd.Analyzers/Wyrd.Analyzers.csproj" />
+    <Project Path="src/Wyrd.EntityFrameworkCore/Wyrd.EntityFrameworkCore.csproj" />
+    <Project Path="src/Wyrd.RabbitMq/Wyrd.RabbitMq.csproj" />
     <Project Path="src/Wyrd.Testing/Wyrd.Testing.csproj" />
     <Project Path="src/Wyrd.Tool/Wyrd.Tool.csproj" />
     <Project Path="src/Wyrd/Wyrd.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Wyrd.Analyzers.Tests/Wyrd.Analyzers.Tests.csproj" />
+    <Project Path="tests/Wyrd.EntityFrameworkCore.Tests/Wyrd.EntityFrameworkCore.Tests.csproj" />
+    <Project Path="tests/Wyrd.RabbitMq.Tests/Wyrd.RabbitMq.Tests.csproj" />
     <Project Path="tests/Wyrd.Tests/Wyrd.Tests.csproj" />
     <Project Path="tests/Wyrd.Tool.Tests/Wyrd.Tool.Tests.csproj" />
   </Folder>

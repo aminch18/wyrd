@@ -74,13 +74,13 @@ public sealed record InstanceHistory(string Process, string Key, string Fingerpr
 {
     /// <summary>Exports the history as JSON using Wyrd's generated metadata, suitable for the replay tool.</summary>
     /// <example><code>File.WriteAllText("order.history.json", history.ToJson());</code></example>
-    public string ToJson() => JsonSerializer.Serialize(this, WyrdJsonContext.Default.InstanceHistory);
+    public string ToJson() => JsonSerializer.Serialize(this, HistoryJsonContext.Default.InstanceHistory);
 
     /// <summary>Reads an exported history for inspection or replay; malformed or empty history input is rejected.</summary>
     public static InstanceHistory FromJson(string json)
     {
         ArgumentNullException.ThrowIfNull(json);
-        return JsonSerializer.Deserialize(json, WyrdJsonContext.Default.InstanceHistory)
+        return JsonSerializer.Deserialize(json, HistoryJsonContext.Default.InstanceHistory)
             ?? throw new InvalidOperationException("The history is empty.");
     }
 }

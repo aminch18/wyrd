@@ -2,9 +2,9 @@
   "SchemaVersion": 1,
   "Orders": 10000,
   "Scenarios": {
-    "SingleSku": 73621.09467007614,
-    "SkuPerOrder": 3871.08955,
-    "Compensated": 4051.1817066666667,
-    "Timers": 3771.5137684210526
+    "SingleSku": 4399.887954259361,
+    "SkuPerOrder": 4256.536378947369,
+    "Compensated": 4376.817333333333,
+    "Timers": 4148.84308
   }
 }

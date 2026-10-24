@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Wyrd.Processes;
 
 namespace Wyrd.Runtime;
@@ -5,13 +6,46 @@ namespace Wyrd.Runtime;
 /// <summary>What an application is made of: slices, publications, upcasters and processes. Validated on registration.</summary>
 internal sealed class Registry
 {
-    private readonly Dictionary<Type, ISliceHandler> _slices = [];
+    private readonly Dictionary<Type, ICommandOwner> _owners = [];
     private readonly List<IPublicationHandler> _publications = [];
     private readonly Dictionary<(string Name, int Version), IUpcasterHandler> _upcasters = [];
     private readonly List<Process> _processes = [];
     private readonly List<IProjectionHandler> _projections = [];
 
     public IReadOnlyList<IProjectionHandler> Projections => _projections;
+
+    /// <summary>
+    /// The views whose projections have caught up from existing states (see <see cref="Projection{TView}.Seed{TState}"/>).
+    /// Once caught up, always caught up: hosts remember it here so events don't ask the store again.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, bool> _caughtUp = [];
+
+    /// <summary>The projections that seed from states: the only ones that can be catching up.</summary>
+    private readonly List<IProjectionHandler> _seeding = [];
+
+    public bool IsCaughtUp(IProjectionHandler projection) => !_seeding.Contains(projection) || _caughtUp.ContainsKey(projection.View.FullName!);
+
+    public void CaughtUp(IProjectionHandler projection) => _caughtUp[projection.View.FullName!] = true;
+
+    /// <summary>Projections still catching up from existing states.</summary>
+    public IEnumerable<IProjectionHandler> CatchingUp => _seeding.Where(p => !IsCaughtUp(p));
+
+    /// <summary>Whether any projection is still catching up: checked on every new stream, so it allocates nothing.</summary>
+    public bool AnyCatchingUp
+    {
+        get
+        {
+            foreach (var projection in _seeding)
+            {
+                if (!_caughtUp.ContainsKey(projection.View.FullName!))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
 
     public void Add(IProjectionHandler projection)
     {
@@ -21,19 +55,23 @@ internal sealed class Registry
         }
 
         _projections.Add(projection);
+        if (projection.Seeds.Any())
+        {
+            _seeding.Add(projection);
+        }
     }
 
     public IReadOnlyList<Process> Processes => _processes;
 
-    public void Add(ISliceHandler slice)
+    public void Add(ICommandOwner owner)
     {
-        if (_slices.TryGetValue(slice.Command, out var owner))
+        if (_owners.TryGetValue(owner.Command, out var existing))
         {
             throw new InvalidOperationException(
-                $"{slice.Command.Name} is already owned by {owner.GetType().Name}. A command has exactly one owner.");
+                $"{owner.Command.Name} is already owned by {existing.GetType().Name}. A command has exactly one owner.");
         }
 
-        _slices.Add(slice.Command, slice);
+        _owners.Add(owner.Command, owner);
         _validated = false;
     }
 
@@ -64,11 +102,11 @@ internal sealed class Registry
         _validated = false;
     }
 
-    public ISliceHandler? FindOwner(Type command) => _slices.GetValueOrDefault(command);
+    public ICommandOwner? FindOwner(Type command) => _owners.GetValueOrDefault(command);
 
-    public ISliceHandler OwnerOf(Type command) =>
+    public ICommandOwner OwnerOf(Type command) =>
         FindOwner(command) ?? throw new InvalidOperationException(
-            $"No slice owns {command.Name}. Register its owner with AddSlice().");
+            $"Nothing owns {command.Name}. Register its owner with AddSlice() or AddIntegration().");
 
     public IEnumerable<IPublicationHandler> PublicationsOf(Type domainEvent) => _publications.Where(p => p.Source == domainEvent);
 

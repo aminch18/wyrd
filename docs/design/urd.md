@@ -48,7 +48,8 @@ Replay stops at the **first divergence** and reports it with both sides:
 - the recording no longer fits the code: the fingerprint differs (the structure changed), or a recorded payload no
   longer deserializes into today's type.
 
-A replay without divergence passes. `ThrowIfDiverged()` turns a report into a test failure, like Skuld's
+Entries are compared in order, without their time: on a real clock a reply takes milliseconds, on replay none; what
+time changes (a timeout firing, a retry) appears as entries of its own. A replay without divergence passes. `ThrowIfDiverged()` turns a report into a test failure, like Skuld's
 `ThrowIfViolated()`.
 
 ### 4. History is written in the same transaction as the instance

@@ -1,0 +1,116 @@
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Time.Testing;
+using Npgsql;
+using Shop;
+using Wyrd.Runtime;
+using Testcontainers.MsSql;
+using Testcontainers.PostgreSql;
+
+namespace Wyrd.EntityFrameworkCore.Tests;
+
+/// <summary>One real database server for the whole run; every test gets a database of its own.</summary>
+public abstract class Database : IAsyncLifetime
+{
+    private int _databases;
+
+    public abstract Task InitializeAsync();
+
+    public abstract Task DisposeAsync();
+
+    /// <summary>A new, empty database with Wyrd's tables (and whatever else <typeparamref name="TContext"/> maps).</summary>
+    public async Task<IDbContextFactory<TContext>> NewAsync<TContext>(Func<DbContextOptions<TContext>, TContext> create)
+        where TContext : DbContext
+    {
+        var options = Use(new DbContextOptionsBuilder<TContext>(), $"t{Interlocked.Increment(ref _databases)}").Options;
+        var contexts = new Contexts<TContext>(() => create(options));
+        await using var db = contexts.CreateDbContext();
+        await db.Database.EnsureCreatedAsync();
+        return contexts;
+    }
+
+    public Task<IDbContextFactory<WyrdDbContext>> NewAsync() => NewAsync<WyrdDbContext>(options => new(options));
+
+    /// <summary>The sample shop on this database, with source-generated JSON.</summary>
+    public static EfCoreRuntime<WyrdDbContext> Shop(IDbContextFactory<WyrdDbContext> contexts, TimeProvider? time = null, Retention? retention = null) =>
+        ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(contexts, ShopJson.Default, retention ?? Retention, Options, time));
+
+    /// <summary>Tests keep everything unless they are about retention.</summary>
+    public static Retention Retention { get; } = new()
+    {
+        Deduplication = Keep.Forever("tests"),
+        FinishedInstances = Keep.Forever("tests"),
+        RelayedMessages = Keep.Forever("tests"),
+        Events = Keep.Forever("tests"),
+        DeadLetters = Keep.Forever("tests"),
+    };
+
+    public static EfCoreRuntimeOptions Options { get; } = new() { RedeliveryDelay = TimeSpan.FromMilliseconds(10) };
+
+    public static FakeTimeProvider Clock() => new(new DateTimeOffset(2026, 1, 1, 9, 0, 0, TimeSpan.Zero));
+
+    /// <summary>Waits until some session of <paramref name="db"/>'s database is blocked by another one's lock.</summary>
+    public async Task UntilBlockedAsync(DbContext db)
+    {
+        var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (await db.Database.SqlQueryRaw<int>(BlockedSessions).ToListAsync() is [0])
+        {
+            Assert.True(DateTime.UtcNow < timeout, "No session got blocked.");
+            await Task.Delay(10);
+        }
+    }
+
+    /// <summary>A query returning, as <c>Value</c>, how many sessions of the current database wait for a lock.</summary>
+    protected abstract string BlockedSessions { get; }
+
+    protected abstract DbContextOptionsBuilder<TContext> Use<TContext>(DbContextOptionsBuilder<TContext> builder, string database)
+        where TContext : DbContext;
+
+    private sealed class Contexts<TContext>(Func<TContext> create) : IDbContextFactory<TContext>
+        where TContext : DbContext
+    {
+        public TContext CreateDbContext() => create();
+    }
+}
+
+[CollectionDefinition(Name)]
+public sealed class PostgreSqlServer : ICollectionFixture<PostgreSqlDatabase>
+{
+    public const string Name = "EF Core on PostgreSQL";
+}
+
+public sealed class PostgreSqlDatabase : Database
+{
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine").Build();
+
+    public override Task InitializeAsync() => _container.StartAsync();
+
+    public override Task DisposeAsync() => _container.DisposeAsync().AsTask();
+
+    protected override string BlockedSessions =>
+        "SELECT count(*)::int AS \"Value\" FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'";
+
+    protected override DbContextOptionsBuilder<TContext> Use<TContext>(DbContextOptionsBuilder<TContext> builder, string database) =>
+        builder.UseNpgsql(new NpgsqlConnectionStringBuilder(_container.GetConnectionString()) { Database = database }.ConnectionString);
+}
+
+[CollectionDefinition(Name)]
+public sealed class SqlServerServer : ICollectionFixture<SqlServerDatabase>
+{
+    public const string Name = "EF Core on SQL Server";
+}
+
+public sealed class SqlServerDatabase : Database
+{
+    private readonly MsSqlContainer _container = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest").Build();
+
+    public override Task InitializeAsync() => _container.StartAsync();
+
+    public override Task DisposeAsync() => _container.DisposeAsync().AsTask();
+
+    protected override string BlockedSessions =>
+        "SELECT count(*) AS [Value] FROM sys.dm_exec_requests WHERE database_id = DB_ID() AND blocking_session_id <> 0";
+
+    protected override DbContextOptionsBuilder<TContext> Use<TContext>(DbContextOptionsBuilder<TContext> builder, string database) =>
+        builder.UseSqlServer(new SqlConnectionStringBuilder(_container.GetConnectionString()) { InitialCatalog = database }.ConnectionString);
+}

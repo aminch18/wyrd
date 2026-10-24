@@ -17,8 +17,8 @@ idempotency, enforces versioned message contracts at compile time, and simulates
 > [!WARNING]
 > **Preview for feedback, not for production yet.** Available today: the message and process model, the analyzers
 > and contract snapshots, the in-memory runtime, `Wyrd.Testing`, the `dotnet wyrd` tool and **Skuld** (failure
-> simulation). The durable runtime (PostgreSQL, transports) is in progress. Everything marked ✅ works and is
-> covered by tests; 🔜 and 🚧 are designed and on the [roadmap](https://github.com/aminch18/wyrd/blob/main/docs/ROADMAP.md). APIs may change before 1.0.
+> simulation), and the durable runtime on EF Core (PostgreSQL, SQL Server). Services talk through RabbitMQ (`Wyrd.RabbitMq`).
+> Everything marked ✅ works and is covered by tests; 🔜 and 🚧 are designed and on the [roadmap](https://github.com/aminch18/wyrd/blob/main/docs/ROADMAP.md). APIs may change before 1.0.
 > Please [tell us what you think](https://github.com/aminch18/wyrd/discussions).
 
 ## Try it in two minutes
@@ -120,7 +120,7 @@ In Norse myth, *wyrd* — fate — is woven by three Norns. Wyrd is built on the
 |---|---|---|---|
 | ⏩ | **Skuld** — *what will be* | **Simulation.** Run your scenario in hundreds of hostile futures — faults, duplicates, reordering, timeouts — before you deploy. | ✅ |
 | ⏪ | **Urd** — *what was* | **Replay.** Export a process instance's history and replay it locally, deterministically, as a test. In memory today; from a durable store with Verdandi. | ✅ |
-| ▶️ | **Verdandi** — *what is* | **Runtime.** Deterministic in-memory runtime today ✅; durable outbox, inbox and timeouts next. | 🚧 |
+| ▶️ | **Verdandi** — *what is* | **Runtime.** Deterministic in-memory runtime ✅; durable on PostgreSQL and SQL Server through EF Core ✅ (one transaction per message, the database as the queue); RabbitMQ between services ✅. | 🚧 |
 
 ## Quick start
 
@@ -348,7 +348,8 @@ POST /orders              (same order again)                                    
 ```
 
 Plus developer endpoints to read the journal, make the payment gateway flaky and jump the clock forward.
-It runs on the in-memory runtime, so its data is lost on restart; PostgreSQL and RabbitMQ hosts are planned.
+By default it runs on the in-memory runtime, so its data is lost on restart; built with `-p:WyrdHost=EfCore` it runs
+durable on PostgreSQL (see *Verdandi: the durable runtime on EF Core* below).
 
 **A console walkthrough** — [`samples/Shop.Console`](https://github.com/aminch18/wyrd/tree/main/samples/Shop.Console): six scenarios (happy path, flaky
 gateway with an early confirmation, card declined, out of stock, abandoned 3-D Secure, double-clicked "Buy")
@@ -439,6 +440,53 @@ public void a_shipped_order_shows_as_shipped() =>
 Every expectation also checks that events, states and views survive a JSON round trip — exactly what happens
 when Wyrd stores them — so a state that can't be persisted fails a unit test, not production.
 See [`samples/Shop.Tests`](https://github.com/aminch18/wyrd/tree/main/samples/Shop.Tests).
+
+## Verdandi: the durable runtime on EF Core ✅
+
+The same application, now durable on PostgreSQL or SQL Server. Put Wyrd's tables in your own `DbContext`, so they are
+part of your migrations, and register your module on `EfCoreRuntime` instead of `InMemoryRuntime`:
+
+```csharp
+public sealed class ShopDbContext(DbContextOptions<ShopDbContext> options) : DbContext(options)
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder) => modelBuilder.AddWyrd();
+}
+
+var wyrd = ShopModule.Register(new EfCoreRuntime<ShopDbContext>(contexts, ShopJson.Default, new Retention
+{
+    // How long Wyrd keeps what it stores: every line is your decision, there are no defaults.
+    Deduplication = Keep.For(7.Days),
+    FinishedInstances = Keep.For(30.Days),
+    RelayedMessages = Keep.For(7.Days),
+    Events = Keep.Forever("our record of what happened"),
+    DeadLetters = Keep.Forever("an operator reviews each one"),
+}));
+
+await wyrd.SendAsync(new PlaceOrder("A-1", "KEYBOARD", 1, 89m)); // decided and committed now
+await wyrd.RunAsync(stoppingToken);                              // a worker: run as many as you like
+```
+
+- **One transaction per message**: state, events, instances, inbox, outbox, timers and read models commit together
+  with taking the message off the queue — or not at all.
+- **The database is the queue**: workers in one process or many share it (`FOR UPDATE SKIP LOCKED` on PostgreSQL,
+  `READPAST` on SQL Server, the only raw SQL); optimistic concurrency settles races; failures are redelivered with
+  backoff; poison messages go to dead letters.
+- **Your transaction, if you want it**: `SendAsync(command, context)` joins the transaction you began, so your own
+  tables and Wyrd's commit together.
+- **Survives restarts**: kill the process mid-saga, start it again, and the order continues where it was.
+- **Bounded, by your decision**: workers remove what the retention no longer keeps; suspended instances never expire.
+- **JIT only**: EF Core's Native AOT support is experimental, so this host doesn't claim it. The in-memory host and
+  the Wyrd core stay AOT-compatible.
+
+Try it with the API sample (the durable build is `-p:WyrdHost=EfCore`; it applies its migrations on start):
+
+```bash
+docker compose -f samples/Shop.Api/compose.yaml up -d
+ConnectionStrings__Wyrd="Host=localhost;Port=5433;Username=wyrd;Password=wyrd;Database=shop" \
+  dotnet run --project samples/Shop.Api -p:WyrdHost=EfCore
+```
+
+Your endpoints depend on `IWyrdRuntime`, so the host is configuration: no connection string, and the same API runs in memory.
 
 ## Follow a process with traces ✅
 
@@ -646,8 +694,8 @@ Its analyzers enforce specific message and contract rules. They do not yet rejec
 additional process analyzers are on the roadmap.
 
 Atomic handling of one envelope is not an atomic transaction across an entire business process. Compensation
-is a domain action that can itself fail, not an erasure of the original action. The current host is not durable
-across restarts, and production storage and transport integrations are still planned.
+is a domain action that can itself fail, not an erasure of the original action. The EF Core host is durable
+across restarts, and services exchange integration events through RabbitMQ, at least once.
 
 It does **not** know your business rules. If you compute the tax wrong, Wyrd will deterministically compute it wrong.
 
@@ -655,6 +703,8 @@ It does **not** know your business rules. If you compute the tax wrong, Wyrd wil
 
 ```
 src/Wyrd/                  the library
+src/Wyrd.EntityFrameworkCore/  Verdandi: the durable runtime on EF Core, PostgreSQL and SQL Server (package)
+src/Wyrd.RabbitMq/         RabbitMQ between services: the outbox relay's transport and a subscriber (package)
 src/Wyrd.Analyzers/        Roslyn analyzers, shipped inside the Wyrd package
 src/Wyrd.Analyzers.CodeFixes/  IDE code fixes, shipped inside the Wyrd package
 tests/Wyrd.Tests/          unit and runtime tests
@@ -668,6 +718,11 @@ samples/Shop.Console/      the shop as a console walkthrough
 samples/Shop.Tests/        the shop's business specifications
 docs/                      philosophy, DDD migration guide, roadmap and design notes
 ```
+
+How the code works, for reviewers and contributors: [architecture](https://github.com/aminch18/wyrd/blob/main/docs/design/architecture.md)
+(the model, the patterns, the invariants and where they are enforced) and
+[the engine and the hosts](https://github.com/aminch18/wyrd/blob/main/docs/design/runtime.md) (one message, one
+transaction, one order end to end on PostgreSQL).
 
 ## License
 

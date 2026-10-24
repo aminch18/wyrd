@@ -10,6 +10,9 @@ using Shop.Orders;
 using Shop.Payments;
 using Wyrd;
 using Wyrd.Runtime;
+#if WYRD_EFCORE
+using Shop.Api.Durable;
+#endif
 
 // Export is opt-in; Wyrd itself only depends on the BCL ActivitySource APIs.
 using var traces = Environment.GetEnvironmentVariable("OTEL_EXPORTER") == "console"
@@ -29,36 +32,60 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(1, ApiJson.Default);
 });
 
-// Wyrd runs in memory here: same engine and guarantees as production, without a database or a broker yet.
-// The day PostgreSQL and RabbitMQ arrive, this line changes; the endpoints and the domain do not.
-builder.Services.AddSingleton(_ => ShopModule.CreateRuntime());
-builder.Services.AddHostedService<WyrdClock>();
+// The host is configuration: with a connection string the shop is durable on PostgreSQL (Verdandi, built with
+// -p:WyrdHost=EfCore); without one it runs in memory. The endpoints below and the whole domain are the same either way.
+var connectionString = builder.Configuration.GetConnectionString("Wyrd");
+if (connectionString is null)
+{
+    // In memory nothing outlives the process, but a sample left running for days must not keep its delivery machinery
+    // forever (Q2.3): a day of each, measured on the clock WyrdClock moves. Orders and their read models are business
+    // data and have no retention, so a sample fed new orders still grows with them.
+    builder.Services.AddSingleton(_ => ShopModule.CreateRuntime().UseRetention(new Retention
+    {
+        Deduplication = Keep.For(1.Days),
+        FinishedInstances = Keep.For(1.Days),
+        RelayedMessages = Keep.For(1.Days),
+        Events = Keep.For(1.Days),
+        DeadLetters = Keep.For(1.Days),
+    }));
+    builder.Services.AddSingleton<IWyrdRuntime>(services => services.GetRequiredService<InMemoryRuntime>());
+    builder.Services.AddHostedService<WyrdClock>();
+}
+else
+{
+#if WYRD_EFCORE
+    builder.Services.AddDurableShop(connectionString);
+#else
+    throw new InvalidOperationException(
+        "A Wyrd connection string is configured, but this build is the in-memory shop: build with -p:WyrdHost=EfCore for the durable one.");
+#endif
+}
 
 var app = builder.Build();
 
 // ── Commands: an endpoint turns HTTP into a command and the decision back into HTTP ──────────
 
-app.MapPost("/stock/{sku}", async (string sku, RestockRequest request, InMemoryRuntime wyrd) =>
+app.MapPost("/stock/{sku}", async (string sku, RestockRequest request, IWyrdRuntime wyrd) =>
     ToHttp(await wyrd.SendAsync(new Restock(sku, request.Quantity)), $"/stock/{sku}"));
 
-app.MapPost("/orders", async (PlaceOrderRequest request, InMemoryRuntime wyrd) =>
+app.MapPost("/orders", async (PlaceOrderRequest request, IWyrdRuntime wyrd) =>
     ToHttp(await wyrd.SendAsync(new PlaceOrder(request.OrderId, request.Sku, request.Quantity, request.Amount)), $"/orders/{request.OrderId}"));
 
-app.MapPost("/orders/{orderId}/lines", async (string orderId, AddLineRequest request, InMemoryRuntime wyrd) =>
+app.MapPost("/orders/{orderId}/lines", async (string orderId, AddLineRequest request, IWyrdRuntime wyrd) =>
     ToHttp(await wyrd.SendAsync(new AddLine(orderId, request.LineId, request.Sku, request.Quantity, request.Amount, request.Currency)), $"/orders/{orderId}"));
 
-app.MapDelete("/orders/{orderId}/lines/{lineId}", async (string orderId, string lineId, InMemoryRuntime wyrd) =>
+app.MapDelete("/orders/{orderId}/lines/{lineId}", async (string orderId, string lineId, IWyrdRuntime wyrd) =>
     ToHttp(await wyrd.SendAsync(new CancelLine(orderId, lineId)), $"/orders/{orderId}"));
 
-app.MapPost("/orders/{orderId}/submit", async (string orderId, InMemoryRuntime wyrd) =>
+app.MapPost("/orders/{orderId}/submit", async (string orderId, IWyrdRuntime wyrd) =>
     ToHttp(await wyrd.SendAsync(new SubmitOrder(orderId)), $"/orders/{orderId}"));
 
-app.MapPost("/orders/{orderId}/cancel", async (string orderId, InMemoryRuntime wyrd) =>
+app.MapPost("/orders/{orderId}/cancel", async (string orderId, IWyrdRuntime wyrd) =>
     ToHttp(await wyrd.SendAsync(new CancelDraftOrder(orderId)), $"/orders/{orderId}"));
 
 // ── Facts from other systems: the payment provider's webhook ────────────────────────────────
 
-app.MapPost("/webhooks/payments", async (PaymentWebhook webhook, InMemoryRuntime wyrd) =>
+app.MapPost("/webhooks/payments", async (PaymentWebhook webhook, IWyrdRuntime wyrd) =>
 {
     await wyrd.PublishAsync(new PaymentConfirmed(webhook.OrderId));
     return Results.Accepted();
@@ -66,49 +93,54 @@ app.MapPost("/webhooks/payments", async (PaymentWebhook webhook, InMemoryRuntime
 
 // ── Queries: read models and state, no logic ────────────────────────────────────────────────
 
-app.MapGet("/orders", (InMemoryRuntime wyrd) => wyrd.Views<OrderSummary>());
+app.MapGet("/orders", (IWyrdRuntime wyrd) => wyrd.ViewsAsync<OrderSummary>());
 
-app.MapGet("/order-details", (InMemoryRuntime wyrd) => wyrd.Views<OrderDetail>());
+app.MapGet("/order-details", (IWyrdRuntime wyrd) => wyrd.ViewsAsync<OrderDetail>());
 
-app.MapGet("/orders/{orderId}", (string orderId, InMemoryRuntime wyrd) =>
-    wyrd.View<OrderDetail>(orderId) is { } details
-        ? Results.Ok(new OrderResponse(wyrd.View<OrderSummary>(orderId), details,
-            wyrd.StatusOf(Processes.OrderFulfillment, orderId)?.ToString()))
+app.MapGet("/orders/{orderId}", async (string orderId, IWyrdRuntime wyrd) =>
+    await wyrd.ViewAsync<OrderDetail>(orderId) is { } details
+        ? Results.Ok(new OrderResponse(await wyrd.ViewAsync<OrderSummary>(orderId), details,
+            (await wyrd.StatusOfAsync(Processes.OrderFulfillment, orderId))?.ToString()))
         : Results.NotFound());
 
-app.MapGet("/stock/{sku}", (string sku, InMemoryRuntime wyrd) =>
-    new StockResponse(sku, wyrd.StateOf<StockItem>(sku).Available));
+app.MapGet("/stock/{sku}", async (string sku, IWyrdRuntime wyrd) =>
+    new StockResponse(sku, (await wyrd.StateOfAsync<StockItem>(sku)).Available));
 
-// ── Developer tools: see what happened, break things on purpose, travel in time ─────────────
+// ── Developer tools, in memory only: see what happened, break things on purpose, travel in time ──
 
-app.MapGet("/dev/journal", (InMemoryRuntime wyrd) => wyrd.Journal.Select(entry => entry.ToString()).ToArray());
-
-// Keep each event's concrete public fields rather than serializing the empty marker interface.
-app.MapGet("/dev/published", (InMemoryRuntime wyrd) => wyrd.Published.Cast<object>().ToArray());
-
-app.MapPost("/dev/payment-gateway/fail", (int times, InMemoryRuntime wyrd) =>
+if (connectionString is null)
 {
-    wyrd.FailNext<ChargePayment>(times);
-    return Results.NoContent();
-});
+    var dev = app.MapGroup("/dev");
 
-app.MapPost("/dev/orders/{orderId}/resume", async (string orderId, InMemoryRuntime wyrd) =>
-{
-    await wyrd.ResumeAsync(Processes.OrderFulfillment, orderId);
-    return Results.NoContent();
-});
+    dev.MapGet("/journal", (InMemoryRuntime wyrd) => wyrd.Journal.Select(entry => entry.ToString()).ToArray());
 
-app.MapPost("/dev/orders/{orderId}/compensate", async (string orderId, InMemoryRuntime wyrd) =>
-{
-    await wyrd.CompensateAsync(Processes.OrderFulfillment, orderId);
-    return Results.NoContent();
-});
+    // Keep each event's concrete public fields rather than serializing the empty marker interface.
+    dev.MapGet("/published", (InMemoryRuntime wyrd) => wyrd.Published.Cast<object>().ToArray());
 
-app.MapPost("/dev/clock/advance", async (int minutes, InMemoryRuntime wyrd) =>
-{
-    await wyrd.AdvanceAsync(TimeSpan.FromMinutes(minutes));
-    return Results.Ok(new ClockResponse(wyrd.Now.ToString()));
-});
+    dev.MapPost("/payment-gateway/fail", (int times, InMemoryRuntime wyrd) =>
+    {
+        wyrd.FailNext<ChargePayment>(times);
+        return Results.NoContent();
+    });
+
+    dev.MapPost("/orders/{orderId}/resume", async (string orderId, InMemoryRuntime wyrd) =>
+    {
+        await wyrd.ResumeAsync(Processes.OrderFulfillment, orderId);
+        return Results.NoContent();
+    });
+
+    dev.MapPost("/orders/{orderId}/compensate", async (string orderId, InMemoryRuntime wyrd) =>
+    {
+        await wyrd.CompensateAsync(Processes.OrderFulfillment, orderId);
+        return Results.NoContent();
+    });
+
+    dev.MapPost("/clock/advance", async (int minutes, InMemoryRuntime wyrd) =>
+    {
+        await wyrd.AdvanceAsync(TimeSpan.FromMinutes(minutes));
+        return Results.Ok(new ClockResponse(wyrd.Now.ToString()));
+    });
+}
 
 app.Run();
 

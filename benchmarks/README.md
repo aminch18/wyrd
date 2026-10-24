@@ -48,11 +48,8 @@ bytes/handled envelope; all measured setup costs remain included.
 - **Q1.3**: bytes/message at 10,000 must be within +10% of the scenario in `baseline.json`.
 - Failures print the rule, scenario, observed values and limit. Exit 1 means a failed rule; invalid arguments exit 2.
 
-Task 016 ([PR #35](https://github.com/aminch18/wyrd/pull/35)) removes the known single-SKU growth on the current base.
-Until it lands, CI explicitly uses `--gate --known-single-sku-failure`, as allowed by task 014. That option reports
-only `SingleSku`'s Q1.2 failure as known; **every allocation budget and every other scaling check still fails CI**.
-The default `--gate` stays strict. Remove the CI option and update the baseline after task 016 merges; Q1.2 stays
-marked planned until every scenario is enforced. No scenario is skipped.
+Task 016 ([PR #35](https://github.com/aminch18/wyrd/pull/35)) removed the single-SKU growth: CI runs the strict
+`--gate`, and every scenario is enforced. `--known-single-sku-failure` remains only to reproduce runs from before it.
 
 ## Baseline updates
 
@@ -76,3 +73,34 @@ Initial baseline: `main` at `b621286`, .NET 10.0.201, Apple M3 Pro, Release, 202
 
 That run took 16.08 seconds and exited 1 for Q1.2 SingleSku. The high single-SKU budget records the defect; it is
 not an acceptable release target. Task 016 and a downward baseline update remove it before the quality bar is green.
+
+### 0.5 (Verdandi)
+
+Baseline written from `feature/verdandi` merged with `main` (the state #11 releases), .NET 10.0.201, Apple M3 Pro,
+Release, 2026-10-24. It is the downward update task 016 asked for (`SingleSku` from 73,621 to 4,400 B/message) and it
+records what Verdandi costs the in-memory host per message, measured against `main` at the same moment with the same
+gate:
+
+| Scenario | B/message `main` | B/message 0.5 | Change | Orders/s `main` | Orders/s 0.5 | 10k/1k 0.5 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| SingleSku | 4,176 | 4,400 | +5.4% | 6,615 | 5,932 | 1.004 |
+| SkuPerOrder | 3,983 | 4,257 | +6.9% | 9,666 | 9,683 | 0.997 |
+| Compensated | 4,060 | 4,377 | +7.8% | 18,421 | 17,781 | 0.993 |
+| Timers | 3,728 | 4,149 | +11.3% | 9,830 | 10,104 | 0.983 |
+
+What the bytes pay for: retention (each handled id, reply, event and published message keeps when it was recorded,
+so it can expire), the cancelled timer of every wait that ends early (Timers), a version on every read model (so
+workers never overwrite each other's update), the projected version kept per stream, and the reply an instance keeps
+for its operator. The first Verdandi build allocated about 1,200 B/message more than `main`; collections most
+messages never use are now created on first write, views are updated without closures, a reply no longer copies the
+instance to clear a kept reply that isn't there, and a wait's timer is cleared in the same copy that resumes it.
+Orders/s is one gate run each, for reviews: it is never a threshold.
+
+BenchmarkDotNet, `--job short` (3 warmups, 3 iterations: wide intervals, information only), per order:
+
+| Scenario | Mean `main` | Mean 0.5 | Allocated `main` | Allocated 0.5 |
+| --- | ---: | ---: | ---: | ---: |
+| SingleSku | 127.36 us | 67.70 us | 68.92 KB | 71.66 KB |
+| SkuPerOrder | 79.85 us | 150.18 us | 71.76 KB | 79.23 KB |
+| Compensated | 97.14 us | 113.11 us | 60.08 KB | 65.33 KB |
+| Timers | 115.09 us | 125.18 us | 75.72 KB | 83.00 KB |
