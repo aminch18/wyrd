@@ -299,6 +299,9 @@ namespace Shop.Api.Durable.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_published_message_id");
 
+                    b.HasIndex("RecordedAt")
+                        .HasDatabaseName("ix_published_recorded_at");
+
                     b.HasIndex("RelayedAt")
                         .HasDatabaseName("ix_published_relayed_at");
 
