@@ -39,7 +39,7 @@ internal sealed class Application(MessageTypes types)
     public void Add(IProjectionHandler projection)
     {
         Registry.Add(projection);
-        Register([projection.View, .. projection.Events]);
+        Register([projection.View, .. projection.Events, .. projection.Seeds]);
     }
 
     public void Add(Process process)

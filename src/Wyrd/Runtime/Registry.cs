@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Wyrd.Processes;
 
 namespace Wyrd.Runtime;
@@ -12,6 +13,19 @@ internal sealed class Registry
     private readonly List<IProjectionHandler> _projections = [];
 
     public IReadOnlyList<IProjectionHandler> Projections => _projections;
+
+    /// <summary>
+    /// The views whose projections have caught up from existing states (see <see cref="Projection{TView}.Seed{TState}"/>).
+    /// Once caught up, always caught up: hosts remember it here so events don't ask the store again.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, bool> _caughtUp = [];
+
+    public bool IsCaughtUp(IProjectionHandler projection) => !projection.Seeds.Any() || _caughtUp.ContainsKey(projection.View.FullName!);
+
+    public void CaughtUp(IProjectionHandler projection) => _caughtUp[projection.View.FullName!] = true;
+
+    /// <summary>Projections still catching up from existing states.</summary>
+    public IEnumerable<IProjectionHandler> CatchingUp => _projections.Where(p => !IsCaughtUp(p));
 
     public void Add(IProjectionHandler projection)
     {

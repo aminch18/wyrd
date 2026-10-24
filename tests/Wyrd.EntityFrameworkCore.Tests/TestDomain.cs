@@ -105,3 +105,15 @@ public sealed class RecordingTransport : IWyrdTransport
         return Task.CompletedTask;
     }
 }
+
+/// <summary>A read model added to a shop that already has stock: it catches up from the stock items' states.</summary>
+public sealed record StockLevel(string Sku, int Available);
+
+public sealed class StockLevels : Projection<StockLevel>
+{
+    public StockLevels()
+    {
+        Seed<Shop.Inventory.StockItem>((sku, _) => sku, (_, sku, item) => new StockLevel(sku, item.Available));
+        On<Shop.Inventory.StockAdded>(e => e.Sku, (view, e) => new StockLevel(e.Sku, (view?.Available ?? 0) + e.Quantity));
+    }
+}

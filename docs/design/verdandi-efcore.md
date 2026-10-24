@@ -91,8 +91,24 @@ removed only once it returned.
   because there is none.
 - **Costs:** a few lines more to set up the host, and a decision the team has to make before starting.
 
+### 9. A new projection catches up from the states
+
+Wyrd keeps current state, not every past event, so a projection added to a store with data is seeded from the states
+it names (`Seed<TState>(...)`, [semantics](semantics.md) 5): workers seed each state in its own transaction while the
+projection is catching up (`CatchUpAsync`), and then follow its events. A mark per seeded stream (`seeded`) keeps the
+version the seed was built from: an event up to it is in the seed and skipped, a later one is applied. The seed checks
+the state's version on commit, so an event that changed the state meanwhile wins and the stream is seeded again on the
+next pass. Once every state is seeded and every event a seed holds has arrived (`projected` has reached its version),
+the projection is caught up (`caught_up`) and its marks go. Projected versions are kept even without projections, so
+a projection added later knows which events have arrived.
+
+- **Gives:** a read model can be added to a running system without replaying history it doesn't have, and without a
+  moment where it shows an event twice or misses one.
+- **Costs:** only what a state says can be rebuilt (a view that counts past events starts from what the states show);
+  one extra read per event of a seeded stream while the projection catches up, and one projected-version write per
+  domain event in applications with no projection.
+
 ## Not yet
 
 - `LISTEN/NOTIFY` on PostgreSQL, for messages queued by another process.
-- Catching up a projection added to an existing store.
 - A broker package (`Wyrd.RabbitMq`) implementing `IWyrdTransport`.

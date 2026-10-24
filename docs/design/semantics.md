@@ -186,8 +186,10 @@ the host doesn't start without a `Retention`, whose every member is required, ea
   that arrives early is held until the gap is filled. Processes don't wait for read models. **Implemented.**
 - Across streams there is no order (two orders, or an order and its payment if they are different states), and
   integration events from outside carry no stream. A view combining several streams still tolerates reordering
-  between them. *Conscious limit.* Catching up a projection added to an existing durable store comes with the
-  durable hosts (v0.5).
+  between them. *Conscious limit.*
+- A projection added to a store that already has data catches up from the **current states** it names
+  (`Seed<TState>`), since Wyrd keeps state, not every past event, and then follows their events: an event already in a
+  seed is never applied again, and none is missed. Only what a state says can be rebuilt. **Implemented.**
 
 ## 6. Conscious limits
 

@@ -22,6 +22,22 @@ namespace Shop.Api.Durable.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Wyrd.EntityFrameworkCore.CaughtUpRow", b =>
+                {
+                    b.Property<string>("ViewType")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("view_type");
+
+                    b.Property<DateTimeOffset>("CaughtUpAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("caught_up_at");
+
+                    b.HasKey("ViewType");
+
+                    b.ToTable("caught_up", "wyrd");
+                });
+
             modelBuilder.Entity("Wyrd.EntityFrameworkCore.DeadLetterRow", b =>
                 {
                     b.Property<long>("Id")
@@ -360,6 +376,33 @@ namespace Shop.Api.Durable.Migrations
                         .HasDatabaseName("ix_queue_available");
 
                     b.ToTable("queue", "wyrd");
+                });
+
+            modelBuilder.Entity("Wyrd.EntityFrameworkCore.SeededRow", b =>
+                {
+                    b.Property<string>("ViewType")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("view_type");
+
+                    b.Property<string>("StateType")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("state_type");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("key");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("ViewType", "StateType", "Key")
+                        .HasAnnotation("SqlServer:Clustered", false);
+
+                    b.ToTable("seeded", "wyrd");
                 });
 
             modelBuilder.Entity("Wyrd.EntityFrameworkCore.StateRow", b =>

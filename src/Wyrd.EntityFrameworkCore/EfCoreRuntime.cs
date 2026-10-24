@@ -360,6 +360,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             {
                 var handled = await ProcessPendingAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
                 var relayed = await RelayOrWaitAsync(cancellationToken).ConfigureAwait(false);
+                if (_application.Registry.CatchingUp.Any())
+                {
+                    await CatchUpAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+
                 if (_time.GetUtcNow() - _lastCleanup >= _options.CleanupInterval)
                 {
                     _lastCleanup = _time.GetUtcNow();
@@ -469,6 +474,55 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     }
 
     /// <summary>
+    /// Catches up the projections added to a store that already has states (see
+    /// <see cref="Projection{TView}.Seed{TState}"/>): seeds up to <paramref name="batchSize"/> views of each, one
+    /// transaction per state, and marks a projection caught up once nothing is left. Workers call it while a projection is
+    /// catching up, and any number of them can: a state another worker seeded meanwhile is skipped. Returns true once
+    /// every projection has caught up.
+    /// </summary>
+    public async Task<bool> CatchUpAsync(int batchSize = 1_000, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(batchSize, 1);
+        foreach (var projection in _application.Registry.CatchingUp.ToList())
+        {
+            foreach (var seed in projection.Seeds)
+            {
+                IReadOnlyList<StoredState> states;
+                await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    states = await new EfCoreStore(db, _time.GetUtcNow())
+                        .UnseededAsync(projection.View.FullName!, seed.FullName!, batchSize, cancellationToken).ConfigureAwait(false);
+                }
+
+                foreach (var state in states)
+                {
+                    await CatchUpStepAsync(engine => engine.SeedAsync(projection, state, cancellationToken), cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            await CatchUpStepAsync(async engine => await engine.CompleteCatchUpAsync(projection, cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
+        }
+
+        return !_application.Registry.CatchingUp.Any();
+    }
+
+    /// <summary>One step of a catch-up in its own transaction; a conflict leaves it for the next pass.</summary>
+    private async Task CatchUpStepAsync(Func<Engine, ValueTask> step, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            await step(Engine(db, _time.GetUtcNow())).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (IsConflict(ex))
+        {
+            LogConflictRetry("a catch-up", 1);
+        }
+    }
+
+    /// <summary>
     /// Removes what the retention no longer keeps (Q2.3), in batches of <paramref name="batchSize"/> so no transaction
     /// holds many locks; returns how many rows went. Suspended and running instances stay; a removed instance takes its
     /// parked events with it. Workers call it every <see cref="EfCoreRuntimeOptions.CleanupInterval"/>.
@@ -501,6 +555,15 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         if (_retention.Events.Cutoff(now) is { } events)
         {
             removed += await ForgetAsync<EventRow, long>(r => r.RecordedAt <= events, r => r.Seq, batchSize, cancellationToken).ConfigureAwait(false);
+        }
+
+        // A seed mark written by a worker while another was marking its projection caught up: no longer read. A handful
+        // at most, from a race, so no batches.
+        await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+        {
+            removed += await db.Set<SeededRow>()
+                .Where(s => db.Set<CaughtUpRow>().Any(c => c.ViewType == s.ViewType))
+                .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
         }
 
         if (_retention.DeadLetters.Cutoff(now) is { } dead)

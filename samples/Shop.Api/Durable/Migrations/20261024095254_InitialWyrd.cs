@@ -16,6 +16,19 @@ namespace Shop.Api.Durable.Migrations
                 name: "wyrd");
 
             migrationBuilder.CreateTable(
+                name: "caught_up",
+                schema: "wyrd",
+                columns: table => new
+                {
+                    view_type = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    caught_up_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_caught_up", x => x.view_type);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "dead_letters",
                 schema: "wyrd",
                 columns: table => new
@@ -179,6 +192,21 @@ namespace Shop.Api.Durable.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "seeded",
+                schema: "wyrd",
+                columns: table => new
+                {
+                    view_type = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    state_type = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    key = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    version = table.Column<long>(type: "bigint", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_seeded", x => new { x.view_type, x.state_type, x.key });
+                });
+
+            migrationBuilder.CreateTable(
                 name: "states",
                 schema: "wyrd",
                 columns: table => new
@@ -286,6 +314,10 @@ namespace Shop.Api.Durable.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
+                name: "caught_up",
+                schema: "wyrd");
+
+            migrationBuilder.DropTable(
                 name: "dead_letters",
                 schema: "wyrd");
 
@@ -323,6 +355,10 @@ namespace Shop.Api.Durable.Migrations
 
             migrationBuilder.DropTable(
                 name: "queue",
+                schema: "wyrd");
+
+            migrationBuilder.DropTable(
+                name: "seeded",
                 schema: "wyrd");
 
             migrationBuilder.DropTable(

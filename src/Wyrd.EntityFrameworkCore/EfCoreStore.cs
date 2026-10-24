@@ -58,6 +58,30 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
     public async ValueTask<bool> WasHandledAsync(Guid messageId, CancellationToken cancellationToken) =>
         await db.Set<HandledRow>().AnyAsync(r => r.MessageId == messageId, cancellationToken).ConfigureAwait(false);
 
+    public async ValueTask<bool> IsCaughtUpAsync(string viewType, CancellationToken cancellationToken) =>
+        await db.Set<CaughtUpRow>().AnyAsync(r => r.ViewType == viewType, cancellationToken).ConfigureAwait(false);
+
+    public async ValueTask<long?> LoadSeededAsync(StoredSeeded seeded, CancellationToken cancellationToken) =>
+        await db.Set<SeededRow>().AsNoTracking()
+            .Where(r => r.ViewType == seeded.ViewType && r.StateType == seeded.StateType && r.Key == seeded.Key)
+            .Select(r => (long?)r.Version)
+            .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+
+    public async ValueTask<bool> SeedsAheadAsync(string viewType, CancellationToken cancellationToken) =>
+        await db.Set<SeededRow>()
+            .Where(s => s.ViewType == viewType && s.Version > 0)
+            .AnyAsync(s => !db.Set<ProjectedRow>().Any(p => p.StateType == s.StateType && p.Key == s.Key && p.Version >= s.Version), cancellationToken)
+            .ConfigureAwait(false);
+
+    public async ValueTask<IReadOnlyList<StoredState>> UnseededAsync(string viewType, string stateType, int max, CancellationToken cancellationToken) =>
+        await db.Set<StateRow>().AsNoTracking()
+            .Where(r => r.StateType == stateType
+                && !db.Set<SeededRow>().Any(s => s.ViewType == viewType && s.StateType == stateType && s.Key == r.Key))
+            .OrderBy(r => r.Key)
+            .Take(max)
+            .Select(r => new StoredState(stateType, r.Key, r.Type, r.Payload, r.Version))
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+
     /// <summary>
     /// Writes one message's changes. Versioned rows are updated with their expected version in the WHERE clause; new rows
     /// are inserted on <c>SaveChanges</c>, where a unique key taken by another worker fails the whole transaction (the
@@ -132,6 +156,29 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
             {
                 throw new ConcurrencyConflictException($"Concurrency conflict projecting {stateType} '{key}'.");
             }
+        }
+
+        // Catching up a projection: the state a seed was built from must be the current one, and a stream is seeded once
+        // (a concurrent mark of the same stream fails on SaveChanges).
+        foreach (var state in changes.Unchanged)
+        {
+            if (await db.Set<StateRow>()
+                .Where(r => r.StateType == state.StateType && r.Key == state.Key && r.Version == state.Version)
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.Version, state.Version), cancellationToken).ConfigureAwait(false) != 1)
+            {
+                throw new ConcurrencyConflictException($"Concurrency conflict seeding from {state.StateType} '{state.Key}'.");
+            }
+        }
+
+        foreach (var (seeded, version) in changes.Seeded)
+        {
+            db.Add(new SeededRow { ViewType = seeded.ViewType, StateType = seeded.StateType, Key = seeded.Key, Version = version });
+        }
+
+        foreach (var viewType in changes.CaughtUp)
+        {
+            db.Add(new CaughtUpRow { ViewType = viewType, CaughtUpAt = now });
+            await db.Set<SeededRow>().Where(r => r.ViewType == viewType).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
         }
 
         foreach (var held in changes.Hold)

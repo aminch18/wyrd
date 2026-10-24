@@ -388,6 +388,42 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
             await _engine.HandleAsync(envelope, cancellationToken).ConfigureAwait(false);
             await TakeOutboxAsync(cancellationToken).ConfigureAwait(false);
         }
+
+        await CatchUpCoreAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Catches up the projections added to a runtime that already has states (see
+    /// <see cref="Projection{TView}.Seed{TState}"/>). The runtime does it on its own once it is idle; call this to have
+    /// the views before the next message.
+    /// </summary>
+    public async Task CatchUpAsync(CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await CatchUpCoreAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task CatchUpCoreAsync(CancellationToken cancellationToken)
+    {
+        foreach (var projection in _application.Registry.CatchingUp.ToList())
+        {
+            foreach (var seed in projection.Seeds)
+            {
+                foreach (var state in await _store.UnseededAsync(projection.View.FullName!, seed.FullName!, int.MaxValue, cancellationToken).ConfigureAwait(false))
+                {
+                    await _engine.SeedAsync(projection, state, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            await _engine.CompleteCatchUpAsync(projection, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>The outbox relay: committed messages are handed to the transport.</summary>

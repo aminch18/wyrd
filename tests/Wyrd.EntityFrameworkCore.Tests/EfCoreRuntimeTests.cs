@@ -90,6 +90,32 @@ public abstract class EfCoreRuntimeTests(Database database)
     }
 
     [Fact]
+    public async Task a_projection_added_to_a_store_with_states_catches_up_without_applying_an_event_twice()
+    {
+        var contexts = await database.NewAsync();
+        var shop = Database.Shop(contexts);
+        await shop.SendAsync(new Restock("KEYBOARD", 5));
+        await DrainAsync(shop);
+        await shop.SendAsync(new Restock("MOUSE", 2)); // its StockAdded is still queued
+
+        // Redeployed with a new read model.
+        var redeployed = ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(contexts, Database.Retention, Database.Options)).AddProjection(new StockLevels());
+        Assert.False(await redeployed.CatchUpAsync()); // seeded, but the queued StockAdded is already in the MOUSE seed
+        Assert.Equal(new StockLevel("KEYBOARD", 5), await redeployed.ViewAsync<StockLevel>("KEYBOARD"));
+        Assert.Equal(new StockLevel("MOUSE", 2), await redeployed.ViewAsync<StockLevel>("MOUSE"));
+
+        await DrainAsync(redeployed);
+        Assert.Equal(new StockLevel("MOUSE", 2), await redeployed.ViewAsync<StockLevel>("MOUSE"));
+        Assert.True(await redeployed.CatchUpAsync());
+
+        await redeployed.SendAsync(new Restock("MOUSE", 3));
+        await redeployed.SendAsync(new Restock("PAD", 1));
+        await DrainAsync(redeployed);
+        Assert.Equal(new StockLevel("MOUSE", 5), await redeployed.ViewAsync<StockLevel>("MOUSE"));
+        Assert.Equal(new StockLevel("PAD", 1), await redeployed.ViewAsync<StockLevel>("PAD"));
+    }
+
+    [Fact]
     public async Task only_a_suspended_instance_can_be_resumed()
     {
         var shop = Database.Shop(await database.NewAsync());

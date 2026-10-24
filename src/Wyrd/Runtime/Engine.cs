@@ -251,20 +251,23 @@ internal sealed class Engine(
     /// </summary>
     private async ValueTask ProjectInOrderAsync(Envelope envelope, IEvent @event, Changes changes, CancellationToken cancellationToken)
     {
-        if (registry.Projections.Count == 0)
-        {
-            return;
-        }
-
         if (envelope.Stream is not { } stream)
         {
-            await ProjectAsync(@event, changes, cancellationToken).ConfigureAwait(false); // From outside: no stream to order by.
+            await ProjectAsync(@event, stream: null, changes, cancellationToken).ConfigureAwait(false); // From outside: no stream to order by.
             return;
         }
 
         var projected = await store.LoadProjectedAsync(stream.StateType, stream.Key, cancellationToken).ConfigureAwait(false);
         if (stream.Version <= projected)
         {
+            return;
+        }
+
+        if (registry.Projections.Count == 0)
+        {
+            // Nothing to order yet, but a projection added later catches up from the states, and needs to know which
+            // events of a stream have arrived.
+            changes.Projected[(stream.StateType, stream.Key)] = (projected, stream.Version);
             return;
         }
 
@@ -275,42 +278,80 @@ internal sealed class Engine(
             return;
         }
 
-        await ProjectAsync(@event, changes, cancellationToken).ConfigureAwait(false);
+        await ProjectAsync(@event, stream, changes, cancellationToken).ConfigureAwait(false);
         var version = stream.Version;
         while (await store.FindHeldAsync(stream.StateType, stream.Key, version + 1, cancellationToken).ConfigureAwait(false) is { } held)
         {
             changes.Release.Add(held);
-            await ProjectAsync((IEvent)types.Deserialize(held.Type, held.Payload), changes, cancellationToken).ConfigureAwait(false);
+            await ProjectAsync((IEvent)types.Deserialize(held.Type, held.Payload), stream with { Version = version + 1 }, changes, cancellationToken).ConfigureAwait(false);
             version++;
         }
 
         changes.Projected[(stream.StateType, stream.Key)] = (projected, version);
     }
 
-    private async ValueTask ProjectAsync(IEvent @event, Changes changes, CancellationToken cancellationToken)
+    private async ValueTask ProjectAsync(IEvent @event, StreamRef? stream, Changes changes, CancellationToken cancellationToken)
     {
         foreach (var projection in registry.Projections)
         {
             foreach (var handled in projection.Events)
             {
-                if (Accept(@event, handled) is { } projected)
+                if (Accept(@event, handled) is { } projected && await FollowsAsync(projection, stream, changes, cancellationToken).ConfigureAwait(false))
                 {
-                    await ProjectAsync(projection, projected, changes, cancellationToken).ConfigureAwait(false);
+                    var key = Keys.Of(projection.KeyOf(projected));
+                    await SaveViewAsync(projection, key, current => projection.Apply(current, projected), changes, cancellationToken).ConfigureAwait(false);
                 }
             }
         }
     }
 
-    private async ValueTask ProjectAsync(IProjectionHandler projection, IEvent @event, Changes changes, CancellationToken cancellationToken)
+    /// <summary>
+    /// Whether an event of <paramref name="stream"/> reaches a projection that is still catching up from existing
+    /// states: when it is newer than the state the stream's seed was built from, or when the stream begins with it (there
+    /// is nothing to seed). Any other event is in the state a seed is built from, now or on a later pass.
+    /// </summary>
+    private async ValueTask<bool> FollowsAsync(IProjectionHandler projection, StreamRef? stream, Changes changes, CancellationToken cancellationToken)
+    {
+        if (stream is null || registry.IsCaughtUp(projection) || !projection.Seeds.Any(s => s.FullName == stream.StateType))
+        {
+            return true;
+        }
+
+        var viewType = projection.View.FullName!;
+        if (await store.IsCaughtUpAsync(viewType, cancellationToken).ConfigureAwait(false))
+        {
+            registry.CaughtUp(projection);
+            return true;
+        }
+
+        var seeded = new StoredSeeded(viewType, stream.StateType, stream.Key);
+        var from = changes.Seeded.TryGetValue(seeded, out var pending)
+            ? pending
+            : await store.LoadSeededAsync(seeded, cancellationToken).ConfigureAwait(false);
+        if (from is not null)
+        {
+            return stream.Version > from;
+        }
+
+        if (stream.Version != 1)
+        {
+            return false;
+        }
+
+        changes.Seeded[seeded] = 0;
+        return true;
+    }
+
+    private async ValueTask SaveViewAsync(
+        IProjectionHandler projection, string key, Func<object?, object?> update, Changes changes, CancellationToken cancellationToken)
     {
         var viewType = projection.View.FullName!;
-        var key = Keys.Of(projection.KeyOf(@event));
         var stored = changes.Views.TryGetValue((viewType, key), out var pending)
             ? pending
             : await store.LoadViewAsync(viewType, key, cancellationToken).ConfigureAwait(false);
         var current = stored?.Payload is null ? null : types.Deserialize(stored.Type!, stored.Payload);
 
-        var next = projection.Apply(current, @event);
+        var next = update(current);
         if (next is null)
         {
             changes.Views[(viewType, key)] = new StoredView(viewType, key, null, null);
@@ -319,6 +360,52 @@ internal sealed class Engine(
 
         var (type, payload) = types.Serialize(next, projection.View);
         changes.Views[(viewType, key)] = new StoredView(viewType, key, type, payload);
+    }
+
+    // ── Catching up a projection added to a store with data ──────────────────────────────────
+
+    /// <summary>
+    /// Seeds a catching-up projection's view from one existing state and commits it, with the state's version: the
+    /// stream's events up to it are in the seed and skipped when they arrive, later ones are applied. The version is
+    /// checked on commit, so an event that changed the state meanwhile wins and the stream is seeded on a later pass.
+    /// </summary>
+    public async ValueTask SeedAsync(IProjectionHandler projection, StoredState state, CancellationToken cancellationToken)
+    {
+        var changes = new Changes();
+        var value = types.Deserialize(state.Type, state.Payload);
+        var key = Keys.Of(projection.SeedKeyOf(state.Key, value));
+        await SaveViewAsync(projection, key, current => projection.Seed(current, state.Key, value), changes, cancellationToken).ConfigureAwait(false);
+        changes.Seeded[new StoredSeeded(projection.View.FullName!, state.StateType, state.Key)] = state.Version;
+        changes.Unchanged.Add(state);
+        await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Marks a projection caught up once it follows every stream of the states it seeds from and every event its seeds
+    /// include has been projected; its seed marks go. Returns false while either is left.
+    /// </summary>
+    public async ValueTask<bool> CompleteCatchUpAsync(IProjectionHandler projection, CancellationToken cancellationToken)
+    {
+        var viewType = projection.View.FullName!;
+        foreach (var seed in projection.Seeds)
+        {
+            if ((await store.UnseededAsync(viewType, seed.FullName!, 1, cancellationToken).ConfigureAwait(false)).Count > 0)
+            {
+                return false;
+            }
+        }
+
+        if (await store.SeedsAheadAsync(viewType, cancellationToken).ConfigureAwait(false))
+        {
+            return false;
+        }
+
+        var changes = new Changes();
+        changes.CaughtUp.Add(viewType);
+        await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+        registry.CaughtUp(projection);
+        log(External, null, $"{projection.View.Name} caught up from existing states");
+        return true;
     }
 
     private async ValueTask StartAsync(Process process, IEvent trigger, Changes changes, CancellationToken cancellationToken)

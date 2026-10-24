@@ -54,6 +54,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   never expire; a removed finished instance frees its key. Fences never expire either, and a reply that reaches an
   instance whose definition changed is kept on the instance for the operator, so neither depends on the deduplication
   window. In memory: `UseRetention` (keeps everything by default) and a bounded journal (`JournalLimit`, 10,000).
+- **Catching up a projection** added to a store that already has data: `Projection<TView>.Seed<TState>(key, seed)`
+  builds the view from the current states (Wyrd keeps state, not every past event), once, and the projection follows
+  their events after that; an event already in a seed is skipped, a later one applied. Hosts catch up on their own
+  (workers on EF Core, the in-memory runtime when idle) or on `CatchUpAsync()`. Projected versions are now kept even
+  in applications without projections.
 - `IWyrdBuilder<T>`: register a module the same way on any host (`ShopModule.Register(runtime)`).
 - `IWyrdRuntime`: what application code needs (send, publish, query), implemented by both hosts.
 - `samples/Shop.Api` runs durable on PostgreSQL when built with `-p:WyrdHost=EfCore` and given a `Wyrd` connection
