@@ -390,13 +390,21 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
             await TakeOutboxAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        await CatchUpCoreAsync(cancellationToken).ConfigureAwait(false);
+        // Once idle. What the drain handled is committed, so a failing seed is logged, never thrown at the caller.
+        try
+        {
+            await CatchUpCoreAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            Log(Engine.External, null, $"catching up read models failed: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     /// <summary>
     /// Catches up the projections added to a runtime that already has states (see
-    /// <see cref="Projection{TView}.Seed{TState}"/>). The runtime does it on its own once it is idle; call this to have
-    /// the views before the next message.
+    /// <see cref="Projection{TView}.Seed{TState}"/>). The runtime does it on its own once it is idle, and logs a failure
+    /// to the journal; call this to have the views before the next message, and to see a failure as an exception.
     /// </summary>
     public async Task CatchUpAsync(CancellationToken cancellationToken = default)
     {
