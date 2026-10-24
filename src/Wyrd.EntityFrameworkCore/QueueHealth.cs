@@ -19,7 +19,7 @@ public sealed record QueueHealth(
 
 /// <summary>
 /// The <c>Wyrd</c> meter (collectors opt in with <c>AddMeter("Wyrd")</c>): the latest health of each queue, tagged with
-/// its table, and counters of what workers handle.
+/// its database, schema and table, and counters of what workers handle.
 /// </summary>
 internal static class QueueMetrics
 {
@@ -44,6 +44,9 @@ internal static class QueueMetrics
     }
 
     public static void Record(string queue, QueueHealth health) => Latest[queue] = health;
+
+    /// <summary>A disposed runtime's last health is not published forever.</summary>
+    public static void Forget(string queue) => Latest.TryRemove(queue, out _);
 
     private static void Count(string name, string unit, string description, Func<QueueHealth, long> value) =>
         Meter.CreateObservableGauge(name, () => Latest.Select(e => new Measurement<long>(value(e.Value), Tag(e.Key))), unit, description);
