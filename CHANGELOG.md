@@ -17,6 +17,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Architecture documentation for reviewers: `docs/design/architecture.md` (the big picture, the model, the patterns,
+  the invariants and where they are enforced, how to review a PR, and the discrepancies found between the code and
+  the design documents) and `docs/design/runtime.md` (the engine branch by branch, the in-memory and EF Core hosts,
+  and one order end to end on PostgreSQL with real logs, SQL and rows).
 - Add BCL `Wyrd` process tracing with envelope context propagation, lifecycle/outcome tags and links for external continuations; Shop.Api exports to the console when `OTEL_EXPORTER=console`. Deterministic journals, domain state and replay histories are unchanged.
 - Documentation learning path with the shared read-model guide, working repository-relative links, and a searchable API reference checked against public declarations, analyzer rules and code-fix coverage during the website build.
 - `dotnet wyrd mcp`: an official-SDK stdio server exposing the existing Mermaid, AsyncAPI, contract parser and
