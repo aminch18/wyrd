@@ -20,7 +20,10 @@ export function TestingDoc() {
             <p>
                 Specifications check one decision at a time. To check a whole
                 process against faults, duplicates and reordering, use{' '}
-                <a href="#/docs/simulation">Skuld simulation</a>.
+                <a href={`${import.meta.env.BASE_URL}docs/simulation/`}>
+                    Skuld simulation
+                </a>
+                .
             </p>
             <h2>Source-generated serialization</h2>
             <p>

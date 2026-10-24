@@ -265,7 +265,10 @@ export function RoadmapDoc() {
                 The repository roadmap is the source of truth. Items marked Open
                 here are not claims about the current package. What is available
                 behaves as specified in{' '}
-                <a href="#/docs/semantics">How Wyrd behaves</a>.
+                <a href={`${import.meta.env.BASE_URL}docs/semantics/`}>
+                    How Wyrd behaves
+                </a>
+                .
             </Callout>
         </DocArticle>
     )

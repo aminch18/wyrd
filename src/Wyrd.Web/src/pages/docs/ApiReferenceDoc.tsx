@@ -8,6 +8,7 @@ import styles from '../../styles/site.module.css'
 
 type Entry = (typeof api)[number]
 const GROUPS = [
+    'All',
     'Messages',
     'Decisions',
     'Processes',
@@ -35,13 +36,13 @@ function ApiEntry({ entry, search }: { entry: Entry; search: string }) {
                 <code>{entry.name}</code>
                 <span>{entry.description}</span>
             </summary>
-            {open && (
-                <>
-                    <p>
-                        <a href={`${GITHUB_URL}/blob/main/${entry.source}`}>
-                            View source · {entry.source}
-                        </a>
-                    </p>
+            <>
+                <p>
+                    <a href={`${GITHUB_URL}/blob/main/${entry.source}`}>
+                        View source · {entry.source}
+                    </a>
+                </p>
+                {open ? (
                     <CodeBlock
                         code={
                             entry.members.length
@@ -50,34 +51,48 @@ function ApiEntry({ entry, search }: { entry: Entry; search: string }) {
                         }
                         title="Declaration excerpts · C#"
                     />
-                    {members.map((member, index) => (
-                        <div key={index} className={styles['api-member']}>
-                            <pre className={styles['api-example']}>
-                                <code>{member.signature}</code>
-                            </pre>
-                            <p>{member.description}</p>
-                            <pre className={styles['api-example']}>
-                                <code>{member.example}</code>
-                            </pre>
-                        </div>
-                    ))}
+                ) : (
+                    <pre className={styles['api-example']}>
+                        <code>
+                            {entry.members.length
+                                ? entry.signatures[0]
+                                : entry.signatures.join('\n\n')}
+                        </code>
+                    </pre>
+                )}
+                {members.map((member, index) => (
+                    <div key={index} className={styles['api-member']}>
+                        <pre className={styles['api-example']}>
+                            <code>{member.signature}</code>
+                        </pre>
+                        <p>{member.description}</p>
+                        <pre className={styles['api-example']}>
+                            <code>{member.example}</code>
+                        </pre>
+                    </div>
+                ))}
+                {open ? (
                     <CodeBlock
                         code={entry.example}
                         title="Example · application context"
                     />
-                </>
-            )}
+                ) : (
+                    <pre className={styles['api-example']}>
+                        <code>{entry.example}</code>
+                    </pre>
+                )}
+            </>
         </details>
     )
 }
 
 export function ApiReferenceDoc() {
-    const [group, setGroup] = useState('Messages')
+    const [group, setGroup] = useState('All')
     const [query, setQuery] = useState('')
     const search = query.trim().toLowerCase()
     const matches = api.filter(
         (entry) =>
-            (search || entry.group === group) &&
+            (search || group === 'All' || entry.group === group) &&
             `${entry.name} ${entry.description} ${entry.signatures.join(' ')}`
                 .toLowerCase()
                 .includes(search),
@@ -102,11 +117,20 @@ export function ApiReferenceDoc() {
                 in the linked source.
             </p>
             <p>
-                Start with <a href="#/docs/overview">the philosophy</a>,{' '}
-                <a href="#/docs/semantics">behavior</a> and the{' '}
-                <a href="#/docs/read-models">read-model guide</a>. The current
-                host is in memory; durable transports and integrations remain
-                planned.
+                Start with{' '}
+                <a href={`${import.meta.env.BASE_URL}docs/overview/`}>
+                    the philosophy
+                </a>
+                ,{' '}
+                <a href={`${import.meta.env.BASE_URL}docs/semantics/`}>
+                    behavior
+                </a>{' '}
+                and the{' '}
+                <a href={`${import.meta.env.BASE_URL}docs/read-models/`}>
+                    read-model guide
+                </a>
+                . The current host is in memory; durable transports and
+                integrations remain planned.
             </p>
             <div className={styles['api-controls']}>
                 <label>
@@ -139,7 +163,7 @@ export function ApiReferenceDoc() {
                     <ApiEntry key={entry.name} entry={entry} search={search} />
                 ))}
             {((search && (rules.length > 0 || toolMatch)) ||
-                (!search && group === 'Analyzers')) && (
+                (!search && (group === 'Analyzers' || group === 'All'))) && (
                 <>
                     <p>
                         Rules below are all currently declared diagnostics, not

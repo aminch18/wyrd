@@ -106,8 +106,11 @@ dotnet run --project src/Wyrd.Tool -- replay A-1.history.json --as-test \\
   --process Shop.Fulfillment.Processes.OrderFulfillment`}
             />
             <p>
-                See the <a href="#/docs/api-reference">API reference</a> for
-                InstanceHistory, Urd and ReplayReport.
+                See the{' '}
+                <a href={`${import.meta.env.BASE_URL}docs/api-reference/`}>
+                    API reference
+                </a>{' '}
+                for InstanceHistory, Urd and ReplayReport.
             </p>
         </DocArticle>
     )

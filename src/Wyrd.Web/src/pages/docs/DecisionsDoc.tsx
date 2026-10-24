@@ -69,9 +69,11 @@ export function DecisionsDoc() {
                 Each decision is marked <Status kind="implemented" />,{' '}
                 <Status kind="planned" version="v0.5" /> or{' '}
                 <Status kind="limit" />. The reference for the exact rules is{' '}
-                <a href="#/docs/semantics">How Wyrd behaves</a>. Wyrd is early
-                alpha and the current host is in memory, so read the costs as
-                carefully as the benefits.
+                <a href={`${import.meta.env.BASE_URL}docs/semantics/`}>
+                    How Wyrd behaves
+                </a>
+                . Wyrd is early alpha and the current host is in memory, so read
+                the costs as carefully as the benefits.
             </Callout>
 
             <Decision
@@ -232,7 +234,8 @@ export function DecisionsDoc() {
             <Callout title="Not decided here">
                 State persistence (state-stored, event-sourced or both) and the
                 full rules catalog are still open decisions on the{' '}
-                <a href="#/docs/roadmap">roadmap</a>.
+                <a href={`${import.meta.env.BASE_URL}docs/roadmap/`}>roadmap</a>
+                .
             </Callout>
         </DocArticle>
     )

@@ -1,6 +1,6 @@
 import styles from '../../styles/site.module.css'
 import type { CSSProperties } from 'react'
-import { navigate } from '../../app/navigation'
+import { routePath } from '../../app/navigation'
 
 const logoStyle = (fileName: string) =>
     ({
@@ -9,10 +9,9 @@ const logoStyle = (fileName: string) =>
 
 export function Brand() {
     return (
-        <button
+        <a
             className={styles['brand']}
-            type="button"
-            onClick={() => navigate('home')}
+            href={routePath('home')}
             aria-label="Wyrd home"
         >
             <span
@@ -29,6 +28,6 @@ export function Brand() {
                 style={logoStyle('wyrd-logo-light.png')}
                 aria-hidden="true"
             />
-        </button>
+        </a>
     )
 }
