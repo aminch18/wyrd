@@ -15,7 +15,7 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
 
     <!-- Shop.Api diagnostic export -->
-    <PackageVersion Include="OpenTelemetry.Exporter.Console" Version="1.20.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.Console" Version="1.20.1" />
 
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
 
