@@ -177,8 +177,8 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
 
         foreach (var viewType in changes.CaughtUp)
         {
+            // The seed marks stay: their key refuses a second seed of a stream, from a worker that read its batch before.
             db.Add(new CaughtUpRow { ViewType = viewType, CaughtUpAt = now });
-            await db.Set<SeededRow>().Where(r => r.ViewType == viewType).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
         }
 
         foreach (var held in changes.Hold)

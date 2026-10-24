@@ -14,12 +14,16 @@ namespace Wyrd.EntityFrameworkCore;
 /// <param name="PendingSteps">Running instances waiting for the outcome of a step.</param>
 /// <param name="OldestPendingStep">How long the oldest of those steps has been waited for, retries included.</param>
 /// <param name="Suspended">Instances that need an operator.</param>
+/// <param name="ExpiredKept">
+/// Finished instances past their retention and still kept: cleanup is behind, or the history archive keeps failing.
+/// </param>
 public sealed record QueueHealth(
-    long Due, TimeSpan OldestDue, long Scheduled, long DeadLetters, long PendingSteps, TimeSpan OldestPendingStep, long Suspended);
+    long Due, TimeSpan OldestDue, long Scheduled, long DeadLetters, long PendingSteps, TimeSpan OldestPendingStep, long Suspended,
+    long ExpiredKept);
 
 /// <summary>
 /// The <c>Wyrd</c> meter (collectors opt in with <c>AddMeter("Wyrd")</c>): the latest health of each queue, tagged with
-/// its table, and counters of what workers handle.
+/// its database, schema and table, and counters of what workers handle.
 /// </summary>
 internal static class QueueMetrics
 {
@@ -41,9 +45,13 @@ internal static class QueueMetrics
         Count("wyrd.process.pending_steps", "{step}", "Running instances waiting for the outcome of a step", h => h.PendingSteps);
         Age("wyrd.process.oldest_pending_step.age", "How long the oldest pending step has been waited for", h => h.OldestPendingStep);
         Count("wyrd.process.suspended", "{instance}", "Instances that need an operator", h => h.Suspended);
+        Count("wyrd.process.expired_kept", "{instance}", "Finished instances past their retention, still kept", h => h.ExpiredKept);
     }
 
     public static void Record(string queue, QueueHealth health) => Latest[queue] = health;
+
+    /// <summary>A disposed runtime's last health is not published forever.</summary>
+    public static void Forget(string queue) => Latest.TryRemove(queue, out _);
 
     private static void Count(string name, string unit, string description, Func<QueueHealth, long> value) =>
         Meter.CreateObservableGauge(name, () => Latest.Select(e => new Measurement<long>(value(e.Value), Tag(e.Key))), unit, description);

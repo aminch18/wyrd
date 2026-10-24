@@ -111,6 +111,39 @@ public class ProjectionCatchUpTests
         Assert.Null(View(application, store, "A-1"));
     }
 
+    [Fact]
+    [RequiresUnreferencedCode("Reflection-based JSON in a test.")]
+    [RequiresDynamicCode("Reflection-based JSON in a test.")]
+    public async Task a_seed_that_comes_after_the_projection_caught_up_is_refused()
+    {
+        var application = new Application(MessageTypes.Reflection());
+        application.Add(new PlaceOrderSlice());
+        var store = new InMemoryStore(() => DateTimeOffset.UnixEpoch);
+        var ids = 0;
+        var engine = new Engine(
+            application.Registry, store, application.Types, () => DateTimeOffset.UnixEpoch, () => new Guid(++ids, 0, 0, new byte[8]), (_, _) => false, (_, _, _) => { });
+        await engine.HandleAsync(Command(application, new PlaceOrder("A-1", Quantity: 1, Amount: 50)), default);
+        await DeliverAsync(engine, store);
+        var projection = new OrderLogs();
+        application.Add(projection);
+
+        // A worker reads its batch; another one seeds the same state and completes the catch-up first.
+        var read = store.State(typeof(EventLog).FullName!, "A-1")!;
+        await engine.SeedAsync(projection, read, default);
+        Assert.True(await engine.CompleteCatchUpAsync(projection, default));
+
+        await Assert.ThrowsAsync<ConcurrencyConflictException>(async () => await engine.SeedAsync(projection, read, default));
+        Assert.Equal(new OrderLog("A-1", 1), View(application, store, "A-1"));
+    }
+
+    private static async Task DeliverAsync(Engine engine, InMemoryStore store)
+    {
+        foreach (var envelope in await store.TakeOutboxAsync(default))
+        {
+            await engine.HandleAsync(envelope, default);
+        }
+    }
+
     private static Envelope Command(Application application, ICommand command)
     {
         var (type, payload) = application.Types.Serialize(command, command.GetType());

@@ -117,3 +117,15 @@ public sealed class StockLevels : Projection<StockLevel>
         On<Shop.Inventory.StockAdded>(e => e.Sku, (view, e) => new StockLevel(e.Sku, (view?.Available ?? 0) + e.Quantity));
     }
 }
+
+/// <summary>All the shop's stock in one view: its seed folds every stock item, so a second seed would show.</summary>
+public sealed record TotalStock(int Available);
+
+public sealed class TotalStocks : Projection<TotalStock>
+{
+    public TotalStocks()
+    {
+        Seed<Shop.Inventory.StockItem>((_, _) => "all", (view, _, item) => new TotalStock((view?.Available ?? 0) + item.Available));
+        On<Shop.Inventory.StockAdded>(_ => "all", (view, e) => new TotalStock((view?.Available ?? 0) + e.Quantity));
+    }
+}

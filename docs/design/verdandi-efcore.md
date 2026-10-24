@@ -99,14 +99,17 @@ projection is catching up (`CatchUpAsync`), and then follow its events. A mark p
 version the seed was built from: an event up to it is in the seed and skipped, a later one is applied. The seed checks
 the state's version on commit, so an event that changed the state meanwhile wins and the stream is seeded again on the
 next pass. Once every state is seeded and every event a seed holds has arrived (`projected` has reached its version),
-the projection is caught up (`caught_up`) and its marks go. Projected versions are kept even without projections, so
-a projection added later knows which events have arrived.
+the projection is caught up (`caught_up`). The marks stay: their key refuses a second seed of a stream, so a worker
+that read its batch before another one completed can't seed a view twice, and every instance of the service asks the
+store, not its memory, whether a projection caught up. One loop per runtime catches up, a hundred states per pass,
+between messages; a `Seed` that fails for one state is logged with the state, and the rest go on. Projected versions
+are kept even without projections, so a projection added later knows which events have arrived.
 
 - **Gives:** a read model can be added to a running system without replaying history it doesn't have, and without a
   moment where it shows an event twice or misses one.
 - **Costs:** only what a state says can be rebuilt (a view that counts past events starts from what the states show);
-  one extra read per event of a seeded stream while the projection catches up, and one projected-version write per
-  domain event in applications with no projection.
+  one extra read per event of a seeded stream while the projection catches up, one mark per seeded state, kept, and
+  one projected-version write per domain event in applications with no projection.
 
 ## Not yet
 
