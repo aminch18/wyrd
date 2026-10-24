@@ -88,8 +88,8 @@ indexed (`finished_at` only for finished instances, a filtered index). Inbox row
 removed. With a history archive, each batch of expired instances is handed to it first, with no transaction open, and
 removed only once it returned.
 
-- **Gives:** tables bounded by the periods the application chose; nobody finds out in production what the default was,
-  because there is none.
+- **Gives:** what can expire is bounded by the periods the application chose (fences are the one permanent exception:
+  they grow with failures, not traffic); nobody finds out in production what the default was, because there is none.
 - **Costs:** a few lines more to set up the host, and a decision the team has to make before starting.
 
 ## Not yet
