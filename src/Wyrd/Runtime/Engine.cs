@@ -549,7 +549,8 @@ internal sealed class Engine(
             return;
         }
 
-        instance = Record(instance, HistoryKind.Replied, target.Step, target.Compensating, target.Attempt,
+        // Handled now: a reply kept earlier for this command is no longer the operator's to deliver.
+        instance = Record(instance with { KeptReply = null }, HistoryKind.Replied, target.Step, target.Compensating, target.Attempt,
             reply.Type is null ? null : new StoredMessage(reply.Type, reply.Payload!), outcome: reply.Outcome);
 
         if (target.Step == process.Nodes.Length)
@@ -768,12 +769,12 @@ internal sealed class Engine(
         log(instance.Process, instance.Key, "resumed by an operator");
         instance = Record(instance, HistoryKind.Resumed);
 
-        instance = instance with { Status = ProcessStatus.Running, Reason = null };
-        if (instance.KeptReply is { } kept)
+        var kept = KeptFor(instance);
+        instance = instance with { Status = ProcessStatus.Running, Reason = null, KeptReply = null };
+        if (kept is not null)
         {
             // The reply arrived while the definition was changed: delivered again, instead of asking the owner again.
             changes.Outbox.Add(kept with { MessageId = newId() });
-            instance = instance with { KeptReply = null };
         }
         else if (!instance.Compensating && process.Nodes[instance.Position] is AwaitNode)
         {
@@ -815,15 +816,20 @@ internal sealed class Engine(
         var changes = new Changes();
         log(instance.Process, instance.Key, "compensation requested by an operator");
         instance = Record(instance, HistoryKind.CompensationRequested);
-        instance = instance with { Status = ProcessStatus.Running, Reason = null, Deadline = null };
-        changes.Save(instance.KeptReply is { } kept
-            ? CompensateKnown(process, instance with { KeptReply = null }, kept, Trigger(instance), changes)
+        var kept = KeptFor(instance);
+        instance = instance with { Status = ProcessStatus.Running, Reason = null, Deadline = null, KeptReply = null };
+        changes.Save(kept is not null
+            ? CompensateKnown(process, instance, kept, Trigger(instance), changes)
             : process.Nodes[instance.Position] is StepNode step
                 ? CompensateUncertain(process, instance, step, instance.Position, Trigger(instance), changes)
                 : StartCompensation(process, instance, Trigger(instance), changes));
         operation?.SetTag("wyrd.process.status", changes.Find(processName, key)?.Status.ToString());
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>The kept reply, when it answers the command the instance is waiting for; any other is stale.</summary>
+    private static Envelope? KeptFor(StoredInstance instance) =>
+        instance.KeptReply is { } kept && kept.ReplyTo == instance.Pending ? kept : null;
 
     private async ValueTask<(Process Process, StoredInstance Instance)> SuspendedAsync(string processName, string key, CancellationToken cancellationToken)
     {

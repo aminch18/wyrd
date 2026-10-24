@@ -101,8 +101,9 @@ simulate and version.
   stays scheduled for an instance that no longer waits. **Implemented** in memory and on the EF Core host.
 - **Slowness is not failure.** There are no technical timeouts on steps: durable messaging waits, a slow third party
   only makes processes wait, and latency is *observed* (age of pending steps, alerts), never turned into failures.
-  **Implemented** on the EF Core host: `HealthAsync` and the `Wyrd` meter. A business deadline on a step is modelled as an explicit wait for its
-  confirmation with `.Within`.
+  A business deadline on a step is modelled as an explicit wait for its confirmation with `.Within`. **Implemented**
+  on the EF Core host: `HealthAsync` and the `Wyrd` meter. In memory there is no queue to watch: the journal and
+  `StatusOf` show it.
 
 ### 3.6 When Wyrd can't resolve something: suspend
 
@@ -180,7 +181,8 @@ the host doesn't start without a `Retention`, whose every member is required, ea
 ## 5. Read models
 
 - A projection updates a view from events with pure functions, in the transaction that handles the event; the same
-  message is never applied twice. **Implemented.**
+  message is never applied twice: a domain event by its stream version, which never expires, and an integration event
+  from outside (it has no stream) by its message id, within the deduplication retention (4.1). **Implemented.**
 - Events of one stream (one state key) reach a projection **in the order they happened**, whatever the delivery
   order, so views don't defend against reordering by hand: each domain event carries its stream and version, and one
   that arrives early is held until the gap is filled. Processes don't wait for read models. **Implemented.**
