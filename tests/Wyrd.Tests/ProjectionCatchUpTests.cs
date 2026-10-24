@@ -222,6 +222,14 @@ public class ProjectionCatchUpTests
         Assert.Equal(new LightView("L-1", 3), projection.Seed(null, "L-1", new Light.Lit(3)));
     }
 
+    [Fact]
+    public void a_state_the_projection_doesnt_seed_from_is_refused()
+    {
+        IProjectionHandler projection = new LightViews();
+
+        Assert.Throws<KeyNotFoundException>(() => projection.Seed(null, "A-1", EventLog.Initial));
+    }
+
     private static Envelope Command(Application application, ICommand command)
     {
         var (type, payload) = application.Types.Serialize(command, command.GetType());
