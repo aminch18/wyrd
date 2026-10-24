@@ -5,7 +5,7 @@ namespace Wyrd.Runtime;
 /// <summary>What an application is made of: slices, publications, upcasters and processes. Validated on registration.</summary>
 internal sealed class Registry
 {
-    private readonly Dictionary<Type, ISliceHandler> _slices = [];
+    private readonly Dictionary<Type, ICommandOwner> _owners = [];
     private readonly List<IPublicationHandler> _publications = [];
     private readonly Dictionary<(string Name, int Version), IUpcasterHandler> _upcasters = [];
     private readonly List<Process> _processes = [];
@@ -25,15 +25,15 @@ internal sealed class Registry
 
     public IReadOnlyList<Process> Processes => _processes;
 
-    public void Add(ISliceHandler slice)
+    public void Add(ICommandOwner owner)
     {
-        if (_slices.TryGetValue(slice.Command, out var owner))
+        if (_owners.TryGetValue(owner.Command, out var existing))
         {
             throw new InvalidOperationException(
-                $"{slice.Command.Name} is already owned by {owner.GetType().Name}. A command has exactly one owner.");
+                $"{owner.Command.Name} is already owned by {existing.GetType().Name}. A command has exactly one owner.");
         }
 
-        _slices.Add(slice.Command, slice);
+        _owners.Add(owner.Command, owner);
         _validated = false;
     }
 
@@ -64,11 +64,11 @@ internal sealed class Registry
         _validated = false;
     }
 
-    public ISliceHandler? FindOwner(Type command) => _slices.GetValueOrDefault(command);
+    public ICommandOwner? FindOwner(Type command) => _owners.GetValueOrDefault(command);
 
-    public ISliceHandler OwnerOf(Type command) =>
+    public ICommandOwner OwnerOf(Type command) =>
         FindOwner(command) ?? throw new InvalidOperationException(
-            $"No slice owns {command.Name}. Register its owner with AddSlice().");
+            $"Nothing owns {command.Name}. Register its owner with AddSlice() or AddIntegration().");
 
     public IEnumerable<IPublicationHandler> PublicationsOf(Type domainEvent) => _publications.Where(p => p.Source == domainEvent);
 

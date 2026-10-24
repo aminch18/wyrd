@@ -6,6 +6,12 @@ namespace Wyrd.Runtime;
 [JsonSerializable(typeof(Envelope))]
 [JsonSerializable(typeof(StoredInstance))]
 [JsonSerializable(typeof(ReplyMessage))]
+[JsonSerializable(typeof(Envelope))]
+[JsonSerializable(typeof(StoredInstance))]
+[JsonSerializable(typeof(InstanceHistory))]
+internal sealed partial class WyrdJsonContext : JsonSerializerContext;
+
+/// <summary>Instance histories are exported for people to read and diff: indented, without default values.</summary>
 [JsonSerializable(typeof(InstanceHistory))]
 [JsonSourceGenerationOptions(WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault)]
-internal sealed partial class WyrdJsonContext : JsonSerializerContext;
+internal sealed partial class HistoryJsonContext : JsonSerializerContext;

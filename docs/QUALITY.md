@@ -65,7 +65,7 @@ What the numbers say:
 | Id | Rule | Check | |
 |---|---|---|---|
 | Q2.1 | **No state grows without bound per key.** A state, an instance or a history whose size grows with the number of messages it has seen is a bug, in samples and in guides. | Q1.2 on the Shop; review | 🔜 |
-| Q2.2 | **A wait's timer is cancelled when the wait ends**, by the awaited event, a compensation or an operator. Documented in [semantics.md](design/semantics.md). | Runtime test; Q1.2 timer scenario | 🔜 |
+| Q2.2 | **A wait's timer is cancelled when the wait ends**, by the awaited event, a compensation or an operator. Documented in [semantics.md](design/semantics.md). | Runtime tests (in memory and on both EF Core databases). The benchmarks (task 014) add a timer scenario to Q1.2 | ✅ |
 | Q2.3 | **Everything a host keeps has a documented retention**: inbox (how long a duplicate is still recognised), journal, instance histories, completed instances. Documented in semantics.md, implemented in the in-memory host, configurable. | Benchmark: memory retained after N completed orders stays flat with retention on | 🔜 |
 
 ### Q3. The public API changes on purpose
@@ -80,8 +80,8 @@ What the numbers say:
 
 | Id | Rule | Check | |
 |---|---|---|---|
-| Q4.1 | **Typed exceptions** for what a host or user handles: concurrency conflicts, unknown message types, missing JSON metadata... derive from `WyrdException`. Argument validation keeps the BCL exceptions. | Tests | 🔜 |
-| Q4.2 | **No sync-over-async** under `src/`: no `.Wait()`, `.Result` or `GetAwaiter().GetResult()` on tasks, no blocking waits on a `SemaphoreSlim` in code reachable from async callers. | Analyzer (VSTHRD002 or equivalent) | 🔜 |
+| Q4.1 | **Typed exceptions** for what a host or user handles: concurrency conflicts, unknown message types, missing JSON metadata... derive from `WyrdException`. Argument validation keeps the BCL exceptions. | Tests (`ExceptionTests`, operator and transport tests, a conflict in the application's transaction on both databases) | ✅ |
+| Q4.2 | **No sync-over-async** under `src/`: no `.Wait()`, `.Result` or `GetAwaiter().GetResult()` on tasks, no blocking waits on a `SemaphoreSlim` in code reachable from async callers. | Analyzers VSTHRD002/VSTHRD103 (`Microsoft.VisualStudio.Threading.Analyzers`, every project under `src/`); synchronous APIs that read a host (`InMemoryRuntime.View`, `StatusOf`...) take a short lock, never the host's gate | ✅ |
 | Q4.3 | Every public async method takes a `CancellationToken`. | Review | ✅ (holds today) |
 
 ### Q5. Tests stay fast, honest and measured

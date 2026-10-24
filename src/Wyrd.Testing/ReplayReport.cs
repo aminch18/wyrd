@@ -18,7 +18,7 @@ public sealed class ReplayReport
         {
             var left = i < expected.Count ? expected[i] : null;
             var right = i < actual.Count ? actual[i] : null;
-            if (left != right)
+            if (Untimed(left) != Untimed(right))
             {
                 Divergence = new ReplayDivergence(i, left, right);
                 break;
@@ -88,7 +88,13 @@ public sealed class ReplayReport
         return text.ToString();
     }
 
-    /// <summary>Entries with their time made relative to the start, so recordings from any clock compare.</summary>
+    /// <summary>
+    /// Entries are compared without their time: on a real clock a reply takes milliseconds, on replay none. What time
+    /// changes — a timeout, a retry — shows up as entries of its own.
+    /// </summary>
+    private static HistoryEntry? Untimed(HistoryEntry? entry) => entry is null ? null : entry with { At = default };
+
+    /// <summary>Entries with their time made relative to the start, for the report.</summary>
     private static List<HistoryEntry> Relative(IReadOnlyList<HistoryEntry> entries) =>
         entries.Count == 0 ? [] : [.. entries.Select(e => e with { At = DateTimeOffset.UnixEpoch + (e.At - entries[0].At) })];
 

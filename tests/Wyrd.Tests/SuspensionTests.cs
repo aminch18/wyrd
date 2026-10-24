@@ -63,7 +63,7 @@ public class SuspensionTests
         await _runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 5_000));
         await _runtime.AdvanceAsync(10.Minutes);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => _runtime.CompensateAsync(Fulfillment, "A-1"));
+        var ex = await Assert.ThrowsAsync<InstanceStateException>(() => _runtime.CompensateAsync(Fulfillment, "A-1"));
 
         Assert.Contains("resume it to finish the compensation", ex.Message, StringComparison.Ordinal);
     }
@@ -73,8 +73,8 @@ public class SuspensionTests
     {
         await _runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50)); // awaiting confirmation
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _runtime.ResumeAsync(Fulfillment, "A-1"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _runtime.CompensateAsync(Fulfillment, "B-404"));
+        await Assert.ThrowsAsync<InstanceStateException>(() => _runtime.ResumeAsync(Fulfillment, "A-1"));
+        await Assert.ThrowsAsync<InstanceStateException>(() => _runtime.CompensateAsync(Fulfillment, "B-404"));
     }
 
     [Fact]

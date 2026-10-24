@@ -30,6 +30,8 @@
 
   <ItemGroup>
     <PackageReference Include="MinVer" PrivateAssets="all" />
+    <!-- Q4.2: no sync-over-async (VSTHRD002 and friends); see src/.editorconfig for the rules in force. -->
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" PrivateAssets="all" />
     <None Include="$(MSBuildThisFileDirectory)../README.md" Pack="true" PackagePath="/" Visible="false" />
   </ItemGroup>
 </Project>

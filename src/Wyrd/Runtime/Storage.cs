@@ -6,6 +6,12 @@ internal sealed record StoredState(string StateType, string Key, string Type, st
 
 internal sealed record StoredMessage(string Type, string Payload);
 
+/// <summary>
+/// An integration event this service published, with the id it keeps when it travels to other services and the trace
+/// context it was published in (diagnostic only).
+/// </summary>
+internal sealed record PublishedMessage(Guid Id, string Type, string Payload, TraceContext? Trace = null);
+
 internal sealed record StoredParked(string Process, string Key, int Step, string Type, string Payload)
 {
     public StoredMessage AsFact() => new(Type, Payload);
@@ -36,15 +42,19 @@ internal sealed record StoredInstance(
     ImmutableList<HistoryEntry> History,
     long Version,
     string? Reason = null,
-    TraceContext? Trace = null);
+    TraceContext? Trace = null,
+    Guid? Timer = null);
 
 internal sealed record Scheduled(DateTimeOffset At, Envelope Envelope);
 
 /// <summary>A domain event that arrived before an earlier event of its stream: read models get it once the gap is filled.</summary>
 internal sealed record StoredHeld(string StateType, string Key, long Version, string Type, string Payload);
 
-/// <summary>A read-model document. A null payload deletes it.</summary>
-internal sealed record StoredView(string ViewType, string Key, string? Type, string? Payload);
+/// <summary>
+/// A read-model document. A null payload deletes it. <c>Version</c> is the version read (0 when new), checked on commit:
+/// a view built from several streams is written by workers handling different streams at once.
+/// </summary>
+internal sealed record StoredView(string ViewType, string Key, string? Type, string? Payload, long Version = 0);
 
 /// <summary>
 /// Everything that handling one message changes. A store commits it atomically: state, events, process
@@ -58,13 +68,16 @@ internal sealed class Changes
 
     public List<StoredMessage> Events { get; } = [];
 
-    public List<StoredMessage> Published { get; } = [];
+    public List<PublishedMessage> Published { get; } = [];
 
     public Dictionary<Guid, ReplyMessage> Replies { get; } = [];
 
     public List<Envelope> Outbox { get; } = [];
 
     public List<Scheduled> Schedule { get; } = [];
+
+    /// <summary>Scheduled messages (by id) that are no longer wanted: a wait's timer once the wait is over.</summary>
+    public List<Guid> Cancel { get; } = [];
 
     public List<StoredParked> Park { get; } = [];
 
@@ -95,7 +108,10 @@ internal sealed class Changes
         Instances.TryGetValue((process, key), out var instance) ? instance : null;
 }
 
-/// <summary>The persistence port. In memory today; PostgreSQL and others implement the same contract.</summary>
+/// <summary>
+/// What the engine needs from persistence: read, and commit one message's changes atomically. In-memory and
+/// PostgreSQL implement it; how committed messages and timers are delivered is up to each host.
+/// </summary>
 internal interface IWyrdStore
 {
     ValueTask<StoredState?> LoadStateAsync(string stateType, string key, CancellationToken cancellationToken);
@@ -117,7 +133,4 @@ internal interface IWyrdStore
 
     ValueTask CommitAsync(Changes changes, CancellationToken cancellationToken);
 
-    ValueTask<IReadOnlyList<Envelope>> TakeOutboxAsync(CancellationToken cancellationToken);
-
-    ValueTask<Scheduled?> TakeNextDueAsync(DateTimeOffset until, CancellationToken cancellationToken);
 }

@@ -9,11 +9,11 @@ namespace Wyrd.Runtime;
 /// distributed runtime — messages, replies, JSON, outbox, inbox, durable timers — but deterministically:
 /// same inputs, same journal, every time. Use it for local development, tests, simulation and replay.
 /// </summary>
-public sealed class InMemoryRuntime : IDisposable
+public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntime, IDisposable
 {
     private static readonly DateTimeOffset Epoch = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
-    private readonly Registry _registry = new();
+    private readonly Application _application;
     private readonly InMemoryStore _store = new();
     private readonly MessageTypes _types;
     private readonly List<Envelope> _queue = [];
@@ -22,6 +22,10 @@ public sealed class InMemoryRuntime : IDisposable
     private readonly Engine _engine;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private DateTimeOffset _now = Epoch;
+    private readonly List<PublishedMessage> _unrelayed = [];
+    private IWyrdTransport? _transport;
+    private int _relayed;
+    private long _member;
     private long _ids;
 
     /// <summary>Reflection-based JSON: convenient for development and tests. Use a <c>[WyrdJsonContext]</c> for AOT.</summary>
@@ -40,12 +44,13 @@ public sealed class InMemoryRuntime : IDisposable
 
     private InMemoryRuntime(MessageTypes types)
     {
+        _application = new Application(types);
         _types = types;
-        _engine = new Engine(_registry, _store, _types, () => _now, NextId, Fault, Log);
+        _engine = new Engine(_application.Registry, _store, _types, () => _now, NextId, Fault, Log);
     }
 
     /// <summary>Virtual time elapsed since the runtime started.</summary>
-    public TimeSpan Now => _now - Epoch;
+    public TimeSpan Now => Read(() => _now - Epoch);
 
     public IReadOnlyList<JournalEntry> Journal => Read(() => (IReadOnlyList<JournalEntry>)[.. _journal]);
 
@@ -57,6 +62,17 @@ public sealed class InMemoryRuntime : IDisposable
     public IReadOnlyList<IIntegrationEvent> Published =>
         Read(() => (IReadOnlyList<IIntegrationEvent>)[.. _store.Published.Select(e => (IIntegrationEvent)_types.Deserialize(e.Type, e.Payload))]);
 
+    /// <summary>Registers the integration that owns a command carried out by another system (the only I/O).</summary>
+    public InMemoryRuntime AddIntegration<TCommand, TEvent, TError>(Integration<TCommand, TEvent, TError> integration)
+        where TCommand : ICommand
+        where TEvent : IDomainEvent
+        where TError : notnull
+    {
+        ArgumentNullException.ThrowIfNull(integration);
+        _application.Add(integration);
+        return this;
+    }
+
     /// <summary>Registers the single owner of a command type.</summary>
     public InMemoryRuntime AddSlice<TCommand, TState, TEvent, TError>(Slice<TCommand, TState, TEvent, TError> slice)
         where TCommand : ICommand
@@ -65,8 +81,7 @@ public sealed class InMemoryRuntime : IDisposable
         where TError : notnull
     {
         ArgumentNullException.ThrowIfNull(slice);
-        _registry.Add(slice);
-        Register(typeof(TCommand), typeof(TState), typeof(TEvent), typeof(TError));
+        _application.Add(slice);
         return this;
     }
 
@@ -76,8 +91,7 @@ public sealed class InMemoryRuntime : IDisposable
         where TIntegrationEvent : IIntegrationEvent
     {
         ArgumentNullException.ThrowIfNull(publication);
-        _registry.Add(publication);
-        Register(typeof(TDomainEvent), typeof(TIntegrationEvent));
+        _application.Add(publication);
         return this;
     }
 
@@ -87,8 +101,7 @@ public sealed class InMemoryRuntime : IDisposable
         where TTo : IIntegrationEvent
     {
         ArgumentNullException.ThrowIfNull(upcaster);
-        _registry.Add(upcaster);
-        Register(typeof(TFrom), typeof(TTo));
+        _application.Add(upcaster);
         return this;
     }
 
@@ -97,42 +110,18 @@ public sealed class InMemoryRuntime : IDisposable
         where TView : class
     {
         ArgumentNullException.ThrowIfNull(projection);
-        _registry.Add(projection);
-        Register([typeof(TView), .. ((IProjectionHandler)projection).Events]);
+        _application.Add(projection);
         return this;
     }
 
     /// <summary>Replaces a process with a new definition of the same name, keeping its instances: a redeploy.</summary>
-    internal void Redeploy(Process process)
-    {
-        _registry.Redeploy(process);
-        AddTypesOf(process);
-    }
+    internal void Redeploy(Process process) => _application.Redeploy(process);
 
     public InMemoryRuntime AddProcess(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
-        _registry.Add(process);
-        AddTypesOf(process);
+        _application.Add(process);
         return this;
-    }
-
-    private void AddTypesOf(Process process)
-    {
-        Register(process.Trigger);
-        foreach (var node in process.Nodes)
-        {
-            if (node is AwaitNode wait)
-            {
-                Register(wait.Event);
-            }
-            else if (node is StepNode step)
-            {
-                Register(step.Action.Output, step.Compensation?.Output);
-            }
-        }
-
-        Register(process.Outcome?.Action.Output);
     }
 
     /// <summary>
@@ -142,20 +131,24 @@ public sealed class InMemoryRuntime : IDisposable
     public async Task<Decision> SendAsync(ICommand command, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
+        Decision decision;
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return await SendCoreAsync(command, cancellationToken).ConfigureAwait(false);
+            decision = await SendCoreAsync(command, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             _gate.Release();
         }
+
+        await RelayAsync(cancellationToken).ConfigureAwait(false);
+        return decision;
     }
 
     private async Task<Decision> SendCoreAsync(ICommand command, CancellationToken cancellationToken)
     {
-        var key = Keys.Of(_registry.OwnerOf(command.GetType()).KeyOf(command));
+        var key = Keys.Of(_application.Registry.OwnerOf(command.GetType()).KeyOf(command));
         Log(Engine.External, key, $"-> {command.GetType().Name}");
 
         var (type, payload) = _types.Serialize(command, command.GetType());
@@ -175,13 +168,13 @@ public sealed class InMemoryRuntime : IDisposable
     /// Delivers a fact from another context (a webhook, a message from another service...).
     /// Only integration events can come from outside: domain events are produced by slices alone.
     /// </summary>
-    public async Task PublishAsync(IIntegrationEvent @event, CancellationToken cancellationToken = default)
+    public async Task PublishAsync(IIntegrationEvent integrationEvent, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(@event);
+        ArgumentNullException.ThrowIfNull(integrationEvent);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var (type, payload) = _types.Serialize(@event, @event.GetType());
+            var (type, payload) = _types.Serialize(integrationEvent, integrationEvent.GetType());
             _queue.Add(new Envelope(NextId(), MessageKind.Event, type, payload, Trace: Tracing.Capture()));
             await DrainAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -189,6 +182,8 @@ public sealed class InMemoryRuntime : IDisposable
         {
             _gate.Release();
         }
+
+        await RelayAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Moves the virtual clock forward, delivering every timer and scheduled retry that falls due, in order.</summary>
@@ -201,17 +196,19 @@ public sealed class InMemoryRuntime : IDisposable
             var until = _now + by;
             while (await _store.TakeNextDueAsync(until, cancellationToken).ConfigureAwait(false) is { } due)
             {
-                _now = due.At > _now ? due.At : _now;
+                Write(() => _now = due.At > _now ? due.At : _now);
                 _queue.Add(due.Envelope);
                 await DrainAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            _now = until;
+            Write(() => _now = until);
         }
         finally
         {
             _gate.Release();
         }
+
+        await RelayAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -235,7 +232,7 @@ public sealed class InMemoryRuntime : IDisposable
         ArgumentNullException.ThrowIfNull(key);
         return Read(() => _store.Instance(process.Name, Keys.Of(key)) is { } instance
             ? new InstanceHistory(instance.Process, instance.Key, instance.Fingerprint, instance.History)
-            : throw new InvalidOperationException($"{process.Name} has no instance '{Keys.Of(key)}'."));
+            : throw new InstanceStateException(process.Name, Keys.Of(key), $"{process.Name} has no instance '{Keys.Of(key)}'."));
     }
 
     /// <summary>The reason an instance is suspended, or null.</summary>
@@ -260,6 +257,8 @@ public sealed class InMemoryRuntime : IDisposable
         {
             _gate.Release();
         }
+
+        await RelayAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Makes the next <paramref name="times"/> executions of a command, sent by a process, fail transiently.</summary>
@@ -267,7 +266,7 @@ public sealed class InMemoryRuntime : IDisposable
         where TCommand : ICommand
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(times, 1);
-        Read(() => _faults[typeof(TCommand)] = _faults.GetValueOrDefault(typeof(TCommand)) + times);
+        Write(() => _faults[typeof(TCommand)] = _faults.GetValueOrDefault(typeof(TCommand)) + times);
     }
 
     public ProcessStatus? StatusOf(Process process, object key)
@@ -286,6 +285,28 @@ public sealed class InMemoryRuntime : IDisposable
             : TState.Initial);
     }
 
+    Task<ProcessStatus?> IWyrdRuntime.StatusOfAsync(Process process, object key, CancellationToken cancellationToken) =>
+        Task.FromResult(StatusOf(process, key));
+
+    Task<InstanceHistory?> IWyrdRuntime.HistoryOfAsync(Process process, object key, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(key);
+        return Task.FromResult(Read(() => _store.Instance(process.Name, Keys.Of(key)) is { } instance
+            ? new InstanceHistory(instance.Process, instance.Key, instance.Fingerprint, instance.History)
+            : null));
+    }
+
+    Task<TState> IWyrdRuntime.StateOfAsync<TState>(object key, CancellationToken cancellationToken) =>
+        Task.FromResult(StateOf<TState>(key));
+
+    Task<TView?> IWyrdRuntime.ViewAsync<TView>(object key, CancellationToken cancellationToken)
+        where TView : class =>
+        Task.FromResult(View<TView>(key));
+
+    Task<IReadOnlyList<TView>> IWyrdRuntime.ViewsAsync<TView>(CancellationToken cancellationToken) =>
+        Task.FromResult(Views<TView>());
+
     /// <summary>Reads one document of a read model, or null.</summary>
     public TView? View<TView>(object key)
         where TView : class
@@ -303,7 +324,7 @@ public sealed class InMemoryRuntime : IDisposable
 
     private async Task DrainAsync(CancellationToken cancellationToken)
     {
-        await RelayAsync(cancellationToken).ConfigureAwait(false);
+        await TakeOutboxAsync(cancellationToken).ConfigureAwait(false);
         while (_queue.Count > 0)
         {
             var index = Simulation?.PickNext(_queue) ?? 0;
@@ -325,12 +346,12 @@ public sealed class InMemoryRuntime : IDisposable
             }
 
             await _engine.HandleAsync(envelope, cancellationToken).ConfigureAwait(false);
-            await RelayAsync(cancellationToken).ConfigureAwait(false);
+            await TakeOutboxAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
     /// <summary>The outbox relay: committed messages are handed to the transport.</summary>
-    private async Task RelayAsync(CancellationToken cancellationToken)
+    private async Task TakeOutboxAsync(CancellationToken cancellationToken)
     {
         foreach (var envelope in await _store.TakeOutboxAsync(cancellationToken).ConfigureAwait(false))
         {
@@ -341,13 +362,117 @@ public sealed class InMemoryRuntime : IDisposable
     public void Dispose() => _gate.Dispose();
 
     /// <summary>
+    /// Sends what this runtime publishes (integration events) to other services through <paramref name="transport"/>.
+    /// Connect runtimes before they handle messages.
+    /// </summary>
+    public InMemoryRuntime UseTransport(IWyrdTransport transport)
+    {
+        ArgumentNullException.ThrowIfNull(transport);
+        (transport as InMemoryTransport)?.Join(this);
+        _transport = transport;
+        return this;
+    }
+
+    /// <summary>
+    /// Joins the runtimes connected by an <see cref="InMemoryTransport"/> as its <paramref name="member"/>-th member:
+    /// the number goes into every message id, so ids stay unique across runtimes and still deterministic.
+    /// </summary>
+    internal void JoinAs(long member)
+    {
+        if (_member == member)
+        {
+            return;
+        }
+
+        if (_member != 0 || Interlocked.Read(ref _ids) != 0)
+        {
+            throw new InvalidOperationException("Connect a runtime to one in-memory transport, before it handles messages.");
+        }
+
+        _member = member;
+    }
+
+    /// <summary>
+    /// Delivers an integration event another service published. A contract nobody uses here is ignored; a message
+    /// received twice is handled once.
+    /// </summary>
+    public async Task ReceiveAsync(TransportMessage message, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!_application.Uses(message))
+            {
+                Log(Engine.External, null, $"{message.Type} is not used here, ignored");
+                return;
+            }
+
+            _queue.Add(new Envelope(message.MessageId, MessageKind.Event, message.Type, message.Payload, Trace: Tracing.Received(message)));
+            await DrainAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        await RelayAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The outbox relay to other services: what was published since the last relay goes to the transport, after the
+    /// commit and outside the gate (a transport may deliver to another runtime, which may answer back). Messages are
+    /// claimed under the gate, so concurrent relays never send one twice or skip one; what a failing transport didn't
+    /// take is sent first next time. At least once.
+    /// </summary>
+    private async Task RelayAsync(CancellationToken cancellationToken)
+    {
+        if (_transport is null)
+        {
+            return;
+        }
+
+        List<PublishedMessage> pending;
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _unrelayed.AddRange(_store.Published.Skip(_relayed));
+            _relayed = _store.Published.Count;
+            pending = [.. _unrelayed];
+            _unrelayed.Clear();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        for (var sent = 0; sent < pending.Count; sent++)
+        {
+            try
+            {
+                var message = pending[sent];
+                await _transport.SendAsync(
+                    new TransportMessage(message.Id, message.Type, message.Payload) { TraceParent = message.Trace?.Parent, TraceState = message.Trace?.State },
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                await _gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+                _unrelayed.InsertRange(0, pending.Skip(sent));
+                _gate.Release();
+                throw;
+            }
+        }
+    }
+
+    /// <summary>
     /// Urd: answers the commands processes send instead of their owners (a null answer leaves the command unanswered,
     /// as it was when the history was recorded).
     /// </summary>
     internal Func<Envelope, ReplyMessage?>? Responder { get; set; }
 
     /// <summary>Urd: only this process reacts to events.</summary>
-    internal void ReplayOnly(string process) => _registry.Only = process;
+    internal void ReplayOnly(string process) => _application.Registry.Only = process;
 
     /// <summary>Urd: delivers a recorded event (a trigger or an awaited event) as it was stored.</summary>
     internal async Task InjectAsync(string type, string payload, CancellationToken cancellationToken = default)
@@ -362,6 +487,8 @@ public sealed class InMemoryRuntime : IDisposable
         {
             _gate.Release();
         }
+
+        await RelayAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The simulator perturbing delivery (Skuld), if any.</summary>
@@ -371,6 +498,9 @@ public sealed class InMemoryRuntime : IDisposable
     internal void Note(string message) => Log("skuld", null, message);
 
     /// <summary>Every process instance and its status, in creation order.</summary>
+    /// <summary>Messages waiting for their time (timers and scheduled retries), in no particular order.</summary>
+    internal IReadOnlyList<Envelope> Scheduled() => Read(() => (IReadOnlyList<Envelope>)[.. _store.Scheduled]);
+
     internal IReadOnlyList<(string Process, string Key, ProcessStatus Status)> Instances() =>
         Read(() => (IReadOnlyList<(string, string, ProcessStatus)>)[.. _store.Instances.Select(i => (i.Process, i.Key, i.Status))]);
 
@@ -384,43 +514,50 @@ public sealed class InMemoryRuntime : IDisposable
 
     private bool Fault(Envelope command, Type commandType)
     {
-        if (_faults.GetValueOrDefault(commandType) > 0)
+        lock (_store.Sync)
         {
-            _faults[commandType]--;
-            return true;
+            if (_faults.GetValueOrDefault(commandType) > 0)
+            {
+                _faults[commandType]--;
+                return true;
+            }
         }
 
         return Simulation?.Fault(command, commandType) ?? false;
     }
 
-    private void Register(params Type?[] types)
-    {
-        foreach (var type in types.OfType<Type>())
-        {
-            _types.Register(type);
-        }
-    }
-
+    // Reads never wait for an operation in progress (no blocking wait on the gate, Q4.2): they see the last commit.
     private T Read<T>(Func<T> read)
     {
-        _gate.Wait();
-        try
+        lock (_store.Sync)
         {
             return read();
         }
-        finally
-        {
-            _gate.Release();
-        }
     }
 
-    // Deterministic message ids: same inputs, same ids.
+    // Deterministic message ids: same inputs, same ids. The second half is the runtime's place on an in-memory
+    // transport (0 without one), so runtimes exchanging messages never share an id.
     private Guid NextId()
     {
         Span<byte> bytes = stackalloc byte[16];
         BitConverter.TryWriteBytes(bytes, ++_ids);
+        BitConverter.TryWriteBytes(bytes[8..], _member);
         return new Guid(bytes);
     }
 
-    private void Log(string process, string? key, string message) => _journal.Add(new(Now, process, key, message));
+    private void Write(Action write)
+    {
+        lock (_store.Sync)
+        {
+            write();
+        }
+    }
+
+    private void Log(string process, string? key, string message)
+    {
+        lock (_store.Sync)
+        {
+            _journal.Add(new(_now - Epoch, process, key, message));
+        }
+    }
 }

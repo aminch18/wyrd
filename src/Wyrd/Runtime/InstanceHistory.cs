@@ -64,12 +64,12 @@ public sealed record HistoryEntry(DateTimeOffset At, HistoryKind Kind)
 /// </summary>
 public sealed record InstanceHistory(string Process, string Key, string Fingerprint, IReadOnlyList<HistoryEntry> Entries)
 {
-    public string ToJson() => JsonSerializer.Serialize(this, WyrdJsonContext.Default.InstanceHistory);
+    public string ToJson() => JsonSerializer.Serialize(this, HistoryJsonContext.Default.InstanceHistory);
 
     public static InstanceHistory FromJson(string json)
     {
         ArgumentNullException.ThrowIfNull(json);
-        return JsonSerializer.Deserialize(json, WyrdJsonContext.Default.InstanceHistory)
+        return JsonSerializer.Deserialize(json, HistoryJsonContext.Default.InstanceHistory)
             ?? throw new InvalidOperationException("The history is empty.");
     }
 }

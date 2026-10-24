@@ -55,8 +55,8 @@ internal sealed class Engine(
     private async ValueTask<Decision?> HandleCommandAsync(Envelope envelope, CancellationToken cancellationToken)
     {
         var command = (ICommand)types.Deserialize(envelope.Type, envelope.Payload);
-        var slice = registry.OwnerOf(command.GetType());
-        var key = Keys.Of(slice.KeyOf(command));
+        var owner = registry.OwnerOf(command.GetType());
+        var key = Keys.Of(owner.KeyOf(command));
         Tracing.Key(key);
         var changes = new Changes();
 
@@ -85,36 +85,56 @@ internal sealed class Engine(
             return null;
         }
 
-        var stateType = slice.State.FullName!;
-        var current = await store.LoadStateAsync(stateType, key, cancellationToken).ConfigureAwait(false);
-        var state = current is null ? slice.Initial : types.Deserialize(current.Type, current.Payload);
-        var decision = slice.Decide(command, state);
-
-        ReplyMessage reply;
-        if (decision is Decision.Accepted accepted)
+        Decision decision;
+        if (owner is IIntegrationHandler integration)
         {
-            var version = (current?.Version ?? 0) + 1;
-            var (nextType, nextPayload) = types.Serialize(((IState)state).Apply(accepted.Event), slice.State);
-            changes.States.Add(new StoredState(stateType, key, nextType, nextPayload, version));
-
-            var (eventType, eventPayload) = types.Serialize(accepted.Event, slice.Event);
-            changes.Events.Add(new StoredMessage(eventType, eventPayload));
-            changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, eventType, eventPayload, Stream: new StreamRef(stateType, key, version), Trace: Tracing.Capture()));
-
-            foreach (var publication in registry.PublicationsOf(accepted.Event.GetType()))
+            // The only I/O: outside world first, then the outcome is recorded like any decision. A crash in between
+            // redelivers the command with the same id — the idempotency key — so the other system doesn't repeat it.
+            using var call = Tracing.Integration(envelope);
+            try
             {
-                var published = publication.Map(accepted.Event);
-                var (publishedType, publishedPayload) = types.Serialize(published, published.GetType());
-                changes.Published.Add(new StoredMessage(publishedType, publishedPayload));
-                changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, publishedType, publishedPayload, Trace: Tracing.Capture()));
-                log(External, key, $"published {types.TypeOf(publishedType).Name}");
+                decision = await integration.ExecuteAsync(command, new IntegrationContext(envelope.MessageId, envelope.Process?.Attempt ?? 1), cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (envelope.Process is not null && ex is not OperationCanceledException)
+            {
+                Tracing.Failed(call, ex);
+                log(External, key, $"{command.GetType().Name} failed: {ex.GetType().Name}: {ex.Message}");
+                Tracing.Outcome(ReplyOutcome.Faulted);
+                Reply(envelope, new ReplyMessage(ReplyOutcome.Faulted), changes);
+                await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+                return null;
             }
 
+            if (decision is Decision.Accepted done)
+            {
+                Accept(done.Event, owner, key, stream: null, changes);
+            }
+        }
+        else
+        {
+            var slice = (ISliceHandler)owner;
+            var stateType = slice.State.FullName!;
+            var current = await store.LoadStateAsync(stateType, key, cancellationToken).ConfigureAwait(false);
+            var state = current is null ? slice.Initial : types.Deserialize(current.Type, current.Payload);
+            decision = slice.Decide(command, state);
+            if (decision is Decision.Accepted accepted)
+            {
+                var version = (current?.Version ?? 0) + 1;
+                var (nextType, nextPayload) = types.Serialize(((IState)state).Apply(accepted.Event), slice.State);
+                changes.States.Add(new StoredState(stateType, key, nextType, nextPayload, version));
+                Accept(accepted.Event, owner, key, new StreamRef(stateType, key, version), changes);
+            }
+        }
+
+        ReplyMessage reply;
+        if (decision is Decision.Accepted { Event: var @event })
+        {
+            var (eventType, eventPayload) = types.Serialize(@event, owner.Event);
             reply = new ReplyMessage(ReplyOutcome.Accepted, eventType, eventPayload);
         }
         else
         {
-            var (errorType, errorPayload) = types.Serialize(((Decision.Rejected)decision).Error, slice.Error);
+            var (errorType, errorPayload) = types.Serialize(((Decision.Rejected)decision).Error, owner.Error);
             reply = new ReplyMessage(ReplyOutcome.Rejected, errorType, errorPayload);
         }
 
@@ -123,6 +143,25 @@ internal sealed class Engine(
         Reply(envelope, reply, changes);
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
         return decision;
+    }
+
+    /// <summary>Records an accepted event: stored, delivered to whoever reacts to it, and mapped to its publications.</summary>
+    private void Accept(IDomainEvent @event, ICommandOwner owner, string key, StreamRef? stream, Changes changes)
+    {
+        var (eventType, eventPayload) = types.Serialize(@event, owner.Event);
+        changes.Events.Add(new StoredMessage(eventType, eventPayload));
+        changes.Outbox.Add(new Envelope(newId(), MessageKind.Event, eventType, eventPayload, Stream: stream, Trace: Tracing.Capture()));
+
+        foreach (var publication in registry.PublicationsOf(@event.GetType()))
+        {
+            var published = publication.Map(@event);
+            var (publishedType, publishedPayload) = types.Serialize(published, published.GetType());
+            var id = newId();
+            var trace = Tracing.Capture();
+            changes.Published.Add(new PublishedMessage(id, publishedType, publishedPayload, trace));
+            changes.Outbox.Add(new Envelope(id, MessageKind.Event, publishedType, publishedPayload, Trace: trace));
+            log(External, key, $"published {types.TypeOf(publishedType).Name}");
+        }
     }
 
     /// <summary>
@@ -159,6 +198,13 @@ internal sealed class Engine(
             changes.Outbox.Add(ReplyTo(command, reply));
         }
     }
+
+    /// <summary>
+    /// The failure reply a durable host sends when it can't handle a process command: the process's retry policy
+    /// decides what happens next, so hosts never retry behind its back (one retry layer).
+    /// </summary>
+    internal static Envelope Faulted(Envelope command, Guid id) =>
+        new(id, MessageKind.Reply, ReplyType, MessageTypes.SerializeReply(new ReplyMessage(ReplyOutcome.Faulted)), command.Process, command.MessageId);
 
     /// <summary>The reply envelope to a process command (also used by Urd to answer from a recording).</summary>
     internal Envelope ReplyTo(Envelope command, ReplyMessage reply) =>
@@ -265,14 +311,15 @@ internal sealed class Engine(
         var current = stored?.Payload is null ? null : types.Deserialize(stored.Type!, stored.Payload);
 
         var next = projection.Apply(current, @event);
+        var read = stored?.Version ?? 0;
         if (next is null)
         {
-            changes.Views[(viewType, key)] = new StoredView(viewType, key, null, null);
+            changes.Views[(viewType, key)] = new StoredView(viewType, key, null, null, read);
             return;
         }
 
         var (type, payload) = types.Serialize(next, projection.View);
-        changes.Views[(viewType, key)] = new StoredView(viewType, key, type, payload);
+        changes.Views[(viewType, key)] = new StoredView(viewType, key, type, payload, read);
     }
 
     private async ValueTask StartAsync(Process process, IEvent trigger, Changes changes, CancellationToken cancellationToken)
@@ -311,16 +358,16 @@ internal sealed class Engine(
         {
             // Kept at the step the instance waits at, in case it is what it waits for once its definition is back.
             changes.Park.Add(Parked(process, key, instance.Position, wait, awaited));
-            changes.Save(changed);
+            changes.Save(EndWait(changed, changes));
         }
         else if (instance is { Status: ProcessStatus.Awaiting } && instance.Position == step)
         {
             log(process.Name, key, $"<- {awaited.GetType().Name}");
             var trigger = Trigger(instance);
             var fact = Parked(process, key, step, wait, awaited).AsFact();
-            instance = Record(instance, HistoryKind.Received, step: step, message: fact) with
+            instance = EndWait(Record(instance, HistoryKind.Received, step: step, message: fact), changes) with
             {
-                Position = step + 1, Status = ProcessStatus.Running, Deadline = null, Facts = instance.Facts.Add(fact),
+                Position = step + 1, Status = ProcessStatus.Running, Facts = instance.Facts.Add(fact),
             };
             changes.Save(await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false));
         }
@@ -339,6 +386,20 @@ internal sealed class Engine(
     {
         var (type, payload) = types.Serialize(awaited, wait.Event);
         return new StoredParked(process.Name, key, step, type, payload);
+    }
+
+    /// <summary>
+    /// A wait is over before its time limit: its timer is cancelled with the rest of the changes, so nothing is left
+    /// scheduled for an instance that no longer waits (Q2.2).
+    /// </summary>
+    private static StoredInstance EndWait(StoredInstance instance, Changes changes)
+    {
+        if (instance.Timer is { } timer)
+        {
+            changes.Cancel.Add(timer);
+        }
+
+        return instance with { Deadline = null, Timer = null };
     }
 
     /// <summary>
@@ -373,7 +434,7 @@ internal sealed class Engine(
         IIntegrationEvent current = (IIntegrationEvent)@event;
         for (var version = source.Version; version < target.Version; version++)
         {
-            var upcaster = registry.Upcaster(target.Name, version) ?? throw new InvalidOperationException(
+            var upcaster = registry.Upcaster(target.Name, version) ?? throw new MissingUpcasterException(
                 $"A subscriber expects {target} but {target.Name} v{version} was published, and there is no upcaster from v{version}. Register one with AddUpcaster().");
             current = upcaster.Map(current);
         }
@@ -408,17 +469,19 @@ internal sealed class Engine(
                     }
 
                     DateTimeOffset? deadline = wait.Timeout is { } timeout ? now() + timeout : null;
+                    Guid? timer = null;
                     if (deadline is { } at)
                     {
+                        timer = newId();
                         changes.Schedule.Add(new Scheduled(at, new Envelope(
-                            newId(), MessageKind.Timeout, TimeoutType, "{}", new ProcessRef(instance.Process, instance.Key, instance.Position, false), Trace: Tracing.Capture(instance))));
+                            timer.Value, MessageKind.Timeout, TimeoutType, "{}", new ProcessRef(instance.Process, instance.Key, instance.Position, false), Trace: Tracing.Capture(instance))));
                     }
 
                     log(instance.Process, instance.Key, wait.Timeout is { } t
                         ? $"awaiting {wait.Event.Name} (within {Durations.Format(t)})"
                         : $"awaiting {wait.Event.Name}");
                     Tracing.Event("wyrd.waiting", instance, instance.Position);
-                    return instance with { Status = ProcessStatus.Awaiting, Deadline = deadline };
+                    return instance with { Status = ProcessStatus.Awaiting, Deadline = deadline, Timer = timer };
             }
         }
 
@@ -707,7 +770,7 @@ internal sealed class Engine(
         using var operation = Tracing.Operator("compensate", instance);
         if (instance.Compensating)
         {
-            throw new InvalidOperationException(
+            throw new InstanceStateException(processName, key,
                 $"{processName} '{key}' was already compensating when it was suspended: resume it to finish the compensation.");
         }
 
@@ -728,13 +791,13 @@ internal sealed class Engine(
         var instance = await store.LoadInstanceAsync(processName, key, cancellationToken).ConfigureAwait(false);
         if (instance is not { Status: ProcessStatus.Suspended })
         {
-            throw new InvalidOperationException($"{processName} '{key}' is not suspended (it is {instance?.Status.ToString() ?? "unknown"}).");
+            throw new InstanceStateException(processName, key, $"{processName} '{key}' is not suspended (it is {instance?.Status.ToString() ?? "unknown"}).");
         }
 
         var process = registry.ProcessNamed(processName);
         return instance.Fingerprint == process.Fingerprint
             ? (process, instance)
-            : throw new InvalidOperationException(
+            : throw new InstanceStateException(processName, key,
                 $"{processName} '{key}' started with another definition ({instance.Fingerprint}; deployed: {process.Fingerprint}). "
                 + "Deploy the definition it started with to resume or compensate it; migrating instances comes with process versioning.");
     }
@@ -780,7 +843,7 @@ internal sealed class Engine(
         var wait = (AwaitNode)process.Nodes[target.Step];
         log(instance.Process, instance.Key, $"timeout: {wait.Event.Name} not received in time");
         instance = Record(instance, HistoryKind.TimedOut, step: target.Step);
-        changes.Save(StartCompensation(process, instance with { Deadline = null }, Trigger(instance), changes));
+        changes.Save(StartCompensation(process, instance with { Deadline = null, Timer = null }, Trigger(instance), changes));
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
     }
 

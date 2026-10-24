@@ -183,7 +183,7 @@ public class TracingTests
         using var listener = new Recording();
         var engine = new Engine(new Registry(), new InMemoryStore(), MessageTypes.Reflection(),
             () => DateTimeOffset.UnixEpoch, () => Guid.Empty, (_, _) => false, (_, _, _) => { });
-        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        await Assert.ThrowsAsync<UnknownMessageTypeException>(async () =>
             await engine.HandleAsync(new Envelope(Guid.Empty, MessageKind.Command, "unknown", "{}"), default));
         var activity = Assert.Single(listener.Activities);
         Assert.Equal(ActivityStatusCode.Error, activity.Status);
@@ -250,6 +250,56 @@ public class TracingTests
         return new Snapshot(runtime.Journal.Select(e => e.ToString()).ToArray(), state.ToArray(),
             OrderIds.Select(id => runtime.HistoryOf(ShopProcesses.OrderFulfillment, id).ToJson()).ToArray(),
             probe.Messages.Select(e => e with { Trace = null }).ToArray());
+    }
+
+    [Fact]
+    public async Task an_integration_call_is_a_client_span_under_its_command()
+    {
+        using var listener = new Recording();
+        var gateway = new FakeGateway { FailNext = 1 };
+        var runtime = TestSystem.WithGateway(gateway, FluentProcess.OrderFulfillment);
+
+        await runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+        await runtime.AdvanceAsync(1.Minutes);
+
+        var calls = listener.Activities.Where(a => a.Kind == ActivityKind.Client).ToArray();
+        Assert.Equal(2, calls.Length);
+        Assert.All(calls, call => Assert.Equal(MessageTypes.NameOf(typeof(ChargePayment)), Tag(call, "wyrd.message.type")));
+        Assert.Single(calls.Select(call => Tag(call, "wyrd.idempotency_key")).Distinct());
+        Assert.Equal(["1", "2"], calls.Select(call => Tag(call, "wyrd.attempt")));
+        Assert.Equal([ActivityStatusCode.Error, ActivityStatusCode.Unset], calls.Select(call => call.Status));
+        var commands = listener.Activities.Where(a => Tag(a, "wyrd.message.kind") == "Command" && Tag(a, "wyrd.message.type") == Tag(calls[0], "wyrd.message.type"));
+        Assert.All(calls, call => Assert.Contains(commands, command => command.SpanId == call.ParentSpanId));
+    }
+
+    [Fact]
+    public async Task a_message_from_another_service_continues_its_trace()
+    {
+        using var listener = new Recording();
+        var transport = new InMemoryTransport();
+        var payments = new InMemoryRuntime().AddSlice(new ChargePaymentSlice()).AddPublication(new PaymentChargedV1Publication()).UseTransport(transport);
+        var shipping = new InMemoryRuntime().AddSlice(new ShipOrderSlice())
+            .AddProcess(Process.StartOn<PaymentChargedV1>(e => e.OrderId).Then(Shipping.ShipPaid));
+        transport.Subscribe(shipping);
+
+        await payments.SendAsync(new ChargePayment("A-1", 50));
+
+        var sent = Assert.Single(transport.Sent);
+        Assert.NotNull(sent.TraceParent);
+        var charge = listener.Activities.Single(a => Tag(a, "wyrd.message.type") == MessageTypes.NameOf(typeof(ChargePayment)));
+        var ship = listener.Activities.Single(a => Tag(a, "wyrd.message.type") == MessageTypes.NameOf(typeof(ShipOrder)));
+        Assert.Equal(charge.TraceId, ship.TraceId);
+    }
+
+    [Fact]
+    public async Task without_a_listener_nothing_is_traced_across_services()
+    {
+        var transport = new InMemoryTransport();
+        var payments = new InMemoryRuntime().AddSlice(new ChargePaymentSlice()).AddPublication(new PaymentChargedV1Publication()).UseTransport(transport);
+
+        await payments.SendAsync(new ChargePayment("A-1", 50));
+
+        Assert.Null(Assert.Single(transport.Sent).TraceParent);
     }
 
     private static string? Tag(Activity activity, string name) => activity.GetTagItem(name)?.ToString();

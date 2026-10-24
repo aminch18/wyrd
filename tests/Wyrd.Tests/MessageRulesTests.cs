@@ -21,7 +21,7 @@ public class MessageRulesTests
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.SendAsync(new ChargePayment("A-1", 50)));
 
-        Assert.Contains("No slice owns ChargePayment", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Nothing owns ChargePayment. Register its owner with AddSlice() or AddIntegration().", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

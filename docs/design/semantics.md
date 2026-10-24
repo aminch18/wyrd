@@ -18,8 +18,8 @@
 
 | Kind | Meaning | Rules |
 |---|---|---|
-| Command | An intention | Exactly one owner (slice); sent, never published; can be rejected |
-| Domain event | A fact inside one context | Produced only by slices; private; can change freely |
+| Command | An intention | Exactly one owner (slice or integration); sent, never published; can be rejected |
+| Domain event | A fact inside one context | Produced only by slices and integrations; private; can change freely |
 | Integration event | A fact for other contexts | Public, versioned contract; produced only by a publication; snapshot-checked |
 
 All **implemented**.
@@ -71,7 +71,8 @@ simulate and version.
 
 - A failure of a process command — the owner can't handle it — **reaches the process as a failure** and the step's
   policy decides. Hosts don't multiply attempts behind the process's back: a command that can't be delivered or
-  handled ends as a failure reply. **In memory: implemented. Durable hosts: planned (v0.5).**
+  handled ends as a failure reply; dead letters are only for messages no process decides on (events, replies,
+  timers). **Implemented** in memory and on the EF Core host.
 - A business rejection is never retried: a pure decision would answer the same. **Implemented.**
 
 ### 3.4 Compensation is a guarantee
@@ -93,6 +94,9 @@ simulate and version.
 - **Time limits are business decisions**: `.Within(duration)` on a wait ("the customer has 15 minutes to confirm");
   when it expires, the process compensates on purpose. A wait without `.Within` is reported (WYRD0012).
   **Implemented.**
+- **A wait's timer lives only as long as the wait.** When the wait ends before its limit — the awaited event
+  arrives, or the instance is suspended while waiting — its timer is cancelled in the same transaction, so nothing
+  stays scheduled for an instance that no longer waits. **Implemented** in memory and on the EF Core host.
 - **Slowness is not failure.** There are no technical timeouts on steps: durable messaging waits, a slow third party
   only makes processes wait, and latency is *observed* (age of pending steps, alerts), never turned into failures.
   **Observability planned (v0.5).** A business deadline on a step is modelled as an explicit wait for its
@@ -115,7 +119,7 @@ Suspending doesn't make the world consistent: the instance stays half-way. It ma
 Nothing is lost and nothing stays stuck in silence. `ResumeAsync` re-sends what the instance was doing with the same
 message id (a command that did run is not run twice); `CompensateAsync` undoes a forward-suspended instance and
 fences the step it gave up on; a late success of the pending command resumes it on its own. **Implemented**
-(in memory; durable hosts in v0.5). Opt-in automatic compensation: `.Retry(3.Times).OrCompensate()`. **Implemented.**
+(in memory and on the EF Core host). Opt-in automatic compensation: `.Retry(3.Times).OrCompensate()`. **Implemented.**
 
 ### 3.7 Statuses
 
@@ -132,7 +136,7 @@ fences the step it gave up on; a late success of the pending command resumes it 
 ## 4. Delivery
 
 - Every message is handled in **one transaction**: state, events, instances, inbox, outbox, timers and read
-  models commit together or not at all. **Implemented** in memory; durable hosts in v0.5 (a PostgreSQL prototype exists on `feature/verdandi`; the EF Core host replaces it).
+  models commit together or not at all. **Implemented** in memory and on the EF Core host (PostgreSQL, SQL Server).
 - Delivery is **at least once**; decisions are **effectively once**: the owner's inbox remembers every command it
   decided and replays the outcome to duplicates. **Implemented.**
 - Integration events reach each subscriber **once, in the contract version it understands** (upcast step by step;
@@ -157,4 +161,3 @@ fences the step it gave up on; a late success of the pending command resumes it 
 | One event per decision | Keeps decisions simple and explicit | A union of events |
 | Linear processes | Readable, simulable, versionable | Another process for the alternative |
 | Snapshot state | Simple storage, fast reads | Event sourcing as a future option |
-| No real I/O yet | Integrations are designed, not built | Integrations (v0.5): the only place with I/O, with idempotency keys and recorded outcomes |

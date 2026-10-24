@@ -9,6 +9,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - The tool executable is now `dotnet-wyrd`, so the documented `dotnet wyrd` command works after a global
   installation. Replace direct `wyrd` invocations with `dotnet wyrd` (or `dotnet-wyrd`).
+- Failures a host or an application handles throw `WyrdException` subtypes instead of `InvalidOperationException`
+  itself (see *Changed*). `catch (InvalidOperationException)` still works; checks for the exact type
+  (`ex.GetType() == typeof(InvalidOperationException)`, `Assert.Throws<InvalidOperationException>`) no longer match.
+  A command without an owner now says "Nothing owns X. Register its owner with AddSlice() or AddIntegration()."
+  instead of "No slice owns X".
 
 ### Added
 
@@ -21,6 +26,49 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Native AOT HTTP verification for `Shop.Api`: generated request delegates and JSON metadata, named response
   records, and a reusable `curl`/`jq` smoke script covering checkout, rich drafts, cancellation and published events.
   Ubuntu CI publishes and runs the native API alongside the existing native console walkthrough.
+- **Verdandi** (`Wyrd.EntityFrameworkCore`, in progress): the durable runtime on PostgreSQL and SQL Server.
+  `EfCoreRuntime<TContext>` handles every message in one transaction that also takes it off the queue — state,
+  events, instances, inbox, outbox, timers and read models commit together or not at all. The queue is a table shared
+  by any number of workers (`FOR UPDATE SKIP LOCKED` / `READPAST`, the only raw SQL); failures are redelivered with
+  backoff and poison messages go to dead letters; processes survive restarts. `modelBuilder.AddWyrd()` puts Wyrd's
+  tables in your own `DbContext` and migrations, and `SendAsync(command, context)` joins your transaction. JIT only:
+  EF Core's Native AOT support is experimental.
+- **Integrations** (`Integration<TCommand, TEvent, TError>`, `AddIntegration`): the only I/O. An integration owns a
+  command like a slice; its event is recorded and published like a domain event, its error is a business rejection,
+  and an exception is a transient failure for the process's retry policy. `IntegrationContext.IdempotencyKey` is the
+  command's message id, stable across retries and redeliveries. Design: `docs/design/integrations.md`.
+- Operators on every host: `IWyrdRuntime.ResumeAsync` / `CompensateAsync`.
+- One retry layer on the durable host: a process command it can't handle goes back to its process as a failure (the
+  step's retry policy decides, then the instance is suspended); dead letters are only for messages no process decides
+  on (events, replies, timers).
+- **Transport between services** (core): `IWyrdTransport` carries published integration events, each with a stable
+  message id (`TransportMessage`); `IWyrdRuntime.ReceiveAsync` delivers one from another service, ignores contracts
+  the service doesn't use and handles a redelivery once. Only integration events cross service boundaries: commands
+  have one owner inside one service. `InMemoryTransport` connects in-memory runtimes (`UseTransport`, `Subscribe`);
+  the durable relay comes with the EF Core host. Traces cross with the message (`TraceParent`, `TraceState`), and an
+  integration's call to the outside world is a client span under its command.
+- `IWyrdBuilder<T>`: register a module the same way on any host (`ShopModule.Register(runtime)`).
+- `IWyrdRuntime`: what application code needs (send, publish, query), implemented by both hosts.
+- `samples/Shop.Api` runs durable on PostgreSQL when built with `-p:WyrdHost=EfCore` and given a `Wyrd` connection
+  string (`compose.yaml` included; its `ShopDbContext` carries Wyrd's tables and migrations). The default build stays
+  in memory and Native AOT.
+- Ordered read models and instance histories on the durable host; `IWyrdRuntime.HistoryOfAsync` on both hosts, so an
+  instance recorded in the database replays locally with Urd.
+
+### Changed
+
+- Failures a host or an application handles are typed and derive from `WyrdException` (itself an
+  `InvalidOperationException`, so existing `catch` blocks still work): `ConcurrencyConflictException`,
+  `UnknownMessageTypeException`, `MissingJsonMetadataException`, `MissingUpcasterException`,
+  `NotAnIntegrationEventException`, `InstanceStateException` (Q4.1). A conflict in your own transaction
+  (`EfCoreRuntime.SendAsync(command, context)`) is a `ConcurrencyConflictException` to retry.
+- A wait's timer is cancelled when the wait ends (the awaited event arrives, or the instance is suspended while
+  waiting), instead of firing later and being ignored: nothing stays scheduled for an instance that no longer waits
+  (Q2.2). The EF Core queue gains a `message_id` column for it.
+- In-memory reads (`View`, `StatusOf`, `Journal`...) no longer wait for an operation in progress: they see the last
+  commit, behind a short lock instead of a blocking wait on the runtime's gate (Q4.2). The threading analyzers guard
+  every project under `src/` against sync-over-async.
+- Urd compares entries in order without their time: on a real clock a reply takes milliseconds, on replay none.
 
 ## [0.4.0] - 2026-10-18
 

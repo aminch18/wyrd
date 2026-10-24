@@ -55,6 +55,34 @@ internal static class Tracing
         return activity;
     }
 
+    /// <summary>
+    /// The call to another system an integration makes, as a client span under the command's activity: the outside
+    /// world's own instrumentation (HTTP, SDKs) nests under it.
+    /// </summary>
+    public static Activity? Integration(Envelope command)
+    {
+        if (Current.Value?.Start() is null)
+        {
+            return null;
+        }
+
+        var activity = Source.StartActivity("wyrd integration " + command.Type, ActivityKind.Client);
+        if (activity?.IsAllDataRequested == true)
+        {
+            activity.SetTag("wyrd.message.type", command.Type);
+            activity.SetTag("wyrd.idempotency_key", command.MessageId.ToString());
+            activity.SetTag("wyrd.attempt", command.Process?.Attempt ?? 1);
+        }
+
+        return activity;
+    }
+
+    public static void Failed(Activity? call, Exception exception) => call?.SetStatus(ActivityStatusCode.Error, exception.GetType().Name);
+
+    /// <summary>The context a message from another service was published in, carried by the transport.</summary>
+    public static TraceContext? Received(TransportMessage message) =>
+        message.TraceParent is { } parent ? new TraceContext(parent, message.TraceState) : null;
+
     public static void Key(string key) => Current.Value?.Start()?.SetTag("wyrd.key", key);
 
     public static void Outcome(ReplyOutcome outcome)
