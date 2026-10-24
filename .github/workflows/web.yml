@@ -30,7 +30,9 @@ jobs:
         working-directory: src/Wyrd.Web
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false # the site is built and uploaded as an artifact: nothing pushes with git
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -54,7 +56,7 @@ jobs:
 
       - name: Upload GitHub Pages artifact
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: src/Wyrd.Web/dist
 

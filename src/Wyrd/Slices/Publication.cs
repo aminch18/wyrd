@@ -9,6 +9,7 @@ public abstract class Publication<TDomainEvent, TIntegrationEvent> : IPublicatio
     where TDomainEvent : IDomainEvent
     where TIntegrationEvent : IIntegrationEvent
 {
+    /// <summary>Purely maps an accepted internal fact to the public contract version represented by this publication.</summary>
     public abstract TIntegrationEvent Map(TDomainEvent domainEvent);
 
     Type IPublicationHandler.Source => typeof(TDomainEvent);
