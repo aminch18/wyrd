@@ -28,10 +28,13 @@ public enum HistoryKind
     /// <summary>An operator asked the suspended instance to compensate.</summary>
     CompensationRequested,
 
+    /// <summary>The instance needs operator attention before it can continue safely.</summary>
     Suspended,
 
+    /// <summary>All forward steps finished.</summary>
     Completed,
 
+    /// <summary>All required undos and the compensation outcome finished.</summary>
     Compensated,
 }
 
@@ -41,14 +44,19 @@ public enum HistoryKind
 /// </summary>
 public sealed record HistoryEntry(DateTimeOffset At, HistoryKind Kind)
 {
+    /// <summary>The registered message type name, when this entry records a message.</summary>
     public string? Type { get; init; }
 
+    /// <summary>The serialized message, reply event or error, when present.</summary>
     public string? Payload { get; init; }
 
+    /// <summary>The zero-based node index; the node count identifies the compensation outcome.</summary>
     public int? Step { get; init; }
 
+    /// <summary>Whether the entry belongs to the reverse compensation flow.</summary>
     public bool Compensating { get; init; }
 
+    /// <summary>The command attempt number when this entry records an attempt.</summary>
     public int? Attempt { get; init; }
 
     /// <summary>For a reply: Accepted, Rejected, Faulted, Fenced or NothingToUndo.</summary>
@@ -64,8 +72,11 @@ public sealed record HistoryEntry(DateTimeOffset At, HistoryKind Kind)
 /// </summary>
 public sealed record InstanceHistory(string Process, string Key, string Fingerprint, IReadOnlyList<HistoryEntry> Entries)
 {
+    /// <summary>Exports the history as JSON using Wyrd's generated metadata, suitable for the replay tool.</summary>
+    /// <example><code>File.WriteAllText("order.history.json", history.ToJson());</code></example>
     public string ToJson() => JsonSerializer.Serialize(this, WyrdJsonContext.Default.InstanceHistory);
 
+    /// <summary>Reads an exported history for inspection or replay; malformed or empty history input is rejected.</summary>
     public static InstanceHistory FromJson(string json)
     {
         ArgumentNullException.ThrowIfNull(json);
