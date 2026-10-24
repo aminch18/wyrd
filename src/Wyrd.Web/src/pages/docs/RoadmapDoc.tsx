@@ -158,22 +158,35 @@ const ROADMAP: readonly Milestone[] = [
     {
         version: 'v0.5',
         title: 'Verdandi — run the present',
-        status: 'Planned',
-        copy: 'The durable runtime and the only place with real I/O.',
+        status: 'Done',
+        copy: 'The durable runtime, the only place with real I/O, and services that talk over a broker.',
         items: [
             [
-                false,
-                'Integrations (IIntegration): the only I/O, with idempotency keys and recorded outcomes',
+                true,
+                'Integrations (Integration<TCommand, TEvent, TError>): the only I/O, with idempotency keys and recorded outcomes',
             ],
             [
-                false,
-                'Framework reply envelope and re-send with stable message ids',
+                true,
+                'IWyrdRuntime and IWyrdBuilder<T>: the same application code and modules on every host',
             ],
-            [false, 'Ports for transport, outbox, process state and scheduler'],
-            [false, 'EF Core outbox, inbox and state (PostgreSQL, SQL Server)'],
-            [false, 'Durable scheduler for timeouts'],
-            [false, 'RabbitMQ transport'],
-            [false, 'OpenTelemetry with process-level traces'],
+            [
+                true,
+                'EF Core host (PostgreSQL, SQL Server): state, inbox, outbox, timers and read models in one transaction, the database as the queue',
+            ],
+            [
+                true,
+                'One retry layer, operators (resume, compensate) and a hardened queue with health metrics',
+            ],
+            [
+                true,
+                'Explicit retention for everything a host keeps, and a history archive',
+            ],
+            [true, 'RabbitMQ transport between services (Wyrd.RabbitMq)'],
+            [true, 'OpenTelemetry with process-level traces'],
+            [
+                true,
+                'Catching up a projection added to a store that already has data',
+            ],
         ],
     },
     {
@@ -187,10 +200,11 @@ const ROADMAP: readonly Milestone[] = [
                 true,
                 'Guidance on shared invariants living on the state or in pure domain policies',
             ],
-            [false, 'Rich aggregate in samples/Shop (Order, OrderLine, Money)'],
-            [false, 'Guide: modelling read models for screens and reports'],
+            [true, 'Rich aggregate in samples/Shop (Order, OrderLine, Money)'],
+            [true, 'Guide: modelling read models for screens and reports'],
+            [true, 'Guide: running durable, with retention and operators'],
             [
-                false,
+                true,
                 'Docs site with the mental model first, API reference second',
             ],
         ],
@@ -205,9 +219,8 @@ const ROADMAP: readonly Milestone[] = [
                 false,
                 'Process versioning: a snapshot of every process, with breaking changes failing the build until in-flight instances are migrated',
             ],
-            [false, 'Native AOT verified end to end'],
-            [false, 'dotnet wyrd CLI and an MCP server for agents'],
-            [false, 'Docs site'],
+            [true, 'Native AOT verified end to end'],
+            [true, 'dotnet wyrd CLI and an MCP server for agents'],
         ],
     },
 ] as const
