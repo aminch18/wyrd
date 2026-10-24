@@ -54,5 +54,7 @@ internal static class QueueMetrics
     private static void Age(string name, string description, Func<QueueHealth, TimeSpan> value) =>
         Meter.CreateObservableGauge(name, () => Latest.Select(e => new Measurement<double>(value(e.Value).TotalSeconds, Tag(e.Key))), "s", description);
 
-    private static KeyValuePair<string, object?> Tag(string queue) => new("wyrd.queue", queue);
+    public const string QueueTagName = "wyrd.queue";
+
+    private static KeyValuePair<string, object?> Tag(string queue) => new(QueueTagName, queue);
 }
