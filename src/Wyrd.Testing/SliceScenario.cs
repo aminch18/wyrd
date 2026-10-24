@@ -30,6 +30,7 @@ public sealed class SliceScenario<TCommand, TState, TEvent, TError>
         return new(_slice, state);
     }
 
+    /// <summary>Checks that the command survives JSON serialization, then runs the slice's pure decision against the given state.</summary>
     public SliceOutcome<TCommand, TState, TEvent, TError> When(TCommand command)
     {
         ArgumentNullException.ThrowIfNull(command);

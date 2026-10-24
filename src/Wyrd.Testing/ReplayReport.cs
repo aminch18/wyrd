@@ -26,11 +26,13 @@ public sealed class ReplayReport
         }
     }
 
+    /// <summary>The exported history supplied as the expected behavior for this replay.</summary>
     public InstanceHistory Recorded { get; }
 
     /// <summary>The history the replay produced.</summary>
     public IReadOnlyList<HistoryEntry> Replayed { get; }
 
+    /// <summary>The replay runtime's diagnostic journal, useful when explaining a divergence.</summary>
     public IReadOnlyList<JournalEntry> Journal { get; }
 
     /// <summary>The first entry that differs (times relative to the start), or null.</summary>
@@ -42,8 +44,10 @@ public sealed class ReplayReport
     /// <summary>An exception the replay threw, e.g. a recorded payload that no longer fits today's type.</summary>
     public Exception? Error { get; init; }
 
+    /// <summary>Whether replay failed, could not start, or produced a different history entry.</summary>
     public bool Diverged => Reason is not null || Error is not null || Divergence is not null;
 
+    /// <summary>Fails a test with the first divergence or replay error. Does nothing when the history matches.</summary>
     public void ThrowIfDiverged()
     {
         if (Diverged)
@@ -52,6 +56,7 @@ public sealed class ReplayReport
         }
     }
 
+    /// <summary>Describes a matching replay, or the first difference and its diagnostic journal.</summary>
     public override string ToString()
     {
         var text = new StringBuilder();

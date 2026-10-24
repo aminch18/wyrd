@@ -16,6 +16,7 @@ public static class Pipeline
     /// <summary>The command sent once compensation has finished.</summary>
     public static Fragment OnCompensated(Delegate outcome) => new(new CompensatedNode(StepRef.Untyped(outcome)));
 
+    /// <summary>Creates a wait stage correlated by the process key. Set its business deadline with <c>Within</c>.</summary>
     public static Fragment Await<TEvent>(Func<TEvent, object> key)
         where TEvent : IEvent
     {
@@ -26,6 +27,8 @@ public static class Pipeline
     extension<TTrigger>(ProcessBuilder<TTrigger>)
         where TTrigger : IEvent
     {
+        /// <summary>Appends a pipe stage, binding its step functions to the process trigger.</summary>
+        /// <example><code>Start.On&lt;OrderPlaced&gt;(e =&gt; e.OrderId) &gt;&gt; Step(Stock.Reserve).Retry(3.Times)</code></example>
         public static ProcessBuilder<TTrigger> operator >>(ProcessBuilder<TTrigger> process, Fragment next)
         {
             ArgumentNullException.ThrowIfNull(process);
@@ -35,8 +38,10 @@ public static class Pipeline
     }
 }
 
+/// <summary>The starting point for an opt-in pipe process definition.</summary>
 public static class Start
 {
+    /// <summary>Starts a process on an event, correlated by its business key. The caller member name supplies the default process name.</summary>
     public static ProcessBuilder<TEvent> On<TEvent>(Func<TEvent, object> key, [CallerMemberName] string name = "")
         where TEvent : IEvent =>
         Process.StartOn(key, name);
@@ -62,8 +67,10 @@ public sealed class Fragment
     /// <summary>Declares that this step needs no undo if a later step fails, and why.</summary>
     public Fragment NoCompensation(string reason) => new(NodeModifiers.NoCompensation(Node, reason));
 
+    /// <summary>Sets the retry count and backoff for this step or compensation outcome.</summary>
     public Fragment Retry(Attempts attempts, Backoff backoff = Backoff.Exponential) =>
         new(NodeModifiers.Retry(Node, attempts, backoff));
 
+    /// <summary>Sets this wait stage's business deadline; expiry starts compensation.</summary>
     public Fragment Within(TimeSpan timeout) => new(NodeModifiers.Within(Node, timeout));
 }

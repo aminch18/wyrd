@@ -9,3 +9,8 @@
     - "await PaymentConfirmed"
     - "step Shipping.Ship"
     - "outcome Orders.Cancel"
+- name: "StockConsumption"
+  fingerprint: "b70fdda4dafd"
+  structure:
+    - "trigger OrderShipped"
+    - "step Stock.Consume"
