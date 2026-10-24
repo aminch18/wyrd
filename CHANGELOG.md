@@ -14,9 +14,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   (`ex.GetType() == typeof(InvalidOperationException)`, `Assert.Throws<InvalidOperationException>`) no longer match.
   A command without an owner now says "Nothing owns X. Register its owner with AddSlice() or AddIntegration()."
   instead of "No slice owns X".
+- `IWyrdRuntime` has a new member, `Subscriptions`: a class of yours that implements it needs it too.
 
 ### Added
 
+- Architecture documentation for reviewers: `docs/design/architecture.md` (the big picture, the model, the patterns,
+  the invariants and where they are enforced, how to review a PR, and the discrepancies found between the code and
+  the design documents) and `docs/design/runtime.md` (the engine branch by branch, the in-memory and EF Core hosts,
+  and one order end to end on PostgreSQL with real logs, SQL and rows).
 - Add BCL `Wyrd` process tracing with envelope context propagation, lifecycle/outcome tags and links for external continuations; Shop.Api exports to the console when `OTEL_EXPORTER=console`. Deterministic journals, domain state and replay histories are unchanged.
 - Documentation learning path with the shared read-model guide, working repository-relative links, and a searchable API reference checked against public declarations, analyzer rules and code-fix coverage during the website build.
 - `dotnet wyrd mcp`: an official-SDK stdio server exposing the existing Mermaid, AsyncAPI, contract parser and
@@ -53,6 +58,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   have one owner inside one service. `InMemoryTransport` connects in-memory runtimes (`UseTransport`, `Subscribe`);
   the durable relay comes with the EF Core host. Traces cross with the message (`TraceParent`, `TraceState`), and an
   integration's call to the outside world is a client span under its command.
+- **Retention** (Q2.3, semantics 4.1): everything a host keeps has one, and on a durable host it is a decision written
+  in the application: `EfCoreRuntime` requires a `Retention` whose every member is `Keep.For(period)` or
+  `Keep.Forever("why")` — deduplication, finished instances and their histories, relayed messages, domain events, dead
+  letters. Workers remove what expired in batches every `CleanupInterval` (`ForgetExpiredAsync`). Suspended instances
+  never expire; a removed finished instance frees its key. Fences never expire either, and a reply that reaches an
+  instance whose definition changed is kept on the instance for the operator, so neither depends on the deduplication
+  window. In memory: `UseRetention` (keeps everything by default) and a bounded journal (`JournalLimit`, 10,000).
+- **Catching up a projection** added to a store that already has data: `Projection<TView>.Seed<TState>(key, seed)`
+  builds the view from the current states (Wyrd keeps state, not every past event), once, and the projection follows
+  their events after that; an event already in a seed is skipped, a later one applied. Hosts catch up on their own
+  (workers on EF Core, the in-memory runtime when idle) or on `CatchUpAsync()`. Projected versions are now kept even
+  in applications without projections.
+- **`Wyrd.RabbitMq`**: RabbitMQ between services, kept thin. `RabbitMqTransport` (give it to `UseTransport`) publishes
+  each integration event to a durable topic exchange with its contract as the routing key, persistent, with its
+  message id and trace context, and counts it sent once the broker confirms: an unconfirmed message stays in the
+  outbox. `RabbitMqSubscriber.StartAsync(connection, runtime, queue)` binds the service's durable queue to the
+  contracts the runtime uses and acknowledges a message once the runtime has it; the runtime handles a redelivery
+  once. `IWyrdRuntime.Subscriptions` lists those contracts (processes, projections, upcasters; not what the service
+  only publishes).
 - `IWyrdBuilder<T>`: register a module the same way on any host (`ShopModule.Register(runtime)`).
 - `IWyrdRuntime`: what application code needs (send, publish, query), implemented by both hosts.
 - `samples/Shop.Api` runs durable on PostgreSQL when built with `-p:WyrdHost=EfCore` and given a `Wyrd` connection
@@ -60,6 +84,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   in memory and Native AOT.
 - Ordered read models and instance histories on the durable host; `IWyrdRuntime.HistoryOfAsync` on both hosts, so an
   instance recorded in the database replays locally with Urd.
+- **A hardened queue** on the EF Core host: idle workers back off from `PollInterval` to `MaxPollInterval` (2 s), and a
+  message the runtime queues itself wakes them at once. `HealthAsync` returns a `QueueHealth` (due messages and the
+  oldest one's age, scheduled messages, dead letters, pending steps and the oldest one's age, suspended instances);
+  workers publish it every `HealthInterval` on the `Wyrd` meter, with counters of handled, failed and dead-lettered
+  messages. Instances carry `pending_since`; `EfCoreRuntime` is `IDisposable`.
+- **History archive** (`IHistoryArchive`, `UseHistoryArchive` on both hosts): before retention removes an expired
+  finished instance, its history is handed to the application (blob storage, a cold table...); it is removed only once
+  the archive returned, and a failed archive keeps it for the next pass. An archived history still replays with Urd.
 
 ### Changed
 

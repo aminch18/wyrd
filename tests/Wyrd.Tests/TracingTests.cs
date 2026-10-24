@@ -154,7 +154,7 @@ public class TracingTests
         var trace = new TraceContext("00-0123456789abcdef0123456789abcdef-0123456789abcdef-01");
         var command = new Envelope(Guid.Empty, MessageKind.Command, "command", "{}", Trace: trace);
         using var ambient = new Activity("unrelated replay caller").Start();
-        var engine = new Engine(new Registry(), new InMemoryStore(), MessageTypes.Reflection(),
+        var engine = new Engine(new Registry(), new InMemoryStore(() => DateTimeOffset.UnixEpoch), MessageTypes.Reflection(),
             () => DateTimeOffset.UnixEpoch, () => Guid.Empty, (_, _) => false, (_, _, _) => { });
         var reply = engine.ReplyTo(command, new ReplyMessage(ReplyOutcome.Accepted));
         Assert.Equal(trace, reply.Trace);
@@ -181,7 +181,7 @@ public class TracingTests
     public async Task an_unexpected_handler_exception_is_an_error_span_without_changing_the_exception()
     {
         using var listener = new Recording();
-        var engine = new Engine(new Registry(), new InMemoryStore(), MessageTypes.Reflection(),
+        var engine = new Engine(new Registry(), new InMemoryStore(() => DateTimeOffset.UnixEpoch), MessageTypes.Reflection(),
             () => DateTimeOffset.UnixEpoch, () => Guid.Empty, (_, _) => false, (_, _, _) => { });
         await Assert.ThrowsAsync<UnknownMessageTypeException>(async () =>
             await engine.HandleAsync(new Envelope(Guid.Empty, MessageKind.Command, "unknown", "{}"), default));

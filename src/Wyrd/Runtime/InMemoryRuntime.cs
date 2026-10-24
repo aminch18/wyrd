@@ -14,7 +14,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     private static readonly DateTimeOffset Epoch = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     private readonly Application _application;
-    private readonly InMemoryStore _store = new();
+    private readonly InMemoryStore _store;
     private readonly MessageTypes _types;
     private readonly List<Envelope> _queue = [];
     private readonly Dictionary<Type, int> _faults = [];
@@ -24,7 +24,8 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     private DateTimeOffset _now = Epoch;
     private readonly List<PublishedMessage> _unrelayed = [];
     private IWyrdTransport? _transport;
-    private int _relayed;
+    private Retention _retention = Retention.InMemory;
+    private IHistoryArchive? _archive;
     private long _member;
     private long _ids;
 
@@ -46,8 +47,46 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     {
         _application = new Application(types);
         _types = types;
+        _store = new InMemoryStore(() => _now);
         _engine = new Engine(_application.Registry, _store, _types, () => _now, NextId, Fault, Log);
     }
+
+    /// <summary>
+    /// How long this runtime keeps what it handled, measured on its virtual clock: nothing expires by default, since
+    /// nothing outlives the process. Expired data goes when the clock moves (<see cref="AdvanceAsync"/>).
+    /// </summary>
+    public InMemoryRuntime UseRetention(Retention retention)
+    {
+        ArgumentNullException.ThrowIfNull(retention);
+        _retention = retention;
+        return this;
+    }
+
+    /// <summary>
+    /// Hands the histories of finished instances to <paramref name="archive"/> before retention removes them; an instance
+    /// is removed only once its history is archived. It is called while the clock moves (<see cref="AdvanceAsync"/>), and
+    /// nothing else runs on this runtime meanwhile.
+    /// </summary>
+    public InMemoryRuntime UseHistoryArchive(IHistoryArchive archive)
+    {
+        ArgumentNullException.ThrowIfNull(archive);
+        _archive = archive;
+        return this;
+    }
+
+    /// <summary>
+    /// The journal keeps at least this many most recent entries, and at most a tenth more (10,000 by default), so a long
+    /// run stays bounded. Older entries are dropped in batches.
+    /// </summary>
+    public int JournalLimit
+    {
+        get;
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1);
+            field = value;
+        }
+    } = 10_000;
 
     /// <summary>Virtual time elapsed since the runtime started.</summary>
     public TimeSpan Now => Read(() => _now - Epoch);
@@ -202,6 +241,8 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
             }
 
             Write(() => _now = until);
+            // Only time makes anything expire.
+            _store.Forget(_retention, relays: _transport is not null, await ArchiveExpiredAsync(cancellationToken).ConfigureAwait(false));
         }
         finally
         {
@@ -348,6 +389,63 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
             await _engine.HandleAsync(envelope, cancellationToken).ConfigureAwait(false);
             await TakeOutboxAsync(cancellationToken).ConfigureAwait(false);
         }
+
+        // Once idle. What the drain handled is committed, so a failing seed is logged, never thrown at the caller.
+        await CatchUpCoreAsync(isolateFailures: true, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Catches up the projections added to a runtime that already has states (see
+    /// <see cref="Projection{TView}.Seed{TState}"/>). The runtime does it on its own once it is idle, and logs a failure
+    /// to the journal; call this to have the views before the next message, and to see a failure as an exception.
+    /// </summary>
+    public async Task CatchUpAsync(CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await CatchUpCoreAsync(isolateFailures: false, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Seeds every catching-up projection. With <paramref name="isolateFailures"/> a failing state is logged with its
+    /// view, state type and key, and the other states and projections go on; otherwise the failure is thrown.
+    /// </summary>
+    private async Task CatchUpCoreAsync(bool isolateFailures, CancellationToken cancellationToken)
+    {
+        foreach (var projection in _application.Registry.CatchingUp.ToList())
+        {
+            foreach (var seed in projection.Seeds)
+            {
+                foreach (var state in await _store.UnseededAsync(projection.View.FullName!, seed.FullName!, int.MaxValue, cancellationToken).ConfigureAwait(false))
+                {
+                    await CatchUpStepAsync(projection, state, () => _engine.SeedAsync(projection, state, cancellationToken), isolateFailures, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
+
+            await CatchUpStepAsync(projection, state: null, async () => await _engine.CompleteCatchUpAsync(projection, cancellationToken).ConfigureAwait(false), isolateFailures, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async Task CatchUpStepAsync(
+        IProjectionHandler projection, StoredState? state, Func<ValueTask> step, bool isolateFailures, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await step().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (isolateFailures && (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested))
+        {
+            Log(Engine.External, state?.Key,
+                $"catching up {projection.View.Name} failed on {state?.StateType ?? "completion"}: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     /// <summary>The outbox relay: committed messages are handed to the transport.</summary>
@@ -360,6 +458,37 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     }
 
     public void Dispose() => _gate.Dispose();
+
+    /// <summary>
+    /// Hands the expired histories to the archive, and returns the instances to remove: those archived, none when it
+    /// failed (they stay for the next pass), or null without an archive.
+    /// </summary>
+    private async Task<IReadOnlyList<StoredInstance>?> ArchiveExpiredAsync(CancellationToken cancellationToken)
+    {
+        if (_archive is null)
+        {
+            return null; // expiring is deleting
+        }
+
+        var expired = _store.ExpiredInstances(_retention);
+        if (expired.Count == 0)
+        {
+            return expired;
+        }
+
+        try
+        {
+            await _archive.ArchiveAsync([.. expired.Select(i => new InstanceHistory(i.Process, i.Key, i.Fingerprint, i.History))], cancellationToken)
+                .ConfigureAwait(false);
+            return expired;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            // A timeout of the archive's own (an OperationCanceledException nobody asked for) is a failure like any other.
+            Log(Engine.External, null, $"history archive failed, finished instances kept: {ex.GetType().Name}: {ex.Message}");
+            return [];
+        }
+    }
 
     /// <summary>
     /// Sends what this runtime publishes (integration events) to other services through <paramref name="transport"/>.
@@ -391,6 +520,9 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
 
         _member = member;
     }
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> Subscriptions => _application.Subscriptions;
 
     /// <summary>
     /// Delivers an integration event another service published. A contract nobody uses here is ignored; a message
@@ -436,8 +568,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            _unrelayed.AddRange(_store.Published.Skip(_relayed));
-            _relayed = _store.Published.Count;
+            _unrelayed.AddRange(_store.TakeUnrelayed());
             pending = [.. _unrelayed];
             _unrelayed.Clear();
         }
@@ -558,6 +689,11 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         lock (_store.Sync)
         {
             _journal.Add(new(_now - Epoch, process, key, message));
+            // Trimmed in batches, so a long run doesn't shift the list on every entry.
+            if (_journal.Count >= JournalLimit + Math.Max(JournalLimit / 10, 1))
+            {
+                _journal.RemoveRange(0, _journal.Count - JournalLimit);
+            }
         }
     }
 }

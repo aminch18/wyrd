@@ -66,7 +66,7 @@ What the numbers say:
 |---|---|---|---|
 | Q2.1 | **No state grows without bound per key.** A state, an instance or a history whose size grows with the number of messages it has seen is a bug, in samples and in guides. | Q1.2 on the Shop; review | 🔜 |
 | Q2.2 | **A wait's timer is cancelled when the wait ends**, by the awaited event, a compensation or an operator. Documented in [semantics.md](design/semantics.md). | Runtime tests (in memory and on both EF Core databases). The benchmarks (task 014) add a timer scenario to Q1.2 | ✅ |
-| Q2.3 | **Everything a host keeps has a documented retention**: inbox (how long a duplicate is still recognised), journal, instance histories, completed instances. Documented in semantics.md, implemented in the in-memory host, configurable. | Benchmark: memory retained after N completed orders stays flat with retention on | 🔜 |
+| Q2.3 | **Everything a host keeps has a documented retention**: inbox (how long a duplicate is still recognised), journal, instance histories, completed instances. Documented in semantics.md, implemented in the in-memory host, configurable. | Benchmark: memory retained after N completed orders stays flat with retention on. Implemented (semantics 4.1, in memory and on EF Core, required on durable hosts); the benchmark check comes with task 014 | 🔜 |
 
 ### Q3. The public API changes on purpose
 

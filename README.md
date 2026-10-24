@@ -17,7 +17,7 @@ idempotency, enforces versioned message contracts at compile time, and simulates
 > [!WARNING]
 > **Preview for feedback, not for production yet.** Available today: the message and process model, the analyzers
 > and contract snapshots, the in-memory runtime, `Wyrd.Testing`, the `dotnet wyrd` tool and **Skuld** (failure
-> simulation), and the durable runtime on EF Core (PostgreSQL, SQL Server). The RabbitMQ transport is in progress.
+> simulation), and the durable runtime on EF Core (PostgreSQL, SQL Server). Services talk through RabbitMQ (`Wyrd.RabbitMq`).
 > Everything marked ✅ works and is covered by tests; 🔜 and 🚧 are designed and on the [roadmap](https://github.com/aminch18/wyrd/blob/main/docs/ROADMAP.md). APIs may change before 1.0.
 > Please [tell us what you think](https://github.com/aminch18/wyrd/discussions).
 
@@ -120,7 +120,7 @@ In Norse myth, *wyrd* — fate — is woven by three Norns. Wyrd is built on the
 |---|---|---|---|
 | ⏩ | **Skuld** — *what will be* | **Simulation.** Run your scenario in hundreds of hostile futures — faults, duplicates, reordering, timeouts — before you deploy. | ✅ |
 | ⏪ | **Urd** — *what was* | **Replay.** Export a process instance's history and replay it locally, deterministically, as a test. In memory today; from a durable store with Verdandi. | ✅ |
-| ▶️ | **Verdandi** — *what is* | **Runtime.** Deterministic in-memory runtime ✅; durable on PostgreSQL and SQL Server through EF Core ✅ (one transaction per message, the database as the queue); RabbitMQ transport in progress. | 🚧 |
+| ▶️ | **Verdandi** — *what is* | **Runtime.** Deterministic in-memory runtime ✅; durable on PostgreSQL and SQL Server through EF Core ✅ (one transaction per message, the database as the queue); RabbitMQ between services ✅. | 🚧 |
 
 ## Quick start
 
@@ -452,7 +452,15 @@ public sealed class ShopDbContext(DbContextOptions<ShopDbContext> options) : DbC
     protected override void OnModelCreating(ModelBuilder modelBuilder) => modelBuilder.AddWyrd();
 }
 
-var wyrd = ShopModule.Register(new EfCoreRuntime<ShopDbContext>(contexts, ShopJson.Default)); // an IDbContextFactory
+var wyrd = ShopModule.Register(new EfCoreRuntime<ShopDbContext>(contexts, ShopJson.Default, new Retention
+{
+    // How long Wyrd keeps what it stores: every line is your decision, there are no defaults.
+    Deduplication = Keep.For(7.Days),
+    FinishedInstances = Keep.For(30.Days),
+    RelayedMessages = Keep.For(7.Days),
+    Events = Keep.Forever("our record of what happened"),
+    DeadLetters = Keep.Forever("an operator reviews each one"),
+}));
 
 await wyrd.SendAsync(new PlaceOrder("A-1", "KEYBOARD", 1, 89m)); // decided and committed now
 await wyrd.RunAsync(stoppingToken);                              // a worker: run as many as you like
@@ -466,6 +474,7 @@ await wyrd.RunAsync(stoppingToken);                              // a worker: ru
 - **Your transaction, if you want it**: `SendAsync(command, context)` joins the transaction you began, so your own
   tables and Wyrd's commit together.
 - **Survives restarts**: kill the process mid-saga, start it again, and the order continues where it was.
+- **Bounded, by your decision**: workers remove what the retention no longer keeps; suspended instances never expire.
 - **JIT only**: EF Core's Native AOT support is experimental, so this host doesn't claim it. The in-memory host and
   the Wyrd core stay AOT-compatible.
 
@@ -685,7 +694,7 @@ additional process analyzers are on the roadmap.
 
 Atomic handling of one envelope is not an atomic transaction across an entire business process. Compensation
 is a domain action that can itself fail, not an erasure of the original action. The EF Core host is durable
-across restarts; a broker transport (RabbitMQ) between services is still planned.
+across restarts, and services exchange integration events through RabbitMQ, at least once.
 
 It does **not** know your business rules. If you compute the tax wrong, Wyrd will deterministically compute it wrong.
 
@@ -694,6 +703,7 @@ It does **not** know your business rules. If you compute the tax wrong, Wyrd wil
 ```
 src/Wyrd/                  the library
 src/Wyrd.EntityFrameworkCore/  Verdandi: the durable runtime on EF Core, PostgreSQL and SQL Server (package)
+src/Wyrd.RabbitMq/         RabbitMQ between services: the outbox relay's transport and a subscriber (package)
 src/Wyrd.Analyzers/        Roslyn analyzers, shipped inside the Wyrd package
 src/Wyrd.Analyzers.CodeFixes/  IDE code fixes, shipped inside the Wyrd package
 tests/Wyrd.Tests/          unit and runtime tests
@@ -707,6 +717,11 @@ samples/Shop.Console/      the shop as a console walkthrough
 samples/Shop.Tests/        the shop's business specifications
 docs/                      philosophy, DDD migration guide, roadmap and design notes
 ```
+
+How the code works, for reviewers and contributors: [architecture](https://github.com/aminch18/wyrd/blob/main/docs/design/architecture.md)
+(the model, the patterns, the invariants and where they are enforced) and
+[the engine and the hosts](https://github.com/aminch18/wyrd/blob/main/docs/design/runtime.md) (one message, one
+transaction, one order end to end on PostgreSQL).
 
 ## License
 

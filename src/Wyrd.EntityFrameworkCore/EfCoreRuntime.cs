@@ -1,5 +1,6 @@
 using System.Data.Common;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq.Expressions;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
@@ -17,7 +18,7 @@ namespace Wyrd.EntityFrameworkCore;
 /// on a crash or a restart. Wyrd's tables live in <typeparamref name="TContext"/>: your own context (see
 /// <see cref="WyrdModelBuilderExtensions.AddWyrd"/>) or <see cref="WyrdDbContext"/>.
 /// </summary>
-public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime<TContext>>, IWyrdRuntime
+public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime<TContext>>, IWyrdRuntime, IDisposable
     where TContext : DbContext
 {
     private readonly IDbContextFactory<TContext> _contexts;
@@ -26,16 +27,30 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
     private Dialect? _dialect;
+    private readonly Retention _retention;
     private IWyrdTransport? _transport;
+    private IHistoryArchive? _archive;
+    // UTC ticks of the last cleanup and health measurement: every worker loop shares them, and claims a turn atomically.
+    private long _lastCleanup;
+    private long _lastHealth;
+    private string? _queueName;
+    private volatile bool _disposed;
+    private int _idleWaits;
+    private int _catchingUp;
+    private readonly SemaphoreSlim _work = new(0, 1);
 
-    /// <summary>Source-generated JSON from your <c>[WyrdJsonContext]</c>.</summary>
+    /// <summary>
+    /// Source-generated JSON from your <c>[WyrdJsonContext]</c>. <paramref name="retention"/> says how long each kind of
+    /// data is kept: there is no default, it is your decision.
+    /// </summary>
     public EfCoreRuntime(
         IDbContextFactory<TContext> contexts,
         JsonSerializerContext json,
+        Retention retention,
         EfCoreRuntimeOptions? options = null,
         TimeProvider? time = null,
         ILogger<EfCoreRuntime<TContext>>? logger = null)
-        : this(contexts, MessageTypes.FromContext(json ?? throw new ArgumentNullException(nameof(json))), options, time, logger)
+        : this(contexts, MessageTypes.FromContext(json ?? throw new ArgumentNullException(nameof(json))), retention, options, time, logger)
     {
     }
 
@@ -44,19 +59,25 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     [RequiresDynamicCode("Reflection-based System.Text.Json. Pass a [WyrdJsonContext] for trimming.")]
     public EfCoreRuntime(
         IDbContextFactory<TContext> contexts,
+        Retention retention,
         EfCoreRuntimeOptions? options = null,
         TimeProvider? time = null,
         ILogger<EfCoreRuntime<TContext>>? logger = null)
-        : this(contexts, MessageTypes.Reflection(), options, time, logger)
+        : this(contexts, MessageTypes.Reflection(), retention, options, time, logger)
     {
     }
 
     private EfCoreRuntime(
-        IDbContextFactory<TContext> contexts, MessageTypes types, EfCoreRuntimeOptions? options, TimeProvider? time, ILogger? logger)
+        IDbContextFactory<TContext> contexts, MessageTypes types, Retention retention, EfCoreRuntimeOptions? options, TimeProvider? time, ILogger? logger)
     {
         _contexts = contexts ?? throw new ArgumentNullException(nameof(contexts));
+        _retention = retention ?? throw new ArgumentNullException(nameof(retention));
         _application = new Application(types);
         _options = options ?? new EfCoreRuntimeOptions();
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_options.PollInterval, TimeSpan.Zero, "options.PollInterval");
+        ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxPollInterval, _options.PollInterval, "options.MaxPollInterval");
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_options.HealthInterval, TimeSpan.Zero, "options.HealthInterval");
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_options.CleanupInterval, TimeSpan.Zero, "options.CleanupInterval");
         _time = time ?? TimeProvider.System;
         _logger = logger ?? NullLogger.Instance;
     }
@@ -124,6 +145,17 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     }
 
     /// <summary>
+    /// Hands the histories of finished instances to <paramref name="archive"/> before retention removes them, outside any
+    /// transaction; an instance is removed only once its history is archived.
+    /// </summary>
+    public EfCoreRuntime<TContext> UseHistoryArchive(IHistoryArchive archive)
+    {
+        ArgumentNullException.ThrowIfNull(archive);
+        _archive = archive;
+        return this;
+    }
+
+    /// <summary>
     /// Sends what this service publishes (integration events) to other services through <paramref name="transport"/>:
     /// the workers relay the outbox after each commit, at least once.
     /// </summary>
@@ -163,6 +195,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                 await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
                 var decision = (await Engine(db, _time.GetUtcNow()).HandleAsync(envelope, call, cancellationToken).ConfigureAwait(false))!;
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                Wake();
                 return decision;
             }
             catch (Exception ex) when (attempt < _options.MaxConflictRetries && IsConflict(ex))
@@ -191,7 +224,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
         try
         {
-            return (await Engine(context, _time.GetUtcNow()).HandleAsync(Envelope(command), cancellationToken).ConfigureAwait(false))!;
+            var decision = (await Engine(context, _time.GetUtcNow()).HandleAsync(Envelope(command), cancellationToken).ConfigureAwait(false))!;
+            // Early, before your commit: a worker that finds nothing yet goes back to waiting, and sees the message on its
+            // next look, at most MaxPollInterval later.
+            Wake();
+            return decision;
         }
         catch (Exception ex) when (ex is not ConcurrencyConflictException && IsConflict(ex))
         {
@@ -208,7 +245,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         var now = _time.GetUtcNow();
         new EfCoreStore(db, now).Enqueue(new Envelope(Guid.CreateVersion7(), MessageKind.Event, type, payload, Trace: Tracing.Capture()), now);
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        Wake();
     }
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> Subscriptions => _application.Subscriptions;
 
     /// <summary>
     /// Queues an integration event another service published (from a transport), keeping its message id: a redelivery
@@ -228,6 +269,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         new EfCoreStore(db, now).Enqueue(
             new Envelope(message.MessageId, MessageKind.Event, message.Type, message.Payload, Trace: Tracing.Received(message)), now);
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        Wake();
     }
 
     private Envelope Envelope(ICommand command)
@@ -336,15 +378,49 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// </summary>
     public async Task RunAsync(CancellationToken cancellationToken)
     {
+        var idle = _options.PollInterval;
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
                 var handled = await ProcessPendingAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
                 var relayed = await RelayOrWaitAsync(cancellationToken).ConfigureAwait(false);
-                if (handled == 0 && relayed == 0)
+
+                // One loop of this runtime catches up at a time, a bounded batch per pass, between messages. Seeding is
+                // work: a worker that seeded doesn't back off before the next batch.
+                var seeded = 0;
+                if (_application.Registry.CatchingUp.Any() && Interlocked.CompareExchange(ref _catchingUp, 1, 0) == 0)
                 {
-                    await Task.Delay(_options.PollInterval, _time, cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        seeded = await CatchUpPassAsync(CatchUpBatchPerPass, cancellationToken).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        Volatile.Write(ref _catchingUp, 0);
+                    }
+                }
+
+                if (ClaimTurn(ref _lastCleanup, _options.CleanupInterval)
+                    && (await ForgetExpiredAsync(BatchSize, CleanupBatchesPerPass, cancellationToken).ConfigureAwait(false)).More)
+                {
+                    // A pass removes a bounded amount, so the worker gets back to messages: the next loop continues.
+                    Interlocked.Exchange(ref _lastCleanup, 0);
+                }
+
+                if (ClaimTurn(ref _lastHealth, _options.HealthInterval))
+                {
+                    QueueMetrics.Record(await QueueNameAsync(cancellationToken).ConfigureAwait(false), await HealthAsync(cancellationToken).ConfigureAwait(false));
+                }
+
+                if (handled == 0 && relayed == 0 && seeded == 0)
+                {
+                    await IdleAsync(idle, cancellationToken).ConfigureAwait(false);
+                    idle = TimeSpan.FromTicks(Math.Min(idle.Ticks * 2, _options.MaxPollInterval.Ticks));
+                }
+                else
+                {
+                    idle = _options.PollInterval;
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -358,6 +434,59 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                 LogWorkerFailed(ex);
                 await Task.Delay(_options.PollInterval, _time, cancellationToken).ConfigureAwait(false);
             }
+        }
+    }
+
+    /// <summary>
+    /// Waits <paramref name="delay"/>, or less if this runtime queues a message meanwhile. The signal stays set until a
+    /// worker takes it, so a message queued while the worker was looking still ends the next wait at once.
+    /// </summary>
+    private async Task IdleAsync(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref _idleWaits);
+        using var timeout = new CancellationTokenSource(delay, _time);
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+        try
+        {
+            await _work.WaitAsync(wait.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The wait is over: look again.
+        }
+    }
+
+    /// <summary>How many times a worker of this runtime started waiting idle (tests wait for it instead of for time).</summary>
+    internal int IdleWaits => Volatile.Read(ref _idleWaits);
+
+    /// <summary>
+    /// Claims the turn of something workers do every <paramref name="interval"/>: true for one worker loop once it is due.
+    /// </summary>
+    private bool ClaimTurn(ref long last, TimeSpan interval)
+    {
+        var now = _time.GetUtcNow().UtcTicks;
+        var seen = Interlocked.Read(ref last);
+        return now - seen >= interval.Ticks && Interlocked.CompareExchange(ref last, now, seen) == seen;
+    }
+
+    /// <summary>
+    /// Something was queued: an idle worker looks now instead of after its wait. A no-op once the runtime is disposed:
+    /// what was committed is in the queue anyway, and the caller must not see a failure for it.
+    /// </summary>
+    private void Wake()
+    {
+        if (_disposed || _work.CurrentCount > 0)
+        {
+            return;
+        }
+
+        try
+        {
+            _work.Release();
+        }
+        catch (Exception ex) when (ex is SemaphoreFullException or ObjectDisposedException)
+        {
+            // Another caller set the signal first, or the runtime was disposed meanwhile.
         }
     }
 
@@ -402,6 +531,10 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             }
 
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            if (leasedUntil is null)
+            {
+                QueueMetrics.Handled.Add(1, QueueTag(db));
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -458,6 +591,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                 await Engine(db, now).HandleAsync(envelope, call, cancellationToken).ConfigureAwait(false);
                 await row.ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                QueueMetrics.Handled.Add(1, QueueTag(db)); // only the worker that recorded it: a lost or released lease isn't handled
                 return;
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
@@ -486,6 +620,288 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     /// <summary>PostgreSQL keeps microseconds: a lease compared for equality must not carry more.</summary>
     private static DateTimeOffset Microseconds(DateTimeOffset at) => new(at.Ticks - at.Ticks % TimeSpan.TicksPerMicrosecond, at.Offset);
+
+    /// <summary>
+    /// Catches up the projections added to a store that already has states (see
+    /// <see cref="Projection{TView}.Seed{TState}"/>): seeds up to <paramref name="batchSize"/> views of each, one
+    /// transaction per state, and marks a projection caught up once nothing is left. Workers call it while a projection is
+    /// catching up, and any number of them can: a state another worker seeded meanwhile is skipped. Returns true once
+    /// every projection has caught up.
+    /// </summary>
+    public async Task<bool> CatchUpAsync(int batchSize = 1_000, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(batchSize, 1);
+        await CatchUpPassAsync(batchSize, cancellationToken).ConfigureAwait(false);
+        return !_application.Registry.CatchingUp.Any();
+    }
+
+    /// <summary>One pass of catching up; returns how many states it seeded.</summary>
+    private async Task<int> CatchUpPassAsync(int batchSize, CancellationToken cancellationToken)
+    {
+        var seeded = 0;
+        foreach (var projection in _application.Registry.CatchingUp.ToList())
+        {
+            var viewType = projection.View.FullName!;
+            var batches = new List<IReadOnlyList<StoredState>>();
+            await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var store = new EfCoreStore(db, _time.GetUtcNow());
+
+                // After a restart, or on another instance of the service, only the store knows: caught up once, for good.
+                if (await store.IsCaughtUpAsync(viewType, cancellationToken).ConfigureAwait(false))
+                {
+                    _application.Registry.CaughtUp(projection);
+                    continue;
+                }
+
+                foreach (var seed in projection.Seeds)
+                {
+                    batches.Add(await store.UnseededAsync(viewType, seed.FullName!, batchSize, cancellationToken).ConfigureAwait(false));
+                }
+            }
+
+            foreach (var state in batches.SelectMany(b => b))
+            {
+                if (await CatchUpStepAsync(projection, state, engine => engine.SeedAsync(projection, state, cancellationToken), cancellationToken)
+                    .ConfigureAwait(false))
+                {
+                    seeded++;
+                }
+            }
+
+            await CatchUpStepAsync(projection, state: null, async engine => await engine.CompleteCatchUpAsync(projection, cancellationToken).ConfigureAwait(false), cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return seeded;
+    }
+
+    private const int CatchUpBatchPerPass = 100;
+
+    /// <summary>
+    /// One step of a catch-up in its own transaction. A conflict (another worker seeded the stream, or an event changed
+    /// the state meanwhile) leaves it for the next pass; any other failure is logged with what it was about, and the
+    /// projection stays catching up, its other states seeded. Returns whether the step committed.
+    /// </summary>
+    private async Task<bool> CatchUpStepAsync(IProjectionHandler projection, StoredState? state, Func<Engine, ValueTask> step, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            await step(Engine(db, _time.GetUtcNow())).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex) when (IsConflict(ex))
+        {
+            LogConflictRetry("a catch-up", 1);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            LogCatchUpFailed(projection.View.Name, state?.StateType ?? "-", state?.Key ?? "-", ex);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Removes what the retention no longer keeps (Q2.3), in batches of <paramref name="batchSize"/> so no transaction
+    /// holds many locks; returns how many rows went. Suspended and running instances stay; a removed instance takes its
+    /// parked events with it. Workers call it every <see cref="EfCoreRuntimeOptions.CleanupInterval"/>.
+    /// </summary>
+    public async Task<int> ForgetExpiredAsync(int batchSize = BatchSize, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(batchSize, 1);
+        return (await ForgetExpiredAsync(batchSize, int.MaxValue, cancellationToken).ConfigureAwait(false)).Removed;
+    }
+
+    private const int BatchSize = 1_000;
+
+    /// <summary>How many batches of each kind a worker removes per pass before it gets back to messages.</summary>
+    private const int CleanupBatchesPerPass = 10;
+
+    /// <summary>What one cleanup pass removed, and whether it stopped at its limit with more expired left.</summary>
+    private sealed class CleanupPass(int maxBatches)
+    {
+        public int MaxBatches { get; } = maxBatches;
+
+        public int Removed { get; set; }
+
+        public bool More { get; set; }
+    }
+
+    private async Task<CleanupPass> ForgetExpiredAsync(int batchSize, int maxBatches, CancellationToken cancellationToken)
+    {
+        var now = _time.GetUtcNow();
+        var pass = new CleanupPass(maxBatches);
+        if (_retention.Deduplication.Cutoff(now) is { } dedup)
+        {
+            // A fence blocks its command forever (semantics 3.4): it never expires.
+            await ForgetAsync<InboxRow, Guid>(pass, r => r.RecordedAt <= dedup && !r.Fence, r => r.MessageId, batchSize, cancellationToken).ConfigureAwait(false);
+            await ForgetAsync<HandledRow, Guid>(pass, r => r.HandledAt <= dedup, r => r.MessageId, batchSize, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (_retention.FinishedInstances.Cutoff(now) is { } finished)
+        {
+            await ForgetFinishedInstancesAsync(pass, finished, batchSize, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (_retention.RelayedMessages.Cutoff(now) is { } relayed)
+        {
+            // Without a transport nothing leaves: a published message expires from when it was published.
+            await (_transport is null
+                ? ForgetAsync<PublishedRow, long>(pass, r => r.RecordedAt <= relayed, r => r.Seq, batchSize, cancellationToken)
+                : ForgetAsync<PublishedRow, long>(pass, r => r.RelayedAt <= relayed, r => r.Seq, batchSize, cancellationToken)).ConfigureAwait(false);
+        }
+
+        if (_retention.Events.Cutoff(now) is { } events)
+        {
+            await ForgetAsync<EventRow, long>(pass, r => r.RecordedAt <= events, r => r.Seq, batchSize, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (_retention.DeadLetters.Cutoff(now) is { } dead)
+        {
+            await ForgetAsync<DeadLetterRow, long>(pass, r => r.FailedAt <= dead, r => r.Id, batchSize, cancellationToken).ConfigureAwait(false);
+        }
+
+        return pass;
+    }
+
+    private async Task ForgetAsync<TRow, TKey>(
+        CleanupPass pass, Expression<Func<TRow, bool>> expired, Expression<Func<TRow, TKey>> key, int batchSize, CancellationToken cancellationToken)
+        where TRow : class
+    {
+        for (var batches = 0; ; batches++)
+        {
+            if (batches == pass.MaxBatches)
+            {
+                pass.More = true;
+                return;
+            }
+
+            await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            var batch = await db.Set<TRow>().Where(expired).OrderBy(key).Take(batchSize).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+            pass.Removed += batch;
+            if (batch < batchSize)
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Finished instances whose retention passed, in batches. With an archive, each batch is read whole (its histories)
+    /// outside any transaction, archived, and only then removed; a failed archive keeps the batch for the next pass.
+    /// </summary>
+    private async Task ForgetFinishedInstancesAsync(CleanupPass pass, DateTimeOffset cutoff, int batchSize, CancellationToken cancellationToken)
+    {
+        // Whole rows are read for the archive: smaller batches keep the worker's memory flat.
+        var size = _archive is null ? batchSize : Math.Min(batchSize, ArchiveBatchSize);
+        for (var batches = 0; ; batches++)
+        {
+            if (batches == pass.MaxBatches)
+            {
+                pass.More = true;
+                return;
+            }
+
+            // Each batch adds what it removed to the pass, and says how full it was.
+            var batch = _archive is null
+                ? await ForgetFinishedBatchAsync(pass, cutoff, size, cancellationToken).ConfigureAwait(false)
+                : await ArchiveFinishedBatchAsync(pass, _archive, cutoff, size, cancellationToken).ConfigureAwait(false);
+            if (batch is not { } full)
+            {
+                return; // the archive failed: the batch stays for the next pass
+            }
+
+            if (full < size)
+            {
+                return;
+            }
+        }
+    }
+
+    private const int ArchiveBatchSize = 100;
+
+    private async Task<int?> ForgetFinishedBatchAsync(CleanupPass pass, DateTimeOffset cutoff, int size, CancellationToken cancellationToken)
+    {
+        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        // Set-based, each delete checking the condition again: a parked event goes only while its instance is still a
+        // finished, expired row, so the event of a new instance that re-used the key (its row isn't finished, and can only
+        // exist once the old one is gone) is never taken with it. Parked events go first, in batches of their own (an
+        // instance can have several); what is left of them goes with the instances, in one transaction.
+        var parked = db.Set<ParkedRow>()
+            .Where(p => db.Set<InstanceRow>().Any(i => i.Process == p.Process && i.Key == p.Key && i.FinishedAt <= cutoff));
+        var parkedBatch = await parked.OrderBy(p => p.Process).ThenBy(p => p.Key).ThenBy(p => p.Step).Take(size)
+            .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+        pass.Removed += parkedBatch;
+        if (parkedBatch == size)
+        {
+            return size; // more parked events first: the next batch goes on
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        pass.Removed += await parked.ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+        var removed = await db.Set<InstanceRow>()
+            .Where(r => r.FinishedAt <= cutoff).OrderBy(r => r.FinishedAt).Take(size)
+            .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        pass.Removed += removed;
+        return removed;
+    }
+
+    private async Task<int?> ArchiveFinishedBatchAsync(
+        CleanupPass pass, IHistoryArchive archive, DateTimeOffset cutoff, int size, CancellationToken cancellationToken)
+    {
+        List<InstanceRow> finished;
+        await using (var reader = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+        {
+            finished = await reader.Set<InstanceRow>().AsNoTracking()
+                .Where(r => r.FinishedAt <= cutoff).OrderBy(r => r.FinishedAt).Take(size)
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        if (finished.Count == 0)
+        {
+            return 0;
+        }
+
+        // Archived before anything is removed, with no transaction open.
+        try
+        {
+            // WaitAsync: a worker that is stopping doesn't wait for an archive that ignores the token; nothing was removed yet.
+            await archive.ArchiveAsync([.. finished.Select(HistoryOf)], cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            LogArchiveFailed(finished.Count, ex);
+            return null;
+        }
+
+        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var removed = 0;
+        foreach (var instance in finished)
+        {
+            // Parked events first, through the instance that must still be a finished, expired row: another cleanup that
+            // removed it meanwhile may have freed the key for a new instance, whose early events stay.
+            pass.Removed += await db.Set<ParkedRow>()
+                .Where(p => p.Process == instance.Process && p.Key == instance.Key
+                    && db.Set<InstanceRow>().Any(i => i.Process == instance.Process && i.Key == instance.Key && i.FinishedAt <= cutoff))
+                .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+            removed += await db.Set<InstanceRow>()
+                .Where(r => r.Process == instance.Process && r.Key == instance.Key && r.FinishedAt <= cutoff)
+                .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        pass.Removed += removed;
+
+        // Another cleanup may have removed some meanwhile: the batch counts as full when its read was.
+        return finished.Count;
+    }
 
     /// <summary>A transport that is down doesn't stop the worker: the outbox keeps the messages until it is back.</summary>
     private async Task<int> RelayOrWaitAsync(CancellationToken cancellationToken)
@@ -520,6 +936,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         // the other worker still holds it, the statement waits for its commit and then finds nothing.
         await using var db = await _contexts.CreateDbContextAsync(CancellationToken.None).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None).ConfigureAwait(false);
+        QueueMetrics.Failed.Add(1, QueueTag(db));
         var unchanged = db.Set<QueueRow>().Where(r => r.Id == message.Id && r.Attempts == message.Attempts);
         if (leasedUntil is { } lease)
         {
@@ -550,9 +967,12 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                 return;
             }
 
-            LogDeadLetter(message.Id, failed, error);
             db.Add(new DeadLetterRow { Id = message.Id, Envelope = message.Envelope, Attempts = failed, Error = error.ToString(), FailedAt = now });
             await db.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+            await transaction.CommitAsync(CancellationToken.None).ConfigureAwait(false);
+            LogDeadLetter(message.Id, failed, error); // once the row exists
+            QueueMetrics.DeadLettered.Add(1, QueueTag(db));
+            return;
         }
         else
         {
@@ -589,6 +1009,22 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await operation(Engine(db, _time.GetUtcNow()), process.Name, Keys.Of(key)).ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        Wake();
+    }
+
+    /// <summary>
+    /// Releases the workers' wake-up signal and stops publishing this queue's health. Stop the workers
+    /// (<see cref="RunAsync"/>) first.
+    /// </summary>
+    public void Dispose()
+    {
+        _disposed = true;
+        if (_queueName is { } queue)
+        {
+            QueueMetrics.Forget(queue);
+        }
+
+        _work.Dispose();
     }
 
     // ── Queries ──────────────────────────────────────────────────────────────────────────────
@@ -620,6 +1056,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             return null;
         }
 
+        return HistoryOf(row);
+    }
+
+    private static InstanceHistory HistoryOf(InstanceRow row)
+    {
         var instance = EfCoreStore.Deserialize(row);
         return new InstanceHistory(instance.Process, instance.Key, instance.Fingerprint, instance.History);
     }
@@ -661,6 +1102,62 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             .ToListAsync(cancellationToken).ConfigureAwait(false);
         return [.. rows.Select(r => (TView)_application.Types.Deserialize(r.Type, r.Payload))];
     }
+
+    /// <summary>
+    /// Measures the queue (<see cref="QueueHealth"/>): its lag, what waits for its time, dead letters, pending steps and
+    /// suspended instances. Workers publish it on the <c>Wyrd</c> meter every <see cref="EfCoreRuntimeOptions.HealthInterval"/>.
+    /// </summary>
+    public async Task<QueueHealth> HealthAsync(CancellationToken cancellationToken = default)
+    {
+        var now = _time.GetUtcNow();
+        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var due = db.Set<QueueRow>().Where(r => r.AvailableAt <= now);
+        var pending = db.Set<InstanceRow>().Where(r => r.PendingSince != null);
+        return new QueueHealth(
+            Due: await due.LongCountAsync(cancellationToken).ConfigureAwait(false),
+            OldestDue: Age(await due.MinAsync(r => (DateTimeOffset?)r.AvailableAt, cancellationToken).ConfigureAwait(false), now),
+            Scheduled: await db.Set<QueueRow>().LongCountAsync(r => r.AvailableAt > now, cancellationToken).ConfigureAwait(false),
+            DeadLetters: await db.Set<DeadLetterRow>().LongCountAsync(cancellationToken).ConfigureAwait(false),
+            PendingSteps: await pending.LongCountAsync(cancellationToken).ConfigureAwait(false),
+            OldestPendingStep: Age(await pending.MinAsync(r => r.PendingSince, cancellationToken).ConfigureAwait(false), now),
+            // A literal, so the filtered index ix_instances_suspended answers it.
+            Suspended: await db.Set<InstanceRow>().LongCountAsync(r => r.Status == "Suspended", cancellationToken).ConfigureAwait(false),
+            // Answered by the finished_at index; nothing expires while the retention keeps finished instances forever.
+            ExpiredKept: _retention.FinishedInstances.Cutoff(now) is { } cutoff
+                ? await db.Set<InstanceRow>().LongCountAsync(r => r.FinishedAt <= cutoff, cancellationToken).ConfigureAwait(false)
+                : 0);
+
+        static TimeSpan Age(DateTimeOffset? since, DateTimeOffset now) => since < now ? now - since.Value : TimeSpan.Zero;
+    }
+
+    /// <summary>
+    /// The queue's name in the metrics: its database, schema and table (never the connection string), so runtimes of one
+    /// process on different databases don't overwrite each other's health.
+    /// </summary>
+    private async ValueTask<string> QueueNameAsync(CancellationToken cancellationToken)
+    {
+        if (_queueName is { } known)
+        {
+            return known;
+        }
+
+        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return QueueName(db);
+    }
+
+    private string QueueName(DbContext db)
+    {
+        if (_queueName is { } known)
+        {
+            return known;
+        }
+
+        var queue = db.Model.FindEntityType(typeof(QueueRow))!;
+        return _queueName = $"{db.Database.GetDbConnection().Database}/{queue.GetSchema()}.{queue.GetTableName()}";
+    }
+
+    /// <summary>The counters carry the queue too, like the health gauges: runtimes of one process share the meter.</summary>
+    private KeyValuePair<string, object?> QueueTag(DbContext db) => new(QueueMetrics.QueueTagName, QueueName(db));
 
     /// <summary>Messages waiting in the queue (due now or later) and messages that gave up (dead letters).</summary>
     public async Task<(long Queued, long DeadLetters)> BacklogAsync(CancellationToken cancellationToken = default)
@@ -721,6 +1218,12 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Worker failed (database unavailable?); queued messages are safe, retrying")]
     private partial void LogWorkerFailed(Exception error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "History archive failed: {Count} finished instances kept for the next cleanup")]
+    private partial void LogArchiveFailed(int count, Exception error);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Catching up {View} failed on {StateType} '{Key}': the view stays catching up, the rest goes on")]
+    private partial void LogCatchUpFailed(string view, string stateType, string key, Exception error);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Integration command {Id}: another worker recorded its outcome first, this one is not recorded twice")]
     private partial void LogLeaseLost(long id);

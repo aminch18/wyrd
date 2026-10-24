@@ -22,6 +22,22 @@ namespace Shop.Api.Durable.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Wyrd.EntityFrameworkCore.CaughtUpRow", b =>
+                {
+                    b.Property<string>("ViewType")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("view_type");
+
+                    b.Property<DateTimeOffset>("CaughtUpAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("caught_up_at");
+
+                    b.HasKey("ViewType");
+
+                    b.ToTable("caught_up", "wyrd");
+                });
+
             modelBuilder.Entity("Wyrd.EntityFrameworkCore.DeadLetterRow", b =>
                 {
                     b.Property<long>("Id")
@@ -75,6 +91,9 @@ namespace Shop.Api.Durable.Migrations
 
                     b.HasKey("Seq");
 
+                    b.HasIndex("RecordedAt")
+                        .HasDatabaseName("ix_events_recorded_at");
+
                     b.ToTable("events", "wyrd");
                 });
 
@@ -84,7 +103,14 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("message_id");
 
+                    b.Property<DateTimeOffset>("HandledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("handled_at");
+
                     b.HasKey("MessageId");
+
+                    b.HasIndex("HandledAt")
+                        .HasDatabaseName("ix_handled_at");
 
                     b.ToTable("handled", "wyrd");
                 });
@@ -126,6 +152,10 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("message_id");
 
+                    b.Property<bool>("Fence")
+                        .HasColumnType("boolean")
+                        .HasColumnName("fence");
+
                     b.Property<DateTimeOffset>("RecordedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("recorded_at");
@@ -136,6 +166,9 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnName("reply");
 
                     b.HasKey("MessageId");
+
+                    b.HasIndex("RecordedAt")
+                        .HasDatabaseName("ix_inbox_recorded_at");
 
                     b.ToTable("inbox", "wyrd");
                 });
@@ -161,6 +194,14 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deadline");
 
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<DateTimeOffset?>("PendingSince")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("pending_since");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -172,6 +213,18 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnName("version");
 
                     b.HasKey("Process", "Key");
+
+                    b.HasIndex("FinishedAt")
+                        .HasDatabaseName("ix_instances_finished")
+                        .HasFilter("finished_at IS NOT NULL");
+
+                    b.HasIndex("PendingSince")
+                        .HasDatabaseName("ix_instances_pending")
+                        .HasFilter("pending_since IS NOT NULL");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_instances_suspended")
+                        .HasFilter("status = 'Suspended'");
 
                     b.ToTable("instances", "wyrd");
                 });
@@ -274,6 +327,12 @@ namespace Shop.Api.Durable.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_published_message_id");
 
+                    b.HasIndex("RecordedAt")
+                        .HasDatabaseName("ix_published_recorded_at");
+
+                    b.HasIndex("RelayedAt")
+                        .HasDatabaseName("ix_published_relayed_at");
+
                     b.HasIndex("Seq")
                         .HasDatabaseName("ix_published_pending")
                         .HasFilter("relayed_at IS NULL");
@@ -320,6 +379,33 @@ namespace Shop.Api.Durable.Migrations
                         .HasDatabaseName("ix_queue_available");
 
                     b.ToTable("queue", "wyrd");
+                });
+
+            modelBuilder.Entity("Wyrd.EntityFrameworkCore.SeededRow", b =>
+                {
+                    b.Property<string>("ViewType")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("view_type");
+
+                    b.Property<string>("StateType")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("state_type");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("key");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("ViewType", "StateType", "Key")
+                        .HasAnnotation("SqlServer:Clustered", false);
+
+                    b.ToTable("seeded", "wyrd");
                 });
 
             modelBuilder.Entity("Wyrd.EntityFrameworkCore.StateRow", b =>

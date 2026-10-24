@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Testcontainers.RabbitMq" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Wyrd.RabbitMq\Wyrd.RabbitMq.csproj" />
+    <ProjectReference Include="..\..\samples\Shop\Shop.csproj" />
+  </ItemGroup>
+
+</Project>

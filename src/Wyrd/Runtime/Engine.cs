@@ -331,20 +331,23 @@ internal sealed class Engine(
     /// </summary>
     private async ValueTask ProjectInOrderAsync(Envelope envelope, IEvent @event, Changes changes, CancellationToken cancellationToken)
     {
-        if (registry.Projections.Count == 0)
-        {
-            return;
-        }
-
         if (envelope.Stream is not { } stream)
         {
-            await ProjectAsync(@event, changes, cancellationToken).ConfigureAwait(false); // From outside: no stream to order by.
+            await ProjectAsync(@event, stream: null, changes, cancellationToken).ConfigureAwait(false); // From outside: no stream to order by.
             return;
         }
 
         var projected = await store.LoadProjectedAsync(stream.StateType, stream.Key, cancellationToken).ConfigureAwait(false);
         if (stream.Version <= projected)
         {
+            return;
+        }
+
+        if (registry.Projections.Count == 0)
+        {
+            // Nothing to order yet, but a projection added later catches up from the states, and needs to know which
+            // events of a stream have arrived.
+            changes.Projected[(stream.StateType, stream.Key)] = (projected, stream.Version);
             return;
         }
 
@@ -355,42 +358,90 @@ internal sealed class Engine(
             return;
         }
 
-        await ProjectAsync(@event, changes, cancellationToken).ConfigureAwait(false);
+        await ProjectAsync(@event, stream, changes, cancellationToken).ConfigureAwait(false);
         var version = stream.Version;
         while (await store.FindHeldAsync(stream.StateType, stream.Key, version + 1, cancellationToken).ConfigureAwait(false) is { } held)
         {
             changes.Release.Add(held);
-            await ProjectAsync((IEvent)types.Deserialize(held.Type, held.Payload), changes, cancellationToken).ConfigureAwait(false);
+            await ProjectAsync((IEvent)types.Deserialize(held.Type, held.Payload), stream with { Version = version + 1 }, changes, cancellationToken).ConfigureAwait(false);
             version++;
         }
 
         changes.Projected[(stream.StateType, stream.Key)] = (projected, version);
     }
 
-    private async ValueTask ProjectAsync(IEvent @event, Changes changes, CancellationToken cancellationToken)
+    private async ValueTask ProjectAsync(IEvent @event, StreamRef? stream, Changes changes, CancellationToken cancellationToken)
     {
+        if (stream is { Version: 1 })
+        {
+            // A stream that begins while a projection catches up is followed from here, whether or not this first event
+            // is one the projection handles: otherwise a later event of it would wait for a seed that never comes.
+            foreach (var projection in registry.CatchingUp.Where(p => p.Seeds.Any(s => s.FullName == stream.StateType)))
+            {
+                await FollowsAsync(projection, stream, changes, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
         foreach (var projection in registry.Projections)
         {
             foreach (var handled in projection.Events)
             {
-                if (Accept(@event, handled) is { } projected)
+                if (Accept(@event, handled) is { } projected && await FollowsAsync(projection, stream, changes, cancellationToken).ConfigureAwait(false))
                 {
-                    await ProjectAsync(projection, projected, changes, cancellationToken).ConfigureAwait(false);
+                    var key = Keys.Of(projection.KeyOf(projected));
+                    await SaveViewAsync(projection, key, current => projection.Apply(current, projected), changes, cancellationToken).ConfigureAwait(false);
                 }
             }
         }
     }
 
-    private async ValueTask ProjectAsync(IProjectionHandler projection, IEvent @event, Changes changes, CancellationToken cancellationToken)
+    /// <summary>
+    /// Whether an event of <paramref name="stream"/> reaches a projection that is still catching up from existing
+    /// states: when it is newer than the state the stream's seed was built from, or when the stream begins with it (there
+    /// is nothing to seed). Any other event is in the state a seed is built from, now or on a later pass.
+    /// </summary>
+    private async ValueTask<bool> FollowsAsync(IProjectionHandler projection, StreamRef? stream, Changes changes, CancellationToken cancellationToken)
+    {
+        if (stream is null || registry.IsCaughtUp(projection) || !projection.Seeds.Any(s => s.FullName == stream.StateType))
+        {
+            return true;
+        }
+
+        var viewType = projection.View.FullName!;
+        if (await store.IsCaughtUpAsync(viewType, cancellationToken).ConfigureAwait(false))
+        {
+            registry.CaughtUp(projection);
+            return true;
+        }
+
+        var seeded = new StoredSeeded(viewType, stream.StateType, stream.Key);
+        var from = changes.Seeded.TryGetValue(seeded, out var pending)
+            ? pending
+            : await store.LoadSeededAsync(seeded, cancellationToken).ConfigureAwait(false);
+        if (from is not null)
+        {
+            return stream.Version > from;
+        }
+
+        if (stream.Version != 1)
+        {
+            return false;
+        }
+
+        changes.Seeded[seeded] = 0;
+        return true;
+    }
+
+    private async ValueTask SaveViewAsync(
+        IProjectionHandler projection, string key, Func<object?, object?> update, Changes changes, CancellationToken cancellationToken)
     {
         var viewType = projection.View.FullName!;
-        var key = Keys.Of(projection.KeyOf(@event));
         var stored = changes.Views.TryGetValue((viewType, key), out var pending)
             ? pending
             : await store.LoadViewAsync(viewType, key, cancellationToken).ConfigureAwait(false);
         var current = stored?.Payload is null ? null : types.Deserialize(stored.Type!, stored.Payload);
 
-        var next = projection.Apply(current, @event);
+        var next = update(current);
         var read = stored?.Version ?? 0;
         if (next is null)
         {
@@ -400,6 +451,52 @@ internal sealed class Engine(
 
         var (type, payload) = types.Serialize(next, projection.View);
         changes.Views[(viewType, key)] = new StoredView(viewType, key, type, payload, read);
+    }
+
+    // ── Catching up a projection added to a store with data ──────────────────────────────────
+
+    /// <summary>
+    /// Seeds a catching-up projection's view from one existing state and commits it, with the state's version: the
+    /// stream's events up to it are in the seed and skipped when they arrive, later ones are applied. The version is
+    /// checked on commit, so an event that changed the state meanwhile wins and the stream is seeded on a later pass.
+    /// </summary>
+    public async ValueTask SeedAsync(IProjectionHandler projection, StoredState state, CancellationToken cancellationToken)
+    {
+        var changes = new Changes();
+        var value = types.Deserialize(state.Type, state.Payload);
+        var key = Keys.Of(projection.SeedKeyOf(state.Key, value));
+        await SaveViewAsync(projection, key, current => projection.Seed(current, state.Key, value), changes, cancellationToken).ConfigureAwait(false);
+        changes.Seeded[new StoredSeeded(projection.View.FullName!, state.StateType, state.Key)] = state.Version;
+        changes.Unchanged.Add(state);
+        await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Marks a projection caught up once it follows every stream of the states it seeds from and every event its seeds
+    /// include has been projected. Returns false while either is left.
+    /// </summary>
+    public async ValueTask<bool> CompleteCatchUpAsync(IProjectionHandler projection, CancellationToken cancellationToken)
+    {
+        var viewType = projection.View.FullName!;
+        foreach (var seed in projection.Seeds)
+        {
+            if ((await store.UnseededAsync(viewType, seed.FullName!, 1, cancellationToken).ConfigureAwait(false)).Count > 0)
+            {
+                return false;
+            }
+        }
+
+        if (await store.SeedsAheadAsync(viewType, cancellationToken).ConfigureAwait(false))
+        {
+            return false;
+        }
+
+        var changes = new Changes();
+        changes.CaughtUp.Add(viewType);
+        await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
+        registry.CaughtUp(projection);
+        log(External, null, $"{projection.View.Name} caught up from existing states");
+        return true;
     }
 
     private async ValueTask StartAsync(Process process, IEvent trigger, Changes changes, CancellationToken cancellationToken)
@@ -486,6 +583,10 @@ internal sealed class Engine(
     /// The instance suspended, when the deployed definition's structure is not the one it started with: continuing
     /// would run the wrong step. Null when it is the same.
     /// </summary>
+    private static StoredInstance KeepReply(StoredInstance instance, Envelope envelope, ReplyMessage reply) =>
+        // A fault says the command didn't run: re-sending it is safe, there is nothing to keep.
+        reply.Outcome == ReplyOutcome.Faulted ? instance : instance with { KeptReply = envelope };
+
     private StoredInstance? DefinitionChanged(Process process, StoredInstance instance) =>
         instance.Fingerprint == process.Fingerprint
             ? null
@@ -609,10 +710,11 @@ internal sealed class Engine(
         var trigger = Trigger(instance);
         var changes = new Changes();
 
-        // The reply stays in the owner's inbox: resuming re-sends the command with the same id and gets it again.
+        // The instance keeps the reply for the operator: the owner's inbox forgets it after its deduplication retention,
+        // and an instance can stay suspended longer than that.
         if (instance.Status != ProcessStatus.Suspended && DefinitionChanged(process, instance) is { } changed)
         {
-            changes.Save(changed);
+            changes.Save(KeepReply(changed, envelope, reply));
             await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
             return;
         }
@@ -620,10 +722,13 @@ internal sealed class Engine(
         if (instance.Fingerprint != process.Fingerprint)
         {
             log(target.Process, target.Key, "reply kept for later: the definition changed");
+            changes.Save(KeepReply(instance, envelope, reply));
+            await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
             return;
         }
 
-        instance = Record(instance, HistoryKind.Replied, target.Step, target.Compensating, target.Attempt,
+        // Handled now: a reply kept earlier for this command is no longer the operator's to deliver.
+        instance = Record(instance with { KeptReply = null }, HistoryKind.Replied, target.Step, target.Compensating, target.Attempt,
             reply.Type is null ? null : new StoredMessage(reply.Type, reply.Payload!), outcome: reply.Outcome);
 
         if (target.Step == process.Nodes.Length)
@@ -708,6 +813,28 @@ internal sealed class Engine(
             {
                 Completed = instance.Completed.Add(index),
                 Uncertain = instance.Uncertain.SetItem(index, instance.Pending!.Value),
+            };
+        }
+
+        return StartCompensation(process, instance, trigger, changes);
+    }
+
+    /// <summary>
+    /// Compensates a process whose pending step's reply was kept while its definition was changed: the outcome is known,
+    /// so an accepted step is undone like any completed one, and a rejected one has nothing to undo. No fence needed.
+    /// </summary>
+    private StoredInstance CompensateKnown(Process process, StoredInstance instance, Envelope kept, IEvent trigger, Changes changes)
+    {
+        var target = kept.Process!;
+        var reply = MessageTypes.DeserializeReply(kept.Payload);
+        instance = Record(instance, HistoryKind.Replied, target.Step, target.Compensating, target.Attempt,
+            reply.Type is null ? null : new StoredMessage(reply.Type, reply.Payload!), outcome: reply.Outcome);
+        if (reply.Outcome == ReplyOutcome.Accepted)
+        {
+            instance = instance with
+            {
+                Completed = instance.Completed.Add(target.Step),
+                Facts = instance.Facts.Add(new StoredMessage(reply.Type!, reply.Payload!)),
             };
         }
 
@@ -806,7 +933,10 @@ internal sealed class Engine(
 
     // ── Operators: resume or compensate a suspended instance ─────────────────────────────────
 
-    /// <summary>Re-sends what the suspended instance was doing, with the same message id (the owner's inbox makes it safe).</summary>
+    /// <summary>
+    /// Re-sends what the suspended instance was doing, with the same message id (the owner's inbox makes it safe), or
+    /// delivers the reply it kept while its definition was changed.
+    /// </summary>
     public async ValueTask ResumeAsync(string processName, string key, CancellationToken cancellationToken)
     {
         var (process, instance) = await SuspendedAsync(processName, key, cancellationToken).ConfigureAwait(false);
@@ -817,8 +947,14 @@ internal sealed class Engine(
         log(instance.Process, instance.Key, "resumed by an operator");
         instance = Record(instance, HistoryKind.Resumed);
 
-        instance = instance with { Status = ProcessStatus.Running, Reason = null };
-        if (!instance.Compensating && process.Nodes[instance.Position] is AwaitNode)
+        var kept = KeptFor(instance);
+        instance = instance with { Status = ProcessStatus.Running, Reason = null, KeptReply = null };
+        if (kept is not null)
+        {
+            // The reply arrived while the definition was changed: delivered again, instead of asking the owner again.
+            changes.Outbox.Add(kept with { MessageId = newId() });
+        }
+        else if (!instance.Compensating && process.Nodes[instance.Position] is AwaitNode)
         {
             // Waits again, with a fresh time limit; an event that arrived meanwhile was parked and is taken now.
             instance = await AdvanceAsync(process, instance, trigger, changes, cancellationToken).ConfigureAwait(false);
@@ -858,13 +994,20 @@ internal sealed class Engine(
         var changes = new Changes();
         log(instance.Process, instance.Key, "compensation requested by an operator");
         instance = Record(instance, HistoryKind.CompensationRequested);
-        instance = instance with { Status = ProcessStatus.Running, Reason = null, Deadline = null };
-        changes.Save(process.Nodes[instance.Position] is StepNode step
-            ? CompensateUncertain(process, instance, step, instance.Position, Trigger(instance), changes)
-            : StartCompensation(process, instance, Trigger(instance), changes));
+        var kept = KeptFor(instance);
+        instance = instance with { Status = ProcessStatus.Running, Reason = null, Deadline = null, KeptReply = null };
+        changes.Save(kept is not null
+            ? CompensateKnown(process, instance, kept, Trigger(instance), changes)
+            : process.Nodes[instance.Position] is StepNode step
+                ? CompensateUncertain(process, instance, step, instance.Position, Trigger(instance), changes)
+                : StartCompensation(process, instance, Trigger(instance), changes));
         operation?.SetTag("wyrd.process.status", changes.Find(processName, key)?.Status.ToString());
         await store.CommitAsync(changes, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>The kept reply, when it answers the command the instance is waiting for; any other is stale.</summary>
+    private static Envelope? KeptFor(StoredInstance instance) =>
+        instance.KeptReply is { } kept && kept.ReplyTo == instance.Pending ? kept : null;
 
     private async ValueTask<(Process Process, StoredInstance Instance)> SuspendedAsync(string processName, string key, CancellationToken cancellationToken)
     {

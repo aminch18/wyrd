@@ -1,20 +1,22 @@
 namespace Wyrd.Runtime;
 
 /// <summary>A deterministic in-memory implementation of the store: same contract as a database, no I/O.</summary>
-internal sealed class InMemoryStore : IWyrdStore
+internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
 {
     private readonly Dictionary<(string StateType, string Key), StoredState> _states = [];
     private readonly Dictionary<(string Process, string Key), StoredInstance> _instances = [];
-    private readonly Dictionary<Guid, ReplyMessage> _replies = [];
-    private readonly List<StoredMessage> _events = [];
-    private readonly List<PublishedMessage> _published = [];
+    private readonly Dictionary<Guid, (ReplyMessage Reply, DateTimeOffset At)> _replies = [];
+    private readonly List<(StoredMessage Event, DateTimeOffset At)> _events = [];
+    private readonly List<PublishedEntry> _published = [];
     private readonly List<StoredParked> _parked = [];
     private readonly List<Envelope> _outbox = [];
     private readonly List<(DateTimeOffset At, long Sequence, Envelope Envelope)> _scheduled = [];
     private readonly Dictionary<(string ViewType, string Key), StoredView> _views = [];
-    private readonly HashSet<Guid> _handled = [];
+    private readonly Dictionary<Guid, DateTimeOffset> _handled = [];
     private readonly Dictionary<(string StateType, string Key), long> _projected = [];
     private readonly List<StoredHeld> _held = [];
+    private readonly Dictionary<StoredSeeded, long> _seeded = [];
+    private readonly HashSet<string> _caughtUp = [];
     private long _sequence;
 
     /// <summary>
@@ -23,9 +25,9 @@ internal sealed class InMemoryStore : IWyrdStore
     /// </summary>
     public Lock Sync { get; } = new();
 
-    public IReadOnlyList<StoredMessage> Events => _events;
+    public IEnumerable<StoredMessage> Events => _events.Select(e => e.Event);
 
-    public IReadOnlyList<PublishedMessage> Published => _published;
+    public IEnumerable<PublishedMessage> Published => _published.Select(p => p.Message);
 
     /// <summary>Messages waiting for their time: timers and scheduled retries.</summary>
     public IEnumerable<Envelope> Scheduled => _scheduled.Select(s => s.Envelope);
@@ -44,7 +46,7 @@ internal sealed class InMemoryStore : IWyrdStore
         ValueTask.FromResult(View(viewType, key));
 
     public ValueTask<bool> WasHandledAsync(Guid messageId, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(_handled.Contains(messageId));
+        ValueTask.FromResult(_handled.ContainsKey(messageId));
 
     public ValueTask<StoredState?> LoadStateAsync(string stateType, string key, CancellationToken cancellationToken) =>
         ValueTask.FromResult(State(stateType, key));
@@ -53,7 +55,7 @@ internal sealed class InMemoryStore : IWyrdStore
         ValueTask.FromResult(Instance(process, key));
 
     public ValueTask<ReplyMessage?> FindReplyAsync(Guid commandId, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(_replies.GetValueOrDefault(commandId));
+        ValueTask.FromResult(_replies.TryGetValue(commandId, out var stored) ? stored.Reply : null);
 
     public ValueTask<StoredParked?> FindParkedAsync(string process, string key, int step, CancellationToken cancellationToken) =>
         ValueTask.FromResult(_parked.FirstOrDefault(p => p.Process == process && p.Key == key && p.Step == step));
@@ -63,6 +65,24 @@ internal sealed class InMemoryStore : IWyrdStore
 
     public ValueTask<StoredHeld?> FindHeldAsync(string stateType, string key, long version, CancellationToken cancellationToken) =>
         ValueTask.FromResult(_held.FirstOrDefault(h => h.StateType == stateType && h.Key == key && h.Version == version));
+
+    public ValueTask<bool> IsCaughtUpAsync(string viewType, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(_caughtUp.Contains(viewType));
+
+    public ValueTask<long?> LoadSeededAsync(StoredSeeded seeded, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(_seeded.TryGetValue(seeded, out var version) ? version : (long?)null);
+
+    public ValueTask<bool> SeedsAheadAsync(string viewType, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(_seeded.Any(s => s.Key.ViewType == viewType && _projected.GetValueOrDefault((s.Key.StateType, s.Key.Key)) < s.Value));
+
+    public ValueTask<IReadOnlyList<StoredState>> UnseededAsync(string viewType, string stateType, int max, CancellationToken cancellationToken) =>
+        ValueTask.FromResult<IReadOnlyList<StoredState>>(
+        [
+            .. _states.Values
+                .Where(s => s.StateType == stateType && !_seeded.ContainsKey(new StoredSeeded(viewType, stateType, s.Key)))
+                .OrderBy(s => s.Key, StringComparer.Ordinal) // like a database: a seed folding several states sees one order
+                .Take(max),
+        ]);
 
     public ValueTask CommitAsync(Changes changes, CancellationToken cancellationToken)
     {
@@ -95,6 +115,22 @@ internal sealed class InMemoryStore : IWyrdStore
                 }
             }
 
+            foreach (var state in changes.Unchanged)
+            {
+                if (_states.GetValueOrDefault((state.StateType, state.Key))?.Version != state.Version)
+                {
+                    throw new ConcurrencyConflictException($"Concurrency conflict seeding from {state.StateType} '{state.Key}'.");
+                }
+            }
+
+            foreach (var seeded in changes.Seeded.Keys)
+            {
+                if (_seeded.ContainsKey(seeded))
+                {
+                    throw new ConcurrencyConflictException($"Concurrency conflict seeding {seeded.ViewType} from {seeded.StateType} '{seeded.Key}'.");
+                }
+            }
+
             foreach (var view in changes.Views.Values)
             {
                 if ((_views.GetValueOrDefault((view.ViewType, view.Key))?.Version ?? 0) != view.Version)
@@ -113,6 +149,13 @@ internal sealed class InMemoryStore : IWyrdStore
                 _projected[(stateType, key)] = version;
             }
 
+            foreach (var (seeded, version) in changes.Seeded)
+            {
+                _seeded[seeded] = version;
+            }
+
+            _caughtUp.UnionWith(changes.CaughtUp); // the seed marks stay, like in a database
+
             _held.AddRange(changes.Hold);
             _held.RemoveAll(changes.Release.Contains);
 
@@ -121,9 +164,10 @@ internal sealed class InMemoryStore : IWyrdStore
                 _instances[(instance.Process, instance.Key)] = instance with { Version = instance.Version + 1 };
             }
 
+            var at = now();
             foreach (var (id, reply) in changes.Replies)
             {
-                _replies[id] = reply;
+                _replies[id] = (reply, at);
             }
 
             foreach (var view in changes.Views.Values)
@@ -138,9 +182,13 @@ internal sealed class InMemoryStore : IWyrdStore
                 }
             }
 
-            _handled.UnionWith(changes.Handled);
-            _events.AddRange(changes.Events);
-            _published.AddRange(changes.Published);
+            foreach (var id in changes.Handled)
+            {
+                _handled[id] = at;
+            }
+
+            _events.AddRange(changes.Events.Select(e => (e, at)));
+            _published.AddRange(changes.Published.Select(m => new PublishedEntry(m, at)));
             _parked.AddRange(changes.Park);
             _parked.RemoveAll(changes.Unpark.Contains);
             _outbox.AddRange(changes.Outbox);
@@ -153,6 +201,73 @@ internal sealed class InMemoryStore : IWyrdStore
 
         return ValueTask.CompletedTask;
     }
+
+    /// <summary>What was published and not yet handed to a transport, marked relayed now.</summary>
+    public IReadOnlyList<PublishedMessage> TakeUnrelayed()
+    {
+        lock (Sync)
+        {
+            var pending = _published.Where(p => p.RelayedAt is null).ToList();
+            var at = now();
+            foreach (var published in pending)
+            {
+                published.RelayedAt = at;
+            }
+
+            return [.. pending.Select(p => p.Message)];
+        }
+    }
+
+    /// <summary>The histories of the finished instances <paramref name="retention"/> no longer keeps, oldest first.</summary>
+    /// <summary>The finished instances <paramref name="retention"/> no longer keeps, oldest first: one scan per pass.</summary>
+    public IReadOnlyList<StoredInstance> ExpiredInstances(Retention retention)
+    {
+        var at = now();
+        lock (Sync)
+        {
+            return Finished(retention, at);
+        }
+    }
+
+    /// <summary>
+    /// Removes what <paramref name="retention"/> no longer keeps (Q2.3). Suspended and running instances stay; a removed
+    /// instance takes its parked events with it. Of the finished instances, <paramref name="finished"/> go (those just
+    /// archived, none when the archive failed); without it, every expired one.
+    /// </summary>
+    public void Forget(Retention retention, bool relays, IReadOnlyList<StoredInstance>? finished = null)
+    {
+        var at = now();
+        lock (Sync)
+        {
+            // A fence blocks its command forever (semantics 3.4): it never expires.
+            foreach (var id in _replies.Where(r => r.Value.Reply.Outcome != ReplyOutcome.Fenced && retention.Deduplication.Expired(r.Value.At, at))
+                .Select(r => r.Key).ToList())
+            {
+                _replies.Remove(id);
+            }
+
+            foreach (var id in _handled.Where(h => retention.Deduplication.Expired(h.Value, at)).Select(h => h.Key).ToList())
+            {
+                _handled.Remove(id);
+            }
+
+            foreach (var instance in finished ?? Finished(retention, at))
+            {
+                _instances.Remove((instance.Process, instance.Key));
+                _parked.RemoveAll(p => p.Process == instance.Process && p.Key == instance.Key);
+            }
+
+            // Without a transport nothing leaves: a published message expires from when it was published.
+            _published.RemoveAll(p => (relays ? p.RelayedAt : p.At) is { } since && retention.RelayedMessages.Expired(since, at));
+            _events.RemoveAll(e => retention.Events.Expired(e.At, at));
+        }
+    }
+
+    private List<StoredInstance> Finished(Retention retention, DateTimeOffset at) =>
+        [.. _instances.Values
+            .Where(i => i.Status is ProcessStatus.Completed or ProcessStatus.Compensated
+                && retention.FinishedInstances.Expired(i.History[^1].At, at))
+            .OrderBy(i => i.History[^1].At)];
 
     public ValueTask<IReadOnlyList<Envelope>> TakeOutboxAsync(CancellationToken cancellationToken)
     {
@@ -176,5 +291,14 @@ internal sealed class InMemoryStore : IWyrdStore
 
         _scheduled.Remove(next);
         return ValueTask.FromResult<Scheduled?>(new Scheduled(next.At, next.Envelope));
+    }
+
+    private sealed class PublishedEntry(PublishedMessage message, DateTimeOffset at)
+    {
+        public PublishedMessage Message { get; } = message;
+
+        public DateTimeOffset At { get; } = at;
+
+        public DateTimeOffset? RelayedAt { get; set; }
     }
 }

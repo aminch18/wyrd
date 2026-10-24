@@ -3,6 +3,9 @@
 > The source of truth for how Wyrd behaves. Code, Skuld, analyzers and docs follow this document; when they
 > disagree, this document wins until it is changed on purpose. Each rule is marked **implemented** or
 > **planned (version)**.
+>
+> How the code implements these rules, file by file, and where it currently disagrees with them:
+> [architecture.md](architecture.md) and [runtime.md](runtime.md).
 
 ## Principles
 
@@ -44,8 +47,10 @@ simulate and version.
 
 ### 3.1 Instances
 
-- One instance per process and key, for the lifetime of the store: a second trigger with the same key is a
-  duplicate. **Implemented.**
+- One instance per process and key, for as long as the instance is kept: a second trigger with the same key is a
+  duplicate. Once a finished instance is removed by retention (section 4), its key is free and a later trigger starts
+  a new instance; "once per key, ever" belongs to the domain (a slice that rejects a second order with the same id).
+  **Implemented.**
 - Each instance records a **fingerprint of the process structure** it started with: the steps, their order and the
   waits — not configuration such as retries. If the deployed definition's structure differs, the instance is
   **suspended** ("definition changed") instead of continuing at the wrong step: nothing it receives meanwhile is lost
@@ -106,8 +111,9 @@ simulate and version.
   When a durable host's workers handle an integration command, the outside call is made with no transaction open,
   under a lease: a call slower than its lease may be made again by another worker with the same idempotency key, and
   is still never turned into a failure ([integrations](integrations.md), decision 5). `SendAsync(command, context)`
-  is the exception: it joins your transaction, so the call is made inside it. **Observability planned (v0.5).** A business deadline on a step is
-  modelled as an explicit wait for its confirmation with `.Within`.
+  is the exception: it joins your transaction, so the call is made inside it. A business deadline on a step is
+  modelled as an explicit wait for its confirmation with `.Within`. **Implemented** on the EF Core host:
+  `HealthAsync` and the `Wyrd` meter. In memory there is no queue to watch: the journal and `StatusOf` show it.
 
 ### 3.6 When Wyrd can't resolve something: suspend
 
@@ -145,21 +151,63 @@ fences the step it gave up on; a late success of the pending command resumes it 
 - Every message is handled in **one transaction**: state, events, instances, inbox, outbox, timers and read
   models commit together or not at all. **Implemented** in memory and on the EF Core host (PostgreSQL, SQL Server).
 - Delivery is **at least once**; decisions are **effectively once**: the owner's inbox remembers every command it
-  decided and replays the outcome to duplicates. **Implemented.**
+  decided, for the deduplication retention, and replays the outcome to duplicates. **Implemented.**
 - Integration events reach each subscriber **once, in the contract version it understands** (upcast step by step;
   a newer version is never downcast). **Implemented.**
+
+### 4.1 Retention
+
+Everything a host keeps has a retention, and **on a durable host each one is a decision written in the application**:
+the host doesn't start without a `Retention`, whose every member is required, each `Keep.For(period)` or
+`Keep.Forever("why")`. **Implemented** in memory and on the EF Core host.
+
+| Member | What | Counted from |
+|---|---|---|
+| `Deduplication` | The inbox and the handled message ids: how long a duplicate is recognised | When it was handled |
+| `FinishedInstances` | Completed and compensated instances, with their history (what Urd replays) | When it finished |
+| `RelayedMessages` | Integration events published to other services | When relayed (when published, on a host without a transport) |
+| `Events` | Accepted domain events | When recorded |
+| `DeadLetters` | Messages that gave up | When they failed |
+
+- Something expires once its age reaches the period. **Suspended instances never expire**: they wait for an operator.
+  Running and waiting instances aren't finished, so they never expire either. A removed instance takes its parked
+  events with it.
+- **A history archive** (`IHistoryArchive`, optional, `UseHistoryArchive`) receives the histories of expired finished
+  instances before they are removed, and an instance is removed only once the archive returned: a failed archive keeps
+  it for the next pass. Delivery is at least once: a history can be archived again (the host stopped in between). A
+  failed batch is tried again, oldest first, so a history the archive can never store blocks the removal of the
+  instances behind it, and the archive must store it elsewhere rather than fail for it; the EF Core host counts what
+  is kept past its retention (`ExpiredKept`). An archived history still replays with Urd. Without an archive,
+  expiring deletes.
+  **Implemented** in memory and on the EF Core host.
+- **Fences never expire**: a fenced command is blocked forever (3.4). There is one per step given up on without knowing
+  whether it ran, so they grow with failures, not with traffic.
+- **What an instance learned doesn't depend on deduplication.** A reply that arrives while the deployed definition is
+  not the one the instance started with is kept on the instance, and the operator's resume or compensation takes it:
+  an instance can stay suspended longer than the owner's inbox remembers.
+- Durable hosts remove what expired in batches, in the workers, every `CleanupInterval` (one minute by default), never
+  on a message's path. The in-memory host removes it when its clock moves (`AdvanceAsync`).
+- In memory there is a default, `Retention.InMemory`, that keeps everything (nothing outlives the process), and the
+  journal keeps the most recent `JournalLimit` entries (10,000 by default).
+- Business data is not delivery machinery: states and read models have no retention, they live as long as the
+  application keeps them. So does what describes them: the last version of each stream projected (one per state), and
+  for a projection that caught up from existing states (5), one seed mark per state it was seeded from and the fact
+  that it caught up. They grow with the states, never with traffic.
 
 ## 5. Read models
 
 - A projection updates a view from events with pure functions, in the transaction that handles the event; the same
-  message is never applied twice. **Implemented.**
+  message is never applied twice: a domain event by its stream version, which never expires, and an integration event
+  from outside (it has no stream) by its message id, within the deduplication retention (4.1). **Implemented.**
 - Events of one stream (one state key) reach a projection **in the order they happened**, whatever the delivery
   order, so views don't defend against reordering by hand: each domain event carries its stream and version, and one
   that arrives early is held until the gap is filled. Processes don't wait for read models. **Implemented.**
 - Across streams there is no order (two orders, or an order and its payment if they are different states), and
   integration events from outside carry no stream. A view combining several streams still tolerates reordering
-  between them. *Conscious limit.* Catching up a projection added to an existing durable store comes with the
-  durable hosts (v0.5).
+  between them. *Conscious limit.*
+- A projection added to a store that already has data catches up from the **current states** it names
+  (`Seed<TState>`), since Wyrd keeps state, not every past event, and then follows their events: an event already in a
+  seed is never applied again, and none is missed. Only what a state says can be rebuilt. **Implemented.**
 
 ## 6. Conscious limits
 
@@ -168,3 +216,4 @@ fences the step it gave up on; a late success of the pending command resumes it 
 | One event per decision | Keeps decisions simple and explicit | A union of events |
 | Linear processes | Readable, simulable, versionable | Another process for the alternative |
 | Snapshot state | Simple storage, fast reads | Event sourcing as a future option |
+| A new projection starts from current states | There is no event log to replay; only what a state says can be rebuilt | Keep what a future view needs in the state, or publish it as an event a view already counts |
