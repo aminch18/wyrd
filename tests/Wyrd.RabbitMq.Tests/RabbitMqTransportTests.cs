@@ -107,6 +107,23 @@ public sealed class RabbitMqTransportTests(Broker broker) : IClassFixture<Broker
     }
 
     [Fact]
+    public async Task a_message_that_can_never_be_read_is_rejected_not_redelivered_forever()
+    {
+        var options = broker.NewOptions();
+        using var shipping = new InMemoryRuntime().AddProjection(new Shipments());
+        var queue = Queue();
+        await using var subscriber = await RabbitMqSubscriber.StartAsync(broker.Connection, shipping, queue, options);
+        await using var transport = await RabbitMqTransport.CreateAsync(broker.Connection, options);
+
+        await transport.SendAsync(new TransportMessage(Guid.NewGuid(), "shipping.order-shipped v1", "not json"));
+        await transport.SendAsync(Message("B-2")); // one consumer, in order: the next message gets through
+
+        await UntilAsync(() => shipping.View<Shipment>("B-2"));
+        await using var channel = await broker.Connection.CreateChannelAsync();
+        Assert.Equal(0u, await channel.MessageCountAsync(queue));
+    }
+
+    [Fact]
     public async Task a_subscriber_without_a_prefetch_limit_is_refused()
     {
         using var shipping = new InMemoryRuntime().AddProjection(new Shipments());

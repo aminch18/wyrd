@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using RabbitMQ.Client;
@@ -12,7 +13,8 @@ namespace Wyrd.RabbitMq;
 /// uses (<see cref="IWyrdRuntime.Subscriptions"/>), consumed with manual acknowledgements. A message is acknowledged
 /// once the runtime has it (<see cref="IWyrdRuntime.ReceiveAsync"/>), so a crash before that delivers it again, and the
 /// runtime handles the redelivery once. A message the runtime can't take now is handed back after
-/// <see cref="RabbitMqOptions.RetryDelay"/>; one that isn't a Wyrd message is rejected. Bindings are only ever added:
+/// <see cref="RabbitMqOptions.RetryDelay"/>; one that isn't a Wyrd message, or whose payload can never be read, is
+/// rejected (to the queue's dead-letter exchange, if it has one). Bindings are only ever added:
 /// unbind a contract the service stopped using by hand.
 /// </summary>
 public sealed partial class RabbitMqSubscriber : IAsyncDisposable
@@ -85,6 +87,13 @@ public sealed partial class RabbitMqSubscriber : IAsyncDisposable
         {
             await _runtime.ReceiveAsync(message, delivery.CancellationToken).ConfigureAwait(false);
         }
+        catch (Exception ex) when (ex is JsonException or NotAnIntegrationEventException)
+        {
+            // It will never be read, however often it comes: rejected, to the queue's dead-letter exchange if it has one.
+            LogUnreadable(message.Type, id, ex);
+            await _channel.BasicRejectAsync(delivery.DeliveryTag, requeue: false, CancellationToken.None).ConfigureAwait(false);
+            return;
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // The runtime couldn't take it (its database is down?): hand it back, a little later, so it isn't lost.
@@ -111,6 +120,9 @@ public sealed partial class RabbitMqSubscriber : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Rejected a message routed as {RoutingKey}: not a Wyrd message (no message id or type)")]
     private partial void LogRejected(string routingKey);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{Type} ({Id}) can't be read: rejected, not handed back")]
+    private partial void LogUnreadable(string type, Guid id, Exception error);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Couldn't deliver {Type} ({Id}) to the runtime: handed back to the queue")]
     private partial void LogReceiveFailed(string type, Guid id, Exception error);
