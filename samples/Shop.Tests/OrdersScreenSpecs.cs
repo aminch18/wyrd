@@ -15,7 +15,7 @@ public class OrdersScreenSpecs
                 new OrderPlaced("A-1", "KEYBOARD", 1, 89m),
                 new StockReserved("KEYBOARD", 1, "A-1"),
                 new PaymentCharged("A-1", 89m),
-                new OrderShipped("A-1"))
+                new OrderShipped("A-1", "KEYBOARD"))
             .Then("A-1", new OrderSummary("A-1", "KEYBOARD", 1, 89m, "Shipped"));
 
     [Fact]
