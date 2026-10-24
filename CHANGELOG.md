@@ -28,7 +28,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   Ubuntu CI publishes and runs the native API alongside the existing native console walkthrough.
 - **Verdandi** (`Wyrd.EntityFrameworkCore`, in progress): the durable runtime on PostgreSQL and SQL Server.
   `EfCoreRuntime<TContext>` handles every message in one transaction that also takes it off the queue — state,
-  events, instances, inbox, outbox, timers and read models commit together or not at all. The queue is a table shared
+  events, instances, inbox, outbox, timers and read models commit together or not at all (an integration's outside
+  call is made before that transaction, under a lease: see *Integrations*). The queue is a table shared
   by any number of workers (`FOR UPDATE SKIP LOCKED` / `READPAST`, the only raw SQL); failures are redelivered with
   backoff and poison messages go to dead letters; processes survive restarts. `modelBuilder.AddWyrd()` puts Wyrd's
   tables in your own `DbContext` and migrations, and `SendAsync(command, context)` joins your transaction. JIT only:
