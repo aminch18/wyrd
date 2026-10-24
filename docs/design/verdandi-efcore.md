@@ -44,7 +44,8 @@ and dead-lettered messages: alerts belong on these.
 ### 3. Optimistic concurrency and unique keys settle races
 
 States, instances and read models are written with their expected version in the `WHERE` clause (a view built from
-several streams is written by workers handling different streams at once); inbox, handled, parked and held rows, and
+several streams is written by workers handling different streams at once; a deleted view keeps its row and its
+version, so a stale read never matches a view recreated with the same key); inbox, handled, parked and held rows, and
 new views, are inserted on `SaveChanges`, where a key taken by another worker fails the transaction. A conflict rolls
 everything back and the message is handled again against what the other worker committed; it never counts as a
 failed delivery.
@@ -88,7 +89,7 @@ The constructor takes a `Retention` with every member required ([semantics](sema
 are recognised, finished instances and their histories kept, relayed messages, domain events and dead letters. Workers
 remove what expired every `CleanupInterval`, in batches (`Take(n)` with `ExecuteDelete`, translated by both
 providers), each in its own short transaction, so cleanup never holds many locks or slows a message. Dates are
-indexed (`finished_at` only for finished instances, a filtered index). Inbox rows that are fences (`fence`) are never
+indexed (`finished_at` only for finished instances, a filtered index; `failed_at` for dead letters). Inbox rows that are fences (`fence`) are never
 removed. With a history archive, each batch of expired instances, 100 at most whatever the cleanup's batch size (whole
 rows are read for their histories), is handed to it first, with no transaction open, and removed only once it
 returned; a worker that is stopping doesn't wait for an archive that ignores its token.

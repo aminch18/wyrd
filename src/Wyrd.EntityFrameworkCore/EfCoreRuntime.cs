@@ -80,6 +80,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxPollInterval, _options.PollInterval, "options.MaxPollInterval");
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_options.HealthInterval, TimeSpan.Zero, "options.HealthInterval");
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_options.CleanupInterval, TimeSpan.Zero, "options.CleanupInterval");
+        ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxDeliveryAttempts, 1, "options.MaxDeliveryAttempts");
+        ArgumentOutOfRangeException.ThrowIfLessThan(_options.RelayBatchSize, 1, "options.RelayBatchSize");
+        ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxConflictRetries, 1, "options.MaxConflictRetries");
+        ArgumentOutOfRangeException.ThrowIfLessThan(_options.RedeliveryDelay, TimeSpan.Zero, "options.RedeliveryDelay");
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_options.IntegrationLease, TimeSpan.Zero, "options.IntegrationLease");
         _time = time ?? TimeProvider.System;
         _logger = logger ?? NullLogger.Instance;
     }
@@ -1091,7 +1096,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         var viewType = typeof(TView).FullName!;
         await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var row = await db.Set<ViewRow>().AsNoTracking()
-            .FirstOrDefaultAsync(r => r.ViewType == viewType && r.Key == name, cancellationToken).ConfigureAwait(false);
+            .FirstOrDefaultAsync(r => r.ViewType == viewType && r.Key == name && r.Type != ViewRow.Deleted, cancellationToken).ConfigureAwait(false);
         return row is null ? null : (TView)_application.Types.Deserialize(row.Type, row.Payload);
     }
 
@@ -1102,7 +1107,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         var viewType = typeof(TView).FullName!;
         await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var rows = await db.Set<ViewRow>().AsNoTracking()
-            .Where(r => r.ViewType == viewType).OrderBy(r => r.Created).ThenBy(r => r.Key)
+            .Where(r => r.ViewType == viewType && r.Type != ViewRow.Deleted).OrderBy(r => r.Created).ThenBy(r => r.Key)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
         return [.. rows.Select(r => (TView)_application.Types.Deserialize(r.Type, r.Payload))];
     }

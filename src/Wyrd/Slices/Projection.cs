@@ -65,9 +65,23 @@ public abstract class Projection<TView> : IProjectionHandler
 
     object? IProjectionHandler.Apply(object? view, IEvent @event) => _handlers[@event.GetType()].Apply(view, @event);
 
-    object IProjectionHandler.SeedKeyOf(string key, object state) => _seeds[state.GetType()].Key(key, state);
+    object IProjectionHandler.SeedKeyOf(string key, object state) => SeedFor(state).Key(key, state);
 
-    object? IProjectionHandler.Seed(object? view, string key, object state) => _seeds[state.GetType()].Seed(view, key, state);
+    object? IProjectionHandler.Seed(object? view, string key, object state) => SeedFor(state).Seed(view, key, state);
+
+    // A state is stored as its case (Payment.Charged): its seed is registered under the declared state (Payment).
+    private (Func<string, object, object> Key, Func<object?, string, object, object?> Seed) SeedFor(object state)
+    {
+        foreach (var (type, seed) in _seeds)
+        {
+            if (type.IsInstanceOfType(state))
+            {
+                return seed;
+            }
+        }
+
+        throw new KeyNotFoundException($"{GetType().Name} has no seed for {state.GetType().Name}.");
+    }
 }
 
 internal interface IProjectionHandler

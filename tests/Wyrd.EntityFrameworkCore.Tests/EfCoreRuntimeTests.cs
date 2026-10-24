@@ -247,6 +247,34 @@ public abstract class EfCoreRuntimeTests(Database database)
     }
 
     [Fact]
+    public async Task a_stale_read_of_a_deleted_view_doesnt_overwrite_the_view_recreated_with_its_key()
+    {
+        var contexts = await database.NewAsync();
+        async Task CommitAsync(StoredView view)
+        {
+            await using var db = await contexts.CreateDbContextAsync();
+            var changes = new Changes();
+            changes.Views[(view.ViewType, view.Key)] = view;
+            await new EfCoreStore(db, DateTimeOffset.UtcNow).CommitAsync(changes, default);
+        }
+
+        async Task<StoredView?> LoadAsync()
+        {
+            await using var db = await contexts.CreateDbContextAsync();
+            return await new EfCoreStore(db, DateTimeOffset.UtcNow).LoadViewAsync("V", "K", default);
+        }
+
+        await CommitAsync(new StoredView("V", "K", "T", "{}", 0));
+        var stale = (await LoadAsync())!;                                    // a worker reads it...
+        await CommitAsync(new StoredView("V", "K", null, null, stale.Version)); // ...another deletes it...
+        Assert.Null((await LoadAsync())!.Payload);
+        await CommitAsync(new StoredView("V", "K", "T", "{\"again\":1}", (await LoadAsync())!.Version)); // ...and recreates it
+
+        await Assert.ThrowsAsync<ConcurrencyConflictException>(() => CommitAsync(stale with { Payload = "{\"stale\":1}" }));
+        Assert.Equal("{\"again\":1}", (await LoadAsync())!.Payload);
+    }
+
+    [Fact]
     public async Task workers_projecting_different_streams_into_one_view_lose_no_update()
     {
         const int items = 40;

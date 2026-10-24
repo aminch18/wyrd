@@ -240,6 +240,12 @@ namespace Shop.Api.Durable.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "ix_dead_letters_failed_at",
+                schema: "wyrd",
+                table: "dead_letters",
+                column: "failed_at");
+
+            migrationBuilder.CreateIndex(
                 name: "ix_events_recorded_at",
                 schema: "wyrd",
                 table: "events",

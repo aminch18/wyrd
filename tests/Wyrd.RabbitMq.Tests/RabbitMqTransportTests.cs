@@ -124,6 +124,25 @@ public sealed class RabbitMqTransportTests(Broker broker) : IClassFixture<Broker
     }
 
     [Fact]
+    public async Task a_message_the_runtime_couldnt_take_is_handed_back_and_delivered_again()
+    {
+        var options = broker.NewOptions();
+        var received = new TaskCompletionSource<TransportMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runtime = new Recorder(received) { FailFirst = true }; // its database is down, once
+        var queue = Queue();
+        await using var subscriber = await RabbitMqSubscriber.StartAsync(broker.Connection, runtime, queue, options);
+        await using var transport = await RabbitMqTransport.CreateAsync(broker.Connection, options);
+        var sent = Message("A-1");
+
+        await transport.SendAsync(sent);
+
+        Assert.Equal(sent.MessageId, (await received.Task.WaitAsync(TimeSpan.FromSeconds(10))).MessageId);
+        Assert.Equal(2, runtime.Calls);
+        await using var channel = await broker.Connection.CreateChannelAsync();
+        Assert.Equal(0u, await channel.MessageCountAsync(queue));
+    }
+
+    [Fact]
     public async Task a_subscriber_without_a_prefetch_limit_is_refused()
     {
         using var shipping = new InMemoryRuntime().AddProjection(new Shipments());
@@ -158,8 +177,17 @@ public sealed class RabbitMqTransportTests(Broker broker) : IClassFixture<Broker
     {
         public IReadOnlyList<string> Subscriptions => ["shipping.order-shipped v1"];
 
+        public bool FailFirst { get; init; }
+
+        public int Calls { get; private set; }
+
         public Task ReceiveAsync(TransportMessage message, CancellationToken cancellationToken = default)
         {
+            if (++Calls == 1 && FailFirst)
+            {
+                throw new InvalidOperationException("database unavailable");
+            }
+
             received.TrySetResult(message);
             return Task.CompletedTask;
         }

@@ -596,13 +596,16 @@ internal sealed class Engine(
     }
 
     /// <summary>
+    /// The instance keeping a reply for its operator. A fault says the command didn't run: re-sending it is safe, there is
+    /// nothing to keep.
+    /// </summary>
+    private static StoredInstance KeepReply(StoredInstance instance, Envelope envelope, ReplyMessage reply) =>
+        reply.Outcome == ReplyOutcome.Faulted ? instance : instance with { KeptReply = envelope };
+
+    /// <summary>
     /// The instance suspended, when the deployed definition's structure is not the one it started with: continuing
     /// would run the wrong step. Null when it is the same.
     /// </summary>
-    private static StoredInstance KeepReply(StoredInstance instance, Envelope envelope, ReplyMessage reply) =>
-        // A fault says the command didn't run: re-sending it is safe, there is nothing to keep.
-        reply.Outcome == ReplyOutcome.Faulted ? instance : instance with { KeptReply = envelope };
-
     private StoredInstance? DefinitionChanged(Process process, StoredInstance instance) =>
         instance.Fingerprint == process.Fingerprint
             ? null

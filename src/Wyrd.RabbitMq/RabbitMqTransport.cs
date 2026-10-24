@@ -59,10 +59,11 @@ public sealed class RabbitMqTransport : IWyrdTransport, IAsyncDisposable
         // One publish at a time on the channel: confirms are tracked per channel. The confirm is awaited for a bounded
         // time, so a broker that never confirms makes the relay fail (the message stays in the outbox), not hang.
         using var confirm = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        confirm.CancelAfter(_confirmTimeout);
         await _publish.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            confirm.CancelAfter(_confirmTimeout); // the time waited for the channel isn't the broker's
+
             await _channel.BasicPublishAsync(_exchange, message.Type, mandatory: false, properties, Encoding.UTF8.GetBytes(message.Payload), confirm.Token)
                 .ConfigureAwait(false);
         }

@@ -63,6 +63,9 @@ namespace Shop.Api.Durable.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("FailedAt")
+                        .HasDatabaseName("ix_dead_letters_failed_at");
+
                     b.ToTable("dead_letters", "wyrd");
                 });
 

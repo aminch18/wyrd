@@ -12,7 +12,7 @@ using Shop.Api.Durable;
 namespace Shop.Api.Durable.Migrations
 {
     [DbContext(typeof(ShopDbContext))]
-    [Migration("20261024144743_InitialWyrd")]
+    [Migration("20261024150544_InitialWyrd")]
     partial class InitialWyrd
     {
         /// <inheritdoc />
@@ -65,6 +65,9 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnName("failed_at");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FailedAt")
+                        .HasDatabaseName("ix_dead_letters_failed_at");
 
                     b.ToTable("dead_letters", "wyrd");
                 });

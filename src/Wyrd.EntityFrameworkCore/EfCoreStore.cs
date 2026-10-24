@@ -40,7 +40,9 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
     public async ValueTask<StoredView?> LoadViewAsync(string viewType, string key, CancellationToken cancellationToken) =>
         await db.Set<ViewRow>().AsNoTracking()
             .Where(r => r.ViewType == viewType && r.Key == key)
-            .Select(r => new StoredView(viewType, key, r.Type, r.Payload, r.Version))
+            .Select(r => r.Type == ViewRow.Deleted
+                ? new StoredView(viewType, key, null, null, r.Version)
+                : new StoredView(viewType, key, r.Type, r.Payload, r.Version))
             .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
 
     public async ValueTask<long> LoadProjectedAsync(string stateType, string key, CancellationToken cancellationToken) =>
@@ -296,11 +298,18 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
             return;
         }
 
+        // A deleted view keeps its row (a tombstone) and its version, so a worker that read it before the delete can't
+        // take a view recreated with the same key for the one it read. A recreated view is listed as new.
         var read = db.Set<ViewRow>().Where(r => r.ViewType == view.ViewType && r.Key == view.Key && r.Version == view.Version);
         var rows = view.Payload is null
-            ? await read.ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false)
+            ? await read.ExecuteUpdateAsync(
+                s => s.SetProperty(r => r.Type, ViewRow.Deleted).SetProperty(r => r.Payload, "").SetProperty(r => r.Version, view.Version + 1),
+                cancellationToken).ConfigureAwait(false)
             : await read.ExecuteUpdateAsync(
-                s => s.SetProperty(r => r.Type, view.Type!).SetProperty(r => r.Payload, view.Payload).SetProperty(r => r.Version, view.Version + 1),
+                s => s.SetProperty(r => r.Created, r => r.Type == ViewRow.Deleted ? now : r.Created)
+                    .SetProperty(r => r.Type, view.Type!)
+                    .SetProperty(r => r.Payload, view.Payload)
+                    .SetProperty(r => r.Version, view.Version + 1),
                 cancellationToken).ConfigureAwait(false);
         if (rows != 1)
         {

@@ -194,6 +194,34 @@ public class ProjectionCatchUpTests
         }
     }
 
+    public abstract record Light : IState<Light>
+    {
+        public static Light Initial { get; } = new Off();
+
+        public Light Evolve(IDomainEvent domainEvent) => this;
+
+        public sealed record Off : Light;
+
+        public sealed record Lit(int Level) : Light;
+    }
+
+    public sealed record LightView(string Key, int Level);
+
+    private sealed class LightViews : Projection<LightView>
+    {
+        public LightViews() =>
+            Seed<Light>((key, _) => key, (_, key, light) => new LightView(key, light is Light.Lit lit ? lit.Level : 0));
+    }
+
+    [Fact]
+    public void a_state_stored_as_one_of_its_cases_is_seeded_by_the_seed_of_its_declared_type()
+    {
+        IProjectionHandler projection = new LightViews();
+
+        Assert.Equal("L-1", projection.SeedKeyOf("L-1", new Light.Lit(3)));
+        Assert.Equal(new LightView("L-1", 3), projection.Seed(null, "L-1", new Light.Lit(3)));
+    }
+
     private static Envelope Command(Application application, ICommand command)
     {
         var (type, payload) = application.Types.Serialize(command, command.GetType());

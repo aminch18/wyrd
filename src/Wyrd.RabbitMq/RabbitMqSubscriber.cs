@@ -52,24 +52,34 @@ public sealed partial class RabbitMqSubscriber : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(queue);
         options ??= new RabbitMqOptions();
         ArgumentOutOfRangeException.ThrowIfZero(options.Prefetch, "options.Prefetch");
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.RetryDelay, TimeSpan.Zero, "options.RetryDelay");
 
         var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-        await channel.ExchangeDeclareAsync(options.Exchange, ExchangeType.Topic, durable: true, autoDelete: false, cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
-        await channel.QueueDeclareAsync(queue, durable: true, exclusive: false, autoDelete: false, cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
-        foreach (var contract in runtime.Subscriptions)
+        try
         {
-            await channel.QueueBindAsync(queue, options.Exchange, contract, cancellationToken: cancellationToken).ConfigureAwait(false);
+            await channel.ExchangeDeclareAsync(options.Exchange, ExchangeType.Topic, durable: true, autoDelete: false, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            await channel.QueueDeclareAsync(queue, durable: true, exclusive: false, autoDelete: false, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            foreach (var contract in runtime.Subscriptions)
+            {
+                await channel.QueueBindAsync(queue, options.Exchange, contract, cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
+
+            await channel.BasicQosAsync(prefetchSize: 0, options.Prefetch, global: false, cancellationToken).ConfigureAwait(false);
+
+            var subscriber = new RabbitMqSubscriber(channel, runtime, options, logger ?? (ILogger)NullLogger.Instance);
+            var consumer = new AsyncEventingBasicConsumer(channel);
+            consumer.ReceivedAsync += subscriber.OnReceivedAsync;
+            subscriber._consumerTag = await channel.BasicConsumeAsync(queue, autoAck: false, consumer, cancellationToken).ConfigureAwait(false);
+            return subscriber;
         }
-
-        await channel.BasicQosAsync(prefetchSize: 0, options.Prefetch, global: false, cancellationToken).ConfigureAwait(false);
-
-        var subscriber = new RabbitMqSubscriber(channel, runtime, options, logger ?? (ILogger)NullLogger.Instance);
-        var consumer = new AsyncEventingBasicConsumer(channel);
-        consumer.ReceivedAsync += subscriber.OnReceivedAsync;
-        subscriber._consumerTag = await channel.BasicConsumeAsync(queue, autoAck: false, consumer, cancellationToken).ConfigureAwait(false);
-        return subscriber;
+        catch
+        {
+            // Declaring, binding or consuming failed (a permission, a queue declared otherwise): the channel is ours to close.
+            await channel.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
     }
 
     private async Task OnReceivedAsync(object sender, BasicDeliverEventArgs delivery)

@@ -119,6 +119,9 @@ internal sealed class ViewRow
     /// <summary>When the view was first written: views are listed in creation order (then by key).</summary>
     public DateTimeOffset Created { get; set; }
 
+    /// <summary>The type of a deleted view's row: its version stays, so a stale read never matches a recreated view.</summary>
+    public const string Deleted = "";
+
     public long Version { get; set; }
 }
 
@@ -357,6 +360,7 @@ public static class WyrdModelBuilderExtensions
             e.Property(r => r.Attempts).HasColumnName("attempts");
             e.Property(r => r.Error).HasColumnName("error");
             e.Property(r => r.FailedAt).HasColumnName("failed_at");
+            e.HasIndex(r => r.FailedAt).HasDatabaseName("ix_dead_letters_failed_at"); // retention
         });
 
         return modelBuilder;

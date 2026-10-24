@@ -525,31 +525,33 @@ messages no process decides on (events, replies, timers) are redelivered by the 
   `SendAsync(command, context)` joins **your** transaction and surfaces a conflict as `ConcurrencyConflictException`
   for you to retry (`EfCoreRuntime.cs:178-196`).
 
-#### The worker loop (`RunAsync`, `EfCoreRuntime.cs:335-365`)
+#### The worker loop (`RunAsync`)
 
 ```text
 until cancelled:
-  handle due messages, up to 1,000          (ProcessPendingAsync)
+  handle due messages, up to 1,000           (ProcessPendingAsync; an integration command is leased, called with no
+                                              transaction open, and its outcome recorded in a second one)
   relay published messages, if a transport   (RelayOrWaitAsync: a transport that is down doesn't stop the worker)
-  every CleanupInterval (1 minute): ForgetExpiredAsync
-  if nothing was handled or relayed: wait PollInterval (250 ms)
+  if a projection is catching up             (one loop of the runtime at a time, 100 states per pass)
+  every CleanupInterval (1 minute)           (ForgetExpiredAsync, ten batches of each kind per pass: more next loop)
+  every HealthInterval (15 s)                (HealthAsync, published on the Wyrd meter)
+  if nothing was handled, relayed or seeded: wait, from PollInterval (250 ms) doubling up to MaxPollInterval (2 s);
+                                              a message this runtime queues itself ends the wait at once
   on any other exception: log, wait PollInterval, go on (everything is transactional)
 ```
 
-Run as many as you like; the Shop API runs one, as a `BackgroundService` (`samples/Shop.Api/Durable/WyrdWorker.cs:7-21`).
-Options and defaults: `src/Wyrd.EntityFrameworkCore/EfCoreRuntimeOptions.cs:4-23`.
+Cleanup and health measurements claim their turn atomically, so several loops of one runtime never run them at once.
+Run as many workers as you like; the Shop API runs one, as a `BackgroundService` (`samples/Shop.Api/Durable/WyrdWorker.cs`).
+Options and defaults: `src/Wyrd.EntityFrameworkCore/EfCoreRuntimeOptions.cs`, validated by the constructor.
 
-#### Retention cleanup (`ForgetExpiredAsync`, `EfCoreRuntime.cs:409-491`)
+#### Retention cleanup (`ForgetExpiredAsync`)
 
 For each `Retention` member with a period, delete expired rows in batches of 1,000, each batch its own short statement
-(`ForgetAsync`, `EfCoreRuntime.cs:446-461`). Finished instances are deleted one by one inside a transaction per batch,
-re-checking `finished_at` in the `DELETE`, and take their parked events with them (`EfCoreRuntime.cs:463-491`). The
-first cleanup ran at worker start (`_lastCleanup` starts at `MinValue`); from its command log:
-
-```sql
-DELETE FROM wyrd.inbox AS i WHERE i.message_id IN (
-    SELECT i0.message_id FROM wyrd.inbox AS i0 WHERE i0.recorded_at <= @dedup ORDER BY i0.message_id LIMIT @p)
-```
+(`ForgetAsync`); inbox rows that are fences are never deleted. Finished instances go set-based: their parked events
+first, in batches of their own, through an instance that is still a finished, expired row (so the early event of a new
+instance that re-used the key stays), then the instances. With an `IHistoryArchive`, each batch of at most 100 is read
+whole, archived with no transaction open, and removed only once the archive returned. A pass stops after ten batches
+of each kind, and the next loop goes on.
 
 The Shop's decisions are in `samples/Shop.Api/Durable/DurableHost.cs:11-18`: deduplication 7 days, finished instances
 30 days, relayed messages 7 days, events and dead letters forever (with the reason written down).
