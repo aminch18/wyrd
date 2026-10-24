@@ -50,7 +50,7 @@ public class ProjectionCatchUpTests
         runtime.AddProjection(new BrokenSeed());
 
         Assert.IsType<Decision.Accepted>(await runtime.SendAsync(new PlaceOrder("A-2", Quantity: 1, Amount: 70)));
-        Assert.Contains(runtime.Journal, e => e.Message == "catching up read models failed: InvalidOperationException: bug in the seed");
+        Assert.Contains(runtime.Journal, e => Equals(e.Key, "A-1") && e.Message == $"catching up OrderLog failed on {typeof(EventLog).FullName}: InvalidOperationException: bug in the seed");
         await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.CatchUpAsync());
     }
 
@@ -150,6 +150,39 @@ public class ProjectionCatchUpTests
         Assert.True(await engine.CompleteCatchUpAsync(projection, default));
 
         await Assert.ThrowsAsync<ConcurrencyConflictException>(async () => await engine.SeedAsync(projection, read, default));
+        Assert.Equal(new OrderLog("A-1", 1), View(application, store, "A-1"));
+    }
+
+    /// <summary>Counts the charges of each order only: the first event of an order (OrderPlaced) is not one it handles.</summary>
+    private sealed class OrderCharges : Projection<OrderLog>
+    {
+        public OrderCharges()
+        {
+            Seed<EventLog>((orderId, _) => orderId, (_, orderId, log) => new OrderLog(orderId, log.Events.Count(e => e == nameof(PaymentCharged))));
+            On<PaymentCharged>(e => e.OrderId, (view, e) => new OrderLog(e.OrderId, (view?.Events ?? 0) + 1));
+        }
+    }
+
+    [Fact]
+    [RequiresUnreferencedCode("Reflection-based JSON in a test.")]
+    [RequiresDynamicCode("Reflection-based JSON in a test.")]
+    public async Task a_stream_that_begins_while_catching_up_is_followed_even_if_its_first_event_isnt_handled()
+    {
+        var application = new Application(MessageTypes.Reflection());
+        application.Add(new PlaceOrderSlice());
+        application.Add(new ChargePaymentSlice());
+        var projection = new OrderCharges();
+        application.Add(projection); // catching up: not completed yet
+        var store = new InMemoryStore(() => DateTimeOffset.UnixEpoch);
+        var ids = 0;
+        var engine = new Engine(
+            application.Registry, store, application.Types, () => DateTimeOffset.UnixEpoch, () => new Guid(++ids, 0, 0, new byte[8]), (_, _) => false, (_, _, _) => { });
+
+        await engine.HandleAsync(Command(application, new PlaceOrder("A-1", Quantity: 1, Amount: 50)), default);
+        await DeliverAsync(engine, store); // OrderPlaced: the projection doesn't handle it
+        await engine.HandleAsync(Command(application, new ChargePayment("A-1", 50)), default);
+        await DeliverAsync(engine, store); // PaymentCharged, the stream's second event
+
         Assert.Equal(new OrderLog("A-1", 1), View(application, store, "A-1"));
     }
 
