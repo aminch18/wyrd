@@ -13,6 +13,7 @@ namespace Wyrd.Testing;
 /// </example>
 public static class Scenario
 {
+    /// <summary>Starts a pure command specification from the slice's initial state.</summary>
     public static SliceScenario<TCommand, TState, TEvent, TError> For<TCommand, TState, TEvent, TError>(
         Slice<TCommand, TState, TEvent, TError> slice)
         where TCommand : ICommand
@@ -24,6 +25,7 @@ public static class Scenario
         return new(slice, TState.Initial);
     }
 
+    /// <summary>Starts a projection specification with no views, ready to receive the given events.</summary>
     public static ProjectionScenario<TView> For<TView>(Projection<TView> projection)
         where TView : class
     {

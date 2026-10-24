@@ -1,0 +1,356 @@
+#nullable enable
+Wyrd.Attempts
+Wyrd.Attempts.Attempts() -> void
+Wyrd.Attempts.Attempts(int count) -> void
+Wyrd.Attempts.Count.get -> int
+Wyrd.Attempts.Equals(Wyrd.Attempts other) -> bool
+Wyrd.Decision
+Wyrd.Decision.Accepted
+Wyrd.Decision.Accepted.Accepted(Wyrd.IDomainEvent! Event) -> void
+Wyrd.Decision.Accepted.Deconstruct(out Wyrd.IDomainEvent! Event) -> void
+Wyrd.Decision.Accepted.Equals(Wyrd.Decision.Accepted? other) -> bool
+Wyrd.Decision.Accepted.Event.get -> Wyrd.IDomainEvent!
+Wyrd.Decision.Accepted.Event.init -> void
+Wyrd.Decision.Decision(Wyrd.Decision! original) -> void
+Wyrd.Decision.Rejected
+Wyrd.Decision.Rejected.Deconstruct(out object! Error) -> void
+Wyrd.Decision.Rejected.Equals(Wyrd.Decision.Rejected? other) -> bool
+Wyrd.Decision.Rejected.Error.get -> object!
+Wyrd.Decision.Rejected.Error.init -> void
+Wyrd.Decision.Rejected.Rejected(object! Error) -> void
+Wyrd.ICommand
+Wyrd.IDomainEvent
+Wyrd.IEvent
+Wyrd.IIntegrationEvent
+Wyrd.IState
+Wyrd.IState<TSelf>
+Wyrd.IState<TSelf>.Evolve(Wyrd.IDomainEvent! domainEvent) -> TSelf
+Wyrd.IState<TSelf>.Initial.get -> TSelf
+Wyrd.IntegrationEventAttribute
+Wyrd.IntegrationEventAttribute.IntegrationEventAttribute(string! name) -> void
+Wyrd.IntegrationEventAttribute.Name.get -> string!
+Wyrd.IntegrationEventAttribute.Version.get -> int
+Wyrd.IntegrationEventAttribute.Version.set -> void
+Wyrd.Literals
+Wyrd.Literals.extension(int)
+Wyrd.Literals.extension(int).Days.get -> System.TimeSpan
+Wyrd.Literals.extension(int).Hours.get -> System.TimeSpan
+Wyrd.Literals.extension(int).Minutes.get -> System.TimeSpan
+Wyrd.Literals.extension(int).Seconds.get -> System.TimeSpan
+Wyrd.Literals.extension(int).Times.get -> Wyrd.Attempts
+Wyrd.Pipe.Fragment
+Wyrd.Pipe.Fragment.NoCompensation(string! reason) -> Wyrd.Pipe.Fragment!
+Wyrd.Pipe.Fragment.NoRetry(string! reason) -> Wyrd.Pipe.Fragment!
+Wyrd.Pipe.Fragment.OrCompensate() -> Wyrd.Pipe.Fragment!
+Wyrd.Pipe.Fragment.Retry(Wyrd.Attempts attempts, Wyrd.Processes.Backoff backoff = Wyrd.Processes.Backoff.Exponential) -> Wyrd.Pipe.Fragment!
+Wyrd.Pipe.Fragment.Undo(System.Delegate! compensation, Wyrd.Attempts? insist = null, Wyrd.Processes.Backoff backoff = Wyrd.Processes.Backoff.Exponential) -> Wyrd.Pipe.Fragment!
+Wyrd.Pipe.Fragment.Within(System.TimeSpan timeout) -> Wyrd.Pipe.Fragment!
+Wyrd.Pipe.Pipeline
+Wyrd.Pipe.Pipeline.extension<TTrigger>(Wyrd.Processes.ProcessBuilder<TTrigger>!)
+Wyrd.Pipe.Start
+Wyrd.Processes.AwaitNode
+Wyrd.Processes.AwaitNode.AwaitNode(System.Type! Event, System.TimeSpan? Timeout = null) -> void
+Wyrd.Processes.AwaitNode.Deconstruct(out System.Type! Event, out System.TimeSpan? Timeout) -> void
+Wyrd.Processes.AwaitNode.Equals(Wyrd.Processes.AwaitNode? other) -> bool
+Wyrd.Processes.AwaitNode.Event.get -> System.Type!
+Wyrd.Processes.AwaitNode.Event.init -> void
+Wyrd.Processes.AwaitNode.Timeout.get -> System.TimeSpan?
+Wyrd.Processes.AwaitNode.Timeout.init -> void
+Wyrd.Processes.Backoff
+Wyrd.Processes.Backoff.Exponential = 2 -> Wyrd.Processes.Backoff
+Wyrd.Processes.Backoff.Immediate = 0 -> Wyrd.Processes.Backoff
+Wyrd.Processes.Backoff.Linear = 1 -> Wyrd.Processes.Backoff
+Wyrd.Processes.CompensatedNode
+Wyrd.Processes.CompensatedNode.Action.get -> Wyrd.Processes.StepRef!
+Wyrd.Processes.CompensatedNode.Action.init -> void
+Wyrd.Processes.CompensatedNode.CompensatedNode(Wyrd.Processes.StepRef! Action, Wyrd.Processes.RetryPolicy? Retry = null) -> void
+Wyrd.Processes.CompensatedNode.Deconstruct(out Wyrd.Processes.StepRef! Action, out Wyrd.Processes.RetryPolicy? Retry) -> void
+Wyrd.Processes.CompensatedNode.Equals(Wyrd.Processes.CompensatedNode? other) -> bool
+Wyrd.Processes.CompensatedNode.Policy.get -> Wyrd.Processes.RetryPolicy!
+Wyrd.Processes.CompensatedNode.Retry.get -> Wyrd.Processes.RetryPolicy?
+Wyrd.Processes.CompensatedNode.Retry.init -> void
+Wyrd.Processes.Process
+Wyrd.Processes.Process.Equals(Wyrd.Processes.Process? other) -> bool
+Wyrd.Processes.Process.Fingerprint.get -> string!
+Wyrd.Processes.Process.Name.get -> string!
+Wyrd.Processes.Process.Nodes.get -> System.Collections.Immutable.ImmutableArray<Wyrd.Processes.ProcessNode!>
+Wyrd.Processes.Process.OnCompensated.get -> Wyrd.Processes.StepRef?
+Wyrd.Processes.Process.Outcome.get -> Wyrd.Processes.CompensatedNode?
+Wyrd.Processes.Process.ToMermaid() -> string!
+Wyrd.Processes.Process.Trigger.get -> System.Type!
+Wyrd.Processes.ProcessBuilder<TTrigger>
+Wyrd.Processes.ProcessBuilder<TTrigger>.Await<TEvent>(System.Func<TEvent, object!>! key) -> Wyrd.Processes.ProcessBuilder<TTrigger>!
+Wyrd.Processes.ProcessBuilder<TTrigger>.NoCompensation(string! reason) -> Wyrd.Processes.ProcessBuilder<TTrigger>!
+Wyrd.Processes.ProcessBuilder<TTrigger>.NoRetry(string! reason) -> Wyrd.Processes.ProcessBuilder<TTrigger>!
+Wyrd.Processes.ProcessBuilder<TTrigger>.OnCompensated<TCommand>(System.Func<TTrigger, TCommand>! outcome) -> Wyrd.Processes.ProcessBuilder<TTrigger>!
+Wyrd.Processes.ProcessBuilder<TTrigger>.OrCompensate() -> Wyrd.Processes.ProcessBuilder<TTrigger>!
+Wyrd.Processes.ProcessBuilder<TTrigger>.Retry(Wyrd.Attempts attempts, Wyrd.Processes.Backoff backoff = Wyrd.Processes.Backoff.Exponential) -> Wyrd.Processes.ProcessBuilder<TTrigger>!
+Wyrd.Processes.ProcessBuilder<TTrigger>.Then(System.Delegate! step) -> Wyrd.Processes.ProcessBuilder<TTrigger>!
+Wyrd.Processes.ProcessBuilder<TTrigger>.Then<TCommand>(System.Func<TTrigger, TCommand>! step) -> Wyrd.Processes.ProcessBuilder<TTrigger>!
+Wyrd.Processes.ProcessBuilder<TTrigger>.ToProcess() -> Wyrd.Processes.Process!
+Wyrd.Processes.ProcessBuilder<TTrigger>.Undo(System.Delegate! compensation, Wyrd.Attempts? insist = null, Wyrd.Processes.Backoff backoff = Wyrd.Processes.Backoff.Exponential) -> Wyrd.Processes.ProcessBuilder<TTrigger>!
+Wyrd.Processes.ProcessBuilder<TTrigger>.Undo<TCommand>(System.Func<TTrigger, TCommand>! compensation, Wyrd.Attempts? insist = null, Wyrd.Processes.Backoff backoff = Wyrd.Processes.Backoff.Exponential) -> Wyrd.Processes.ProcessBuilder<TTrigger>!
+Wyrd.Processes.ProcessBuilder<TTrigger>.Within(System.TimeSpan timeout) -> Wyrd.Processes.ProcessBuilder<TTrigger>!
+Wyrd.Processes.ProcessNode
+Wyrd.Processes.ProcessNode.ProcessNode() -> void
+Wyrd.Processes.ProcessNode.ProcessNode(Wyrd.Processes.ProcessNode! original) -> void
+Wyrd.Processes.RetryPolicy
+Wyrd.Processes.RetryPolicy.<Clone>$() -> Wyrd.Processes.RetryPolicy!
+Wyrd.Processes.RetryPolicy.Attempts.get -> Wyrd.Attempts
+Wyrd.Processes.RetryPolicy.Attempts.init -> void
+Wyrd.Processes.RetryPolicy.Backoff.get -> Wyrd.Processes.Backoff
+Wyrd.Processes.RetryPolicy.Backoff.init -> void
+Wyrd.Processes.RetryPolicy.Deconstruct(out Wyrd.Attempts Attempts, out Wyrd.Processes.Backoff Backoff) -> void
+Wyrd.Processes.RetryPolicy.DelayBefore(int retry) -> System.TimeSpan
+Wyrd.Processes.RetryPolicy.Equals(Wyrd.Processes.RetryPolicy? other) -> bool
+Wyrd.Processes.RetryPolicy.RetryPolicy(Wyrd.Attempts Attempts, Wyrd.Processes.Backoff Backoff) -> void
+Wyrd.Processes.StepNode
+Wyrd.Processes.StepNode.Action.get -> Wyrd.Processes.StepRef!
+Wyrd.Processes.StepNode.Action.init -> void
+Wyrd.Processes.StepNode.CompensateWhenExhausted.get -> bool
+Wyrd.Processes.StepNode.CompensateWhenExhausted.init -> void
+Wyrd.Processes.StepNode.Compensation.get -> Wyrd.Processes.StepRef?
+Wyrd.Processes.StepNode.Compensation.init -> void
+Wyrd.Processes.StepNode.CompensationRetry.get -> Wyrd.Processes.RetryPolicy?
+Wyrd.Processes.StepNode.CompensationRetry.init -> void
+Wyrd.Processes.StepNode.Deconstruct(out Wyrd.Processes.StepRef! Action, out Wyrd.Processes.StepRef? Compensation, out Wyrd.Processes.RetryPolicy? Retry) -> void
+Wyrd.Processes.StepNode.Equals(Wyrd.Processes.StepNode? other) -> bool
+Wyrd.Processes.StepNode.NoCompensationReason.get -> string?
+Wyrd.Processes.StepNode.NoCompensationReason.init -> void
+Wyrd.Processes.StepNode.NoRetryReason.get -> string?
+Wyrd.Processes.StepNode.NoRetryReason.init -> void
+Wyrd.Processes.StepNode.Retry.get -> Wyrd.Processes.RetryPolicy?
+Wyrd.Processes.StepNode.Retry.init -> void
+Wyrd.Processes.StepNode.StepNode(Wyrd.Processes.StepRef! Action, Wyrd.Processes.StepRef? Compensation = null, Wyrd.Processes.RetryPolicy? Retry = null) -> void
+Wyrd.Processes.StepNode.UndoPolicy.get -> Wyrd.Processes.RetryPolicy!
+Wyrd.Processes.StepRef
+Wyrd.Processes.StepRef.<Clone>$() -> Wyrd.Processes.StepRef!
+Wyrd.Processes.StepRef.Deconstruct(out string! Name) -> void
+Wyrd.Processes.StepRef.Equals(Wyrd.Processes.StepRef? other) -> bool
+Wyrd.Processes.StepRef.Name.get -> string!
+Wyrd.Processes.StepRef.Name.init -> void
+Wyrd.Processes.StepRef.Reads.get -> System.Collections.Generic.IReadOnlyList<System.Type!>!
+Wyrd.Processes.StepRef.Reads.init -> void
+Wyrd.Processes.StepRef.StepRef(string! Name) -> void
+Wyrd.Projection<TView>
+Wyrd.Projection<TView>.On<TEvent>(System.Func<TEvent, object!>! key, System.Func<TView?, TEvent, TView?>! apply) -> void
+Wyrd.Projection<TView>.Projection() -> void
+Wyrd.Publication<TDomainEvent, TIntegrationEvent>
+Wyrd.Publication<TDomainEvent, TIntegrationEvent>.Publication() -> void
+Wyrd.Result<TOk, TError>
+Wyrd.Result<TOk, TError>.Equals(Wyrd.Result<TOk, TError> other) -> bool
+Wyrd.Result<TOk, TError>.IsOk.get -> bool
+Wyrd.Result<TOk, TError>.Match<TResult>(System.Func<TOk, TResult>! ok, System.Func<TError, TResult>! error) -> TResult
+Wyrd.Result<TOk, TError>.Result() -> void
+Wyrd.Runtime.HistoryEntry
+Wyrd.Runtime.HistoryEntry.<Clone>$() -> Wyrd.Runtime.HistoryEntry!
+Wyrd.Runtime.HistoryEntry.At.get -> System.DateTimeOffset
+Wyrd.Runtime.HistoryEntry.At.init -> void
+Wyrd.Runtime.HistoryEntry.Attempt.get -> int?
+Wyrd.Runtime.HistoryEntry.Attempt.init -> void
+Wyrd.Runtime.HistoryEntry.Compensating.get -> bool
+Wyrd.Runtime.HistoryEntry.Compensating.init -> void
+Wyrd.Runtime.HistoryEntry.Deconstruct(out System.DateTimeOffset At, out Wyrd.Runtime.HistoryKind Kind) -> void
+Wyrd.Runtime.HistoryEntry.Equals(Wyrd.Runtime.HistoryEntry? other) -> bool
+Wyrd.Runtime.HistoryEntry.HistoryEntry(System.DateTimeOffset At, Wyrd.Runtime.HistoryKind Kind) -> void
+Wyrd.Runtime.HistoryEntry.Kind.get -> Wyrd.Runtime.HistoryKind
+Wyrd.Runtime.HistoryEntry.Kind.init -> void
+Wyrd.Runtime.HistoryEntry.Outcome.get -> string?
+Wyrd.Runtime.HistoryEntry.Outcome.init -> void
+Wyrd.Runtime.HistoryEntry.Payload.get -> string?
+Wyrd.Runtime.HistoryEntry.Payload.init -> void
+Wyrd.Runtime.HistoryEntry.Reason.get -> string?
+Wyrd.Runtime.HistoryEntry.Reason.init -> void
+Wyrd.Runtime.HistoryEntry.Step.get -> int?
+Wyrd.Runtime.HistoryEntry.Step.init -> void
+Wyrd.Runtime.HistoryEntry.Type.get -> string?
+Wyrd.Runtime.HistoryEntry.Type.init -> void
+Wyrd.Runtime.HistoryKind
+Wyrd.Runtime.HistoryKind.Compensated = 9 -> Wyrd.Runtime.HistoryKind
+Wyrd.Runtime.HistoryKind.CompensationRequested = 6 -> Wyrd.Runtime.HistoryKind
+Wyrd.Runtime.HistoryKind.Completed = 8 -> Wyrd.Runtime.HistoryKind
+Wyrd.Runtime.HistoryKind.Received = 3 -> Wyrd.Runtime.HistoryKind
+Wyrd.Runtime.HistoryKind.Replied = 2 -> Wyrd.Runtime.HistoryKind
+Wyrd.Runtime.HistoryKind.Resumed = 5 -> Wyrd.Runtime.HistoryKind
+Wyrd.Runtime.HistoryKind.Sent = 1 -> Wyrd.Runtime.HistoryKind
+Wyrd.Runtime.HistoryKind.Started = 0 -> Wyrd.Runtime.HistoryKind
+Wyrd.Runtime.HistoryKind.Suspended = 7 -> Wyrd.Runtime.HistoryKind
+Wyrd.Runtime.HistoryKind.TimedOut = 4 -> Wyrd.Runtime.HistoryKind
+Wyrd.Runtime.InMemoryRuntime
+Wyrd.Runtime.InMemoryRuntime.AddProcess(Wyrd.Processes.Process! process) -> Wyrd.Runtime.InMemoryRuntime!
+Wyrd.Runtime.InMemoryRuntime.AddProjection<TView>(Wyrd.Projection<TView!>! projection) -> Wyrd.Runtime.InMemoryRuntime!
+Wyrd.Runtime.InMemoryRuntime.AddPublication<TDomainEvent, TIntegrationEvent>(Wyrd.Publication<TDomainEvent, TIntegrationEvent>! publication) -> Wyrd.Runtime.InMemoryRuntime!
+Wyrd.Runtime.InMemoryRuntime.AddSlice<TCommand, TState, TEvent, TError>(Wyrd.Slice<TCommand, TState, TEvent, TError>! slice) -> Wyrd.Runtime.InMemoryRuntime!
+Wyrd.Runtime.InMemoryRuntime.AddUpcaster<TFrom, TTo>(Wyrd.Upcaster<TFrom, TTo>! upcaster) -> Wyrd.Runtime.InMemoryRuntime!
+Wyrd.Runtime.InMemoryRuntime.AdvanceAsync(System.TimeSpan by, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.Runtime.InMemoryRuntime.CompensateAsync(Wyrd.Processes.Process! process, object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.Runtime.InMemoryRuntime.Dispose() -> void
+Wyrd.Runtime.InMemoryRuntime.FailNext<TCommand>(int times = 1) -> void
+Wyrd.Runtime.InMemoryRuntime.History.get -> System.Collections.Generic.IReadOnlyList<Wyrd.IDomainEvent!>!
+Wyrd.Runtime.InMemoryRuntime.HistoryOf(Wyrd.Processes.Process! process, object! key) -> Wyrd.Runtime.InstanceHistory!
+Wyrd.Runtime.InMemoryRuntime.InMemoryRuntime() -> void
+Wyrd.Runtime.InMemoryRuntime.InMemoryRuntime(System.Text.Json.Serialization.JsonSerializerContext! json) -> void
+Wyrd.Runtime.InMemoryRuntime.Journal.get -> System.Collections.Generic.IReadOnlyList<Wyrd.Runtime.JournalEntry!>!
+Wyrd.Runtime.InMemoryRuntime.Now.get -> System.TimeSpan
+Wyrd.Runtime.InMemoryRuntime.PublishAsync(Wyrd.IIntegrationEvent! event, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.Runtime.InMemoryRuntime.Published.get -> System.Collections.Generic.IReadOnlyList<Wyrd.IIntegrationEvent!>!
+Wyrd.Runtime.InMemoryRuntime.ReasonOf(Wyrd.Processes.Process! process, object! key) -> string?
+Wyrd.Runtime.InMemoryRuntime.ResumeAsync(Wyrd.Processes.Process! process, object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.Runtime.InMemoryRuntime.SendAsync(Wyrd.ICommand! command, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Wyrd.Decision!>!
+Wyrd.Runtime.InMemoryRuntime.StateOf<TState>(object! key) -> TState
+Wyrd.Runtime.InMemoryRuntime.StatusOf(Wyrd.Processes.Process! process, object! key) -> Wyrd.Runtime.ProcessStatus?
+Wyrd.Runtime.InMemoryRuntime.View<TView>(object! key) -> TView?
+Wyrd.Runtime.InMemoryRuntime.Views<TView>() -> System.Collections.Generic.IReadOnlyList<TView!>!
+Wyrd.Runtime.InstanceHistory
+Wyrd.Runtime.InstanceHistory.<Clone>$() -> Wyrd.Runtime.InstanceHistory!
+Wyrd.Runtime.InstanceHistory.Deconstruct(out string! Process, out string! Key, out string! Fingerprint, out System.Collections.Generic.IReadOnlyList<Wyrd.Runtime.HistoryEntry!>! Entries) -> void
+Wyrd.Runtime.InstanceHistory.Entries.get -> System.Collections.Generic.IReadOnlyList<Wyrd.Runtime.HistoryEntry!>!
+Wyrd.Runtime.InstanceHistory.Entries.init -> void
+Wyrd.Runtime.InstanceHistory.Equals(Wyrd.Runtime.InstanceHistory? other) -> bool
+Wyrd.Runtime.InstanceHistory.Fingerprint.get -> string!
+Wyrd.Runtime.InstanceHistory.Fingerprint.init -> void
+Wyrd.Runtime.InstanceHistory.InstanceHistory(string! Process, string! Key, string! Fingerprint, System.Collections.Generic.IReadOnlyList<Wyrd.Runtime.HistoryEntry!>! Entries) -> void
+Wyrd.Runtime.InstanceHistory.Key.get -> string!
+Wyrd.Runtime.InstanceHistory.Key.init -> void
+Wyrd.Runtime.InstanceHistory.Process.get -> string!
+Wyrd.Runtime.InstanceHistory.Process.init -> void
+Wyrd.Runtime.InstanceHistory.ToJson() -> string!
+Wyrd.Runtime.JournalEntry
+Wyrd.Runtime.JournalEntry.<Clone>$() -> Wyrd.Runtime.JournalEntry!
+Wyrd.Runtime.JournalEntry.At.get -> System.TimeSpan
+Wyrd.Runtime.JournalEntry.At.init -> void
+Wyrd.Runtime.JournalEntry.Deconstruct(out System.TimeSpan At, out string! Process, out object? Key, out string! Message) -> void
+Wyrd.Runtime.JournalEntry.Equals(Wyrd.Runtime.JournalEntry? other) -> bool
+Wyrd.Runtime.JournalEntry.JournalEntry(System.TimeSpan At, string! Process, object? Key, string! Message) -> void
+Wyrd.Runtime.JournalEntry.Key.get -> object?
+Wyrd.Runtime.JournalEntry.Key.init -> void
+Wyrd.Runtime.JournalEntry.Message.get -> string!
+Wyrd.Runtime.JournalEntry.Message.init -> void
+Wyrd.Runtime.JournalEntry.Process.get -> string!
+Wyrd.Runtime.JournalEntry.Process.init -> void
+Wyrd.Runtime.ProcessStatus
+Wyrd.Runtime.ProcessStatus.Awaiting = 1 -> Wyrd.Runtime.ProcessStatus
+Wyrd.Runtime.ProcessStatus.Compensated = 3 -> Wyrd.Runtime.ProcessStatus
+Wyrd.Runtime.ProcessStatus.Completed = 2 -> Wyrd.Runtime.ProcessStatus
+Wyrd.Runtime.ProcessStatus.Running = 0 -> Wyrd.Runtime.ProcessStatus
+Wyrd.Runtime.ProcessStatus.Suspended = 4 -> Wyrd.Runtime.ProcessStatus
+Wyrd.Slice<TCommand, TState, TEvent, TError>
+Wyrd.Slice<TCommand, TState, TEvent, TError>.Slice() -> void
+Wyrd.UnionAttribute
+Wyrd.UnionAttribute.UnionAttribute() -> void
+Wyrd.Upcaster<TFrom, TTo>
+Wyrd.Upcaster<TFrom, TTo>.Upcaster() -> void
+Wyrd.WyrdJsonContextAttribute
+Wyrd.WyrdJsonContextAttribute.WyrdJsonContextAttribute() -> void
+abstract Wyrd.Decision.<Clone>$() -> Wyrd.Decision!
+abstract Wyrd.Processes.ProcessNode.<Clone>$() -> Wyrd.Processes.ProcessNode!
+abstract Wyrd.Publication<TDomainEvent, TIntegrationEvent>.Map(TDomainEvent domainEvent) -> TIntegrationEvent
+abstract Wyrd.Slice<TCommand, TState, TEvent, TError>.Decide(TCommand command, TState state) -> Wyrd.Result<TEvent, TError>
+abstract Wyrd.Slice<TCommand, TState, TEvent, TError>.KeyOf(TCommand command) -> object!
+abstract Wyrd.Upcaster<TFrom, TTo>.Map(TFrom previous) -> TTo
+override Wyrd.Attempts.GetHashCode() -> int
+override Wyrd.Attempts.ToString() -> string!
+override Wyrd.Decision.Accepted.<Clone>$() -> Wyrd.Decision.Accepted!
+override Wyrd.Decision.Accepted.Equals(object? obj) -> bool
+override Wyrd.Decision.Accepted.GetHashCode() -> int
+override Wyrd.Decision.Accepted.ToString() -> string!
+override Wyrd.Decision.Equals(object? obj) -> bool
+override Wyrd.Decision.GetHashCode() -> int
+override Wyrd.Decision.Rejected.<Clone>$() -> Wyrd.Decision.Rejected!
+override Wyrd.Decision.Rejected.Equals(object? obj) -> bool
+override Wyrd.Decision.Rejected.GetHashCode() -> int
+override Wyrd.Decision.Rejected.ToString() -> string!
+override Wyrd.Decision.ToString() -> string!
+override Wyrd.Processes.AwaitNode.<Clone>$() -> Wyrd.Processes.AwaitNode!
+override Wyrd.Processes.AwaitNode.Equals(object? obj) -> bool
+override Wyrd.Processes.AwaitNode.GetHashCode() -> int
+override Wyrd.Processes.AwaitNode.ToString() -> string!
+override Wyrd.Processes.CompensatedNode.<Clone>$() -> Wyrd.Processes.CompensatedNode!
+override Wyrd.Processes.CompensatedNode.Equals(object? obj) -> bool
+override Wyrd.Processes.CompensatedNode.GetHashCode() -> int
+override Wyrd.Processes.CompensatedNode.ToString() -> string!
+override Wyrd.Processes.Process.Equals(object? obj) -> bool
+override Wyrd.Processes.Process.GetHashCode() -> int
+override Wyrd.Processes.ProcessNode.Equals(object? obj) -> bool
+override Wyrd.Processes.ProcessNode.GetHashCode() -> int
+override Wyrd.Processes.ProcessNode.ToString() -> string!
+override Wyrd.Processes.RetryPolicy.Equals(object? obj) -> bool
+override Wyrd.Processes.RetryPolicy.GetHashCode() -> int
+override Wyrd.Processes.RetryPolicy.ToString() -> string!
+override Wyrd.Processes.StepNode.<Clone>$() -> Wyrd.Processes.StepNode!
+override Wyrd.Processes.StepNode.Equals(object? obj) -> bool
+override Wyrd.Processes.StepNode.GetHashCode() -> int
+override Wyrd.Processes.StepNode.ToString() -> string!
+override Wyrd.Processes.StepRef.Equals(object? obj) -> bool
+override Wyrd.Processes.StepRef.GetHashCode() -> int
+override Wyrd.Processes.StepRef.ToString() -> string!
+override Wyrd.Result<TOk, TError>.GetHashCode() -> int
+override Wyrd.Result<TOk, TError>.ToString() -> string!
+override Wyrd.Runtime.HistoryEntry.Equals(object? obj) -> bool
+override Wyrd.Runtime.HistoryEntry.GetHashCode() -> int
+override Wyrd.Runtime.HistoryEntry.ToString() -> string!
+override Wyrd.Runtime.InstanceHistory.Equals(object? obj) -> bool
+override Wyrd.Runtime.InstanceHistory.GetHashCode() -> int
+override Wyrd.Runtime.InstanceHistory.ToString() -> string!
+override Wyrd.Runtime.JournalEntry.Equals(object? obj) -> bool
+override Wyrd.Runtime.JournalEntry.GetHashCode() -> int
+override Wyrd.Runtime.JournalEntry.ToString() -> string!
+override sealed Wyrd.Decision.Accepted.Equals(Wyrd.Decision? other) -> bool
+override sealed Wyrd.Decision.Rejected.Equals(Wyrd.Decision? other) -> bool
+override sealed Wyrd.Processes.AwaitNode.Equals(Wyrd.Processes.ProcessNode? other) -> bool
+override sealed Wyrd.Processes.CompensatedNode.Equals(Wyrd.Processes.ProcessNode? other) -> bool
+override sealed Wyrd.Processes.StepNode.Equals(Wyrd.Processes.ProcessNode? other) -> bool
+static Wyrd.Attempts.operator !=(Wyrd.Attempts left, Wyrd.Attempts right) -> bool
+static Wyrd.Attempts.operator ==(Wyrd.Attempts left, Wyrd.Attempts right) -> bool
+static Wyrd.Decision.Accepted.operator !=(Wyrd.Decision.Accepted? left, Wyrd.Decision.Accepted? right) -> bool
+static Wyrd.Decision.Accepted.operator ==(Wyrd.Decision.Accepted? left, Wyrd.Decision.Accepted? right) -> bool
+static Wyrd.Decision.Rejected.operator !=(Wyrd.Decision.Rejected? left, Wyrd.Decision.Rejected? right) -> bool
+static Wyrd.Decision.Rejected.operator ==(Wyrd.Decision.Rejected? left, Wyrd.Decision.Rejected? right) -> bool
+static Wyrd.Decision.operator !=(Wyrd.Decision? left, Wyrd.Decision? right) -> bool
+static Wyrd.Decision.operator ==(Wyrd.Decision? left, Wyrd.Decision? right) -> bool
+static Wyrd.Literals.get_Days(int value) -> System.TimeSpan
+static Wyrd.Literals.get_Hours(int value) -> System.TimeSpan
+static Wyrd.Literals.get_Minutes(int value) -> System.TimeSpan
+static Wyrd.Literals.get_Seconds(int value) -> System.TimeSpan
+static Wyrd.Literals.get_Times(int value) -> Wyrd.Attempts
+static Wyrd.Pipe.Pipeline.Await<TEvent>(System.Func<TEvent, object!>! key) -> Wyrd.Pipe.Fragment!
+static Wyrd.Pipe.Pipeline.OnCompensated(System.Delegate! outcome) -> Wyrd.Pipe.Fragment!
+static Wyrd.Pipe.Pipeline.Step(System.Delegate! action) -> Wyrd.Pipe.Fragment!
+static Wyrd.Pipe.Pipeline.extension<TTrigger>(Wyrd.Processes.ProcessBuilder<TTrigger>!).operator >>(Wyrd.Processes.ProcessBuilder<TTrigger>! process, Wyrd.Pipe.Fragment! next) -> Wyrd.Processes.ProcessBuilder<TTrigger>!
+static Wyrd.Pipe.Pipeline.op_RightShift<TTrigger>(Wyrd.Processes.ProcessBuilder<TTrigger>! process, Wyrd.Pipe.Fragment! next) -> Wyrd.Processes.ProcessBuilder<TTrigger>!
+static Wyrd.Pipe.Start.On<TEvent>(System.Func<TEvent, object!>! key, string! name = "") -> Wyrd.Processes.ProcessBuilder<TEvent>!
+static Wyrd.Processes.AwaitNode.operator !=(Wyrd.Processes.AwaitNode? left, Wyrd.Processes.AwaitNode? right) -> bool
+static Wyrd.Processes.AwaitNode.operator ==(Wyrd.Processes.AwaitNode? left, Wyrd.Processes.AwaitNode? right) -> bool
+static Wyrd.Processes.CompensatedNode.operator !=(Wyrd.Processes.CompensatedNode? left, Wyrd.Processes.CompensatedNode? right) -> bool
+static Wyrd.Processes.CompensatedNode.operator ==(Wyrd.Processes.CompensatedNode? left, Wyrd.Processes.CompensatedNode? right) -> bool
+static Wyrd.Processes.Process.StartOn<TEvent>(System.Func<TEvent, object!>! key, string! name = "") -> Wyrd.Processes.ProcessBuilder<TEvent>!
+static Wyrd.Processes.ProcessBuilder<TTrigger>.implicit operator Wyrd.Processes.Process!(Wyrd.Processes.ProcessBuilder<TTrigger>! builder) -> Wyrd.Processes.Process!
+static Wyrd.Processes.ProcessNode.operator !=(Wyrd.Processes.ProcessNode? left, Wyrd.Processes.ProcessNode? right) -> bool
+static Wyrd.Processes.ProcessNode.operator ==(Wyrd.Processes.ProcessNode? left, Wyrd.Processes.ProcessNode? right) -> bool
+static Wyrd.Processes.RetryPolicy.Undo.get -> Wyrd.Processes.RetryPolicy!
+static Wyrd.Processes.RetryPolicy.operator !=(Wyrd.Processes.RetryPolicy? left, Wyrd.Processes.RetryPolicy? right) -> bool
+static Wyrd.Processes.RetryPolicy.operator ==(Wyrd.Processes.RetryPolicy? left, Wyrd.Processes.RetryPolicy? right) -> bool
+static Wyrd.Processes.StepNode.operator !=(Wyrd.Processes.StepNode? left, Wyrd.Processes.StepNode? right) -> bool
+static Wyrd.Processes.StepNode.operator ==(Wyrd.Processes.StepNode? left, Wyrd.Processes.StepNode? right) -> bool
+static Wyrd.Processes.StepRef.From(System.Delegate! step) -> Wyrd.Processes.StepRef!
+static Wyrd.Processes.StepRef.operator !=(Wyrd.Processes.StepRef? left, Wyrd.Processes.StepRef? right) -> bool
+static Wyrd.Processes.StepRef.operator ==(Wyrd.Processes.StepRef? left, Wyrd.Processes.StepRef? right) -> bool
+static Wyrd.Result<TOk, TError>.implicit operator Wyrd.Result<TOk, TError>(TError error) -> Wyrd.Result<TOk, TError>
+static Wyrd.Result<TOk, TError>.implicit operator Wyrd.Result<TOk, TError>(TOk value) -> Wyrd.Result<TOk, TError>
+static Wyrd.Result<TOk, TError>.operator !=(Wyrd.Result<TOk, TError> left, Wyrd.Result<TOk, TError> right) -> bool
+static Wyrd.Result<TOk, TError>.operator ==(Wyrd.Result<TOk, TError> left, Wyrd.Result<TOk, TError> right) -> bool
+static Wyrd.Runtime.HistoryEntry.operator !=(Wyrd.Runtime.HistoryEntry? left, Wyrd.Runtime.HistoryEntry? right) -> bool
+static Wyrd.Runtime.HistoryEntry.operator ==(Wyrd.Runtime.HistoryEntry? left, Wyrd.Runtime.HistoryEntry? right) -> bool
+static Wyrd.Runtime.InstanceHistory.FromJson(string! json) -> Wyrd.Runtime.InstanceHistory!
+static Wyrd.Runtime.InstanceHistory.operator !=(Wyrd.Runtime.InstanceHistory? left, Wyrd.Runtime.InstanceHistory? right) -> bool
+static Wyrd.Runtime.InstanceHistory.operator ==(Wyrd.Runtime.InstanceHistory? left, Wyrd.Runtime.InstanceHistory? right) -> bool
+static Wyrd.Runtime.JournalEntry.operator !=(Wyrd.Runtime.JournalEntry? left, Wyrd.Runtime.JournalEntry? right) -> bool
+static Wyrd.Runtime.JournalEntry.operator ==(Wyrd.Runtime.JournalEntry? left, Wyrd.Runtime.JournalEntry? right) -> bool
+virtual Wyrd.Decision.EqualityContract.get -> System.Type!
+virtual Wyrd.Decision.Equals(Wyrd.Decision? other) -> bool
+virtual Wyrd.Decision.PrintMembers(System.Text.StringBuilder! builder) -> bool
+virtual Wyrd.Processes.ProcessNode.EqualityContract.get -> System.Type!
+virtual Wyrd.Processes.ProcessNode.Equals(Wyrd.Processes.ProcessNode? other) -> bool
+virtual Wyrd.Processes.ProcessNode.PrintMembers(System.Text.StringBuilder! builder) -> bool
+~override Wyrd.Attempts.Equals(object obj) -> bool
+~override Wyrd.Result<TOk, TError>.Equals(object obj) -> bool

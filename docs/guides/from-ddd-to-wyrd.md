@@ -139,6 +139,22 @@ The [Shop order aggregate](https://github.com/aminch18/wyrd/blob/main/samples/Sh
 
 The [business specifications](https://github.com/aminch18/wyrd/blob/main/samples/Shop.Tests/RichOrderSpecs.cs) exercise those shared rules through several slices. `SubmitOrder` freezes the draft before fulfillment starts; further edits are rejected. The existing sample fulfillment handles one SKU in EUR, so submitting active lines with different SKUs or a different settlement currency is explicitly rejected. The original one-line `PlaceOrder` shortcut still works. [HTTP examples](https://github.com/aminch18/wyrd/blob/main/samples/Shop.Api/Shop.Api.http) show both paths and draft cancellation; cancellation of fulfillment remains the process's compensation outcome, not a direct user cancellation of an in-flight order.
 
+## State that only grows
+
+A snapshot is read and written on every command for its key. A collection that keeps every finished order makes
+that cost grow with the lifetime of a SKU, even if each decision looks small. Ask what removes an entry whenever
+you add a collection to state; compare the cost after a thousand orders with the cost after ten thousand.
+
+The Shop's [stock state](https://github.com/aminch18/wyrd/blob/main/samples/Shop/Inventory/StockItem.cs) keeps only
+reservations still awaiting release or consumption. Cancelling returns reserved units to `Available`; shipping
+[consumes the reservation](https://github.com/aminch18/wyrd/blob/main/samples/Shop/Inventory/ConsumeStock.cs)
+without returning the shipped units. The inventory cleanup process starts from `OrderShipped` and retries
+independently: if cleanup suspends, an operator resumes it without refunding or undoing the shipment.
+
+Keep finished-order history in a read model, rather than in the stock snapshot used to decide the next reservation.
+This bounds the collection by work still in flight, not by every order the SKU has ever seen. Host retention for
+completed process instances and journals is a separate responsibility; shrinking domain state does not bound those.
+
 ## Keep the behavior when you remove the mutation
 
 The mistake to avoid is turning an aggregate into a bag of records and moving all its rules into unrelated application services. A functional model separates the representation of state from the operation deciding its next fact; it does not remove the need for cohesive behavior.

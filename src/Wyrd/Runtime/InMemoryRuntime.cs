@@ -47,6 +47,7 @@ public sealed class InMemoryRuntime : IDisposable
     /// <summary>Virtual time elapsed since the runtime started.</summary>
     public TimeSpan Now => _now - Epoch;
 
+    /// <summary>A snapshot of the diagnostic journal in handling order. Use instance history for replay.</summary>
     public IReadOnlyList<JournalEntry> Journal => Read(() => (IReadOnlyList<JournalEntry>)[.. _journal]);
 
     /// <summary>Every accepted domain event, in order (as stored, after a JSON round trip).</summary>
@@ -109,6 +110,7 @@ public sealed class InMemoryRuntime : IDisposable
         AddTypesOf(process);
     }
 
+    /// <summary>Registers a process and checks that its steps can read the events they require before any message is handled.</summary>
     public InMemoryRuntime AddProcess(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
@@ -270,6 +272,7 @@ public sealed class InMemoryRuntime : IDisposable
         Read(() => _faults[typeof(TCommand)] = _faults.GetValueOrDefault(typeof(TCommand)) + times);
     }
 
+    /// <summary>Returns the instance's current status, or null when this process has no instance for the key.</summary>
     public ProcessStatus? StatusOf(Process process, object key)
     {
         ArgumentNullException.ThrowIfNull(process);
@@ -277,6 +280,7 @@ public sealed class InMemoryRuntime : IDisposable
         return Read(() => _store.Instance(process.Name, Keys.Of(key))?.Status);
     }
 
+    /// <summary>Loads a state snapshot after a JSON round trip, or its initial value when the key has not been stored.</summary>
     public TState StateOf<TState>(object key)
         where TState : IState<TState>
     {
@@ -338,6 +342,7 @@ public sealed class InMemoryRuntime : IDisposable
         }
     }
 
+    /// <summary>Disposes the host's synchronization resources when the runtime is no longer needed.</summary>
     public void Dispose() => _gate.Dispose();
 
     /// <summary>
