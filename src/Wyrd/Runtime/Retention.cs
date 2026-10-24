@@ -49,7 +49,8 @@ public sealed record Retention
 {
     /// <summary>
     /// The inbox and the handled message ids: how long a duplicate is still recognised. Longer than any redelivery your
-    /// broker or your workers can make; afterwards the same message would be handled again.
+    /// broker or your workers can make; afterwards the same message would be handled again. Fences are the exception:
+    /// a fenced command is blocked forever.
     /// </summary>
     public required Keep Deduplication { get; init; }
 

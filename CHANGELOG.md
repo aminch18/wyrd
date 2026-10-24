@@ -55,8 +55,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   in the application: `EfCoreRuntime` requires a `Retention` whose every member is `Keep.For(period)` or
   `Keep.Forever("why")` — deduplication, finished instances and their histories, relayed messages, domain events, dead
   letters. Workers remove what expired in batches every `CleanupInterval` (`ForgetExpiredAsync`). Suspended instances
-  never expire; a removed finished instance frees its key. In memory: `UseRetention` (keeps everything by default) and
-  a bounded journal (`JournalLimit`, 10,000).
+  never expire; a removed finished instance frees its key. Fences never expire either, and a reply that reaches an
+  instance whose definition changed is kept on the instance for the operator, so neither depends on the deduplication
+  window. In memory: `UseRetention` (keeps everything by default) and a bounded journal (`JournalLimit`, 10,000).
 - `IWyrdBuilder<T>`: register a module the same way on any host (`ShopModule.Register(runtime)`).
 - `IWyrdRuntime`: what application code needs (send, publish, query), implemented by both hosts.
 - `samples/Shop.Api` runs durable on PostgreSQL when built with `-p:WyrdHost=EfCore` and given a `Wyrd` connection

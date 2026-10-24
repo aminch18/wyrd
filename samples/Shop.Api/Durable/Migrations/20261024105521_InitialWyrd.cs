@@ -83,7 +83,8 @@ namespace Shop.Api.Durable.Migrations
                 {
                     message_id = table.Column<Guid>(type: "uuid", nullable: false),
                     reply = table.Column<string>(type: "text", nullable: false),
-                    recorded_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                    recorded_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    fence = table.Column<bool>(type: "boolean", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -201,7 +202,8 @@ namespace Shop.Api.Durable.Migrations
                     key = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     type = table.Column<string>(type: "text", nullable: false),
                     payload = table.Column<string>(type: "text", nullable: false),
-                    created = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                    created = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    version = table.Column<long>(type: "bigint", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -246,6 +248,12 @@ namespace Shop.Api.Durable.Migrations
                 table: "published",
                 column: "seq",
                 filter: "relayed_at IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_published_recorded_at",
+                schema: "wyrd",
+                table: "published",
+                column: "recorded_at");
 
             migrationBuilder.CreateIndex(
                 name: "ix_published_relayed_at",

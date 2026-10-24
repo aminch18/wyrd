@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Wyrd.Processes;
 using Wyrd.Runtime;
 
@@ -6,6 +7,14 @@ namespace Wyrd.Tests;
 public class RetentionTests
 {
     private static readonly Process Fulfillment = FluentProcess.OrderFulfillment;
+
+    // Same name, a step inserted: the instance can't continue with it.
+    private static readonly Process Reshaped = Process.StartOn<OrderPlaced>(e => e.OrderId, Fulfillment.Name)
+        .Then(Stock.Reserve).Retry(3.Times).Undo(Stock.Release)
+        .Then(Payment.Charge).Retry(3.Times).Undo(Payment.Refund)
+        .Then(Payment.Charge).NoRetry("only here to change the shape")
+        .Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)
+        .Then(Shipping.Ship);
 
     private static readonly Retention Short = new()
     {
@@ -81,6 +90,112 @@ public class RetentionTests
         await shipping.AdvanceAsync(31.Minutes);
         await shipping.ReceiveAsync(message);
         Assert.Contains(shipping.Journal, e => e.Message == "duplicate PaymentChargedV1 ignored"); // only the instance stops it now
+    }
+
+    [Fact]
+    public async Task a_fence_outlives_the_deduplication_window()
+    {
+        var now = DateTimeOffset.UnixEpoch;
+        var store = new InMemoryStore(() => now);
+        Guid fenced = Guid.NewGuid(), answered = Guid.NewGuid();
+        var changes = new Changes();
+        changes.Replies[fenced] = new ReplyMessage(ReplyOutcome.Fenced);
+        changes.Replies[answered] = new ReplyMessage(ReplyOutcome.Rejected);
+        await store.CommitAsync(changes, CancellationToken.None);
+
+        now += 365.Days;
+        store.Forget(Short, relays: false);
+
+        // A late copy of a fenced command must never run, however late it is (semantics 3.4).
+        Assert.Equal(ReplyOutcome.Fenced, (await store.FindReplyAsync(fenced, CancellationToken.None))?.Outcome);
+        Assert.Null(await store.FindReplyAsync(answered, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task a_reply_kept_while_the_definition_changed_outlives_the_deduplication_window()
+    {
+        var runtime = await ChargedWhileRedeployedAsync();
+        await runtime.AdvanceAsync(1.Days); // the owner's inbox has forgotten the charge
+
+        runtime.Redeploy(Fulfillment);
+        await runtime.ResumeAsync(Fulfillment, "A-1");
+        await runtime.PublishAsync(new PaymentConfirmed("A-1"));
+
+        Assert.Equal(ProcessStatus.Completed, runtime.StatusOf(Fulfillment, "A-1"));
+        Assert.Single(runtime.History.OfType<PaymentCharged>()); // charged once, not again on resume
+    }
+
+    [Fact]
+    public async Task compensating_with_a_kept_reply_undoes_what_ran_after_the_deduplication_window()
+    {
+        var runtime = await ChargedWhileRedeployedAsync();
+        await runtime.AdvanceAsync(1.Days);
+
+        runtime.Redeploy(Fulfillment);
+        await runtime.CompensateAsync(Fulfillment, "A-1");
+
+        // The charge ran, and the instance knows it: it is refunded, not fenced as if it never ran.
+        Assert.Equal(ProcessStatus.Compensated, runtime.StatusOf(Fulfillment, "A-1"));
+        Assert.Single(runtime.History.OfType<PaymentRefunded>());
+    }
+
+    [Fact]
+    [RequiresUnreferencedCode("Reflection-based JSON in a test.")]
+    [RequiresDynamicCode("Reflection-based JSON in a test.")]
+    public async Task a_kept_reply_goes_once_the_same_reply_is_handled_normally()
+    {
+        var application = new Application(MessageTypes.Reflection());
+        foreach (var slice in new ISliceHandler[]
+        {
+            new PlaceOrderSlice(), new ReserveStockSlice(), new ReleaseStockSlice(), new ChargePaymentSlice(),
+            new RefundPaymentSlice(), new ShipOrderSlice(), new CancelOrderSlice(),
+        })
+        {
+            application.Add(slice);
+        }
+
+        application.Add(Fulfillment);
+        var store = new InMemoryStore(() => DateTimeOffset.UnixEpoch);
+        var ids = 0;
+        var engine = new Engine(
+            application.Registry, store, application.Types, () => DateTimeOffset.UnixEpoch, () => new Guid(++ids, 0, 0, new byte[8]), (_, _) => false, (_, _, _) => { });
+        var (type, payload) = application.Types.Serialize(new PlaceOrder("A-1", 1, 50), typeof(PlaceOrder));
+        await engine.HandleAsync(new Envelope(Guid.NewGuid(), MessageKind.Command, type, payload), default);
+        await DeliverAsync(engine, store); // OrderPlaced: the instance starts and sends ReserveStock
+        await DeliverAsync(engine, store); // ReserveStock: its reply (and StockReserved) is queued
+        var reserved = Assert.Single(await store.TakeOutboxAsync(default), e => e.Kind == MessageKind.Reply);
+
+        application.Redeploy(Reshaped);
+        await engine.HandleAsync(reserved, default);
+        Assert.NotNull(store.Instance(Fulfillment.Name, "A-1")!.KeptReply);
+
+        // The definition is back, and the broker delivers the same reply again: handled like any other.
+        application.Redeploy(Fulfillment);
+        await engine.HandleAsync(reserved, default);
+
+        var instance = store.Instance(Fulfillment.Name, "A-1")!;
+        Assert.Equal(ProcessStatus.Running, instance.Status);
+        Assert.Null(instance.KeptReply); // else a later operator would take this charge's step as answered
+    }
+
+    private static async Task DeliverAsync(Engine engine, InMemoryStore store)
+    {
+        foreach (var envelope in await store.TakeOutboxAsync(default))
+        {
+            await engine.HandleAsync(envelope, default);
+        }
+    }
+
+    /// <summary>The charge's retry succeeds after a redeploy that changed the process: its reply is kept, suspended.</summary>
+    private static async Task<InMemoryRuntime> ChargedWhileRedeployedAsync()
+    {
+        var runtime = TestSystem.Create(Fulfillment).UseRetention(Short with { Events = Keep.Forever("this test counts the charges") });
+        runtime.FailNext<ChargePayment>();
+        await runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50)); // the charge is retried in 1 s
+        runtime.Redeploy(Reshaped);
+        await runtime.AdvanceAsync(1.Seconds);
+        Assert.Equal(ProcessStatus.Suspended, runtime.StatusOf(Fulfillment, "A-1"));
+        return runtime;
     }
 
     [Fact]

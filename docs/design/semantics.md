@@ -164,6 +164,11 @@ the host doesn't start without a `Retention`, whose every member is required, ea
 - Something expires once its age reaches the period. **Suspended instances never expire**: they wait for an operator.
   Running and waiting instances aren't finished, so they never expire either. A removed instance takes its parked
   events with it.
+- **Fences never expire**: a fenced command is blocked forever (3.4). There is one per step given up on without knowing
+  whether it ran, so they grow with failures, not with traffic.
+- **What an instance learned doesn't depend on deduplication.** A reply that arrives while the deployed definition is
+  not the one the instance started with is kept on the instance, and the operator's resume or compensation takes it:
+  an instance can stay suspended longer than the owner's inbox remembers.
 - Durable hosts remove what expired in batches, in the workers, every `CleanupInterval` (one minute by default), never
   on a message's path. The in-memory host removes it when its clock moves (`AdvanceAsync`).
 - In memory there is a default, `Retention.InMemory`, that keeps everything (nothing outlives the process), and the
@@ -174,7 +179,8 @@ the host doesn't start without a `Retention`, whose every member is required, ea
 ## 5. Read models
 
 - A projection updates a view from events with pure functions, in the transaction that handles the event; the same
-  message is never applied twice. **Implemented.**
+  message is never applied twice: a domain event by its stream version, which never expires, and an integration event
+  from outside (it has no stream) by its message id, within the deduplication retention (4.1). **Implemented.**
 - Events of one stream (one state key) reach a projection **in the order they happened**, whatever the delivery
   order, so views don't defend against reordering by hand: each domain event carries its stream and version, and one
   that arrives early is held until the gap is filled. Processes don't wait for read models. **Implemented.**

@@ -78,6 +78,9 @@ internal sealed class InboxRow
     public string Reply { get; set; } = "";
 
     public DateTimeOffset RecordedAt { get; set; }
+
+    /// <summary>A fence: it blocks its command forever, so retention never removes it.</summary>
+    public bool Fence { get; set; }
 }
 
 internal sealed class HandledRow
@@ -112,6 +115,8 @@ internal sealed class ViewRow
 
     /// <summary>When the view was first written: views are listed in creation order (then by key).</summary>
     public DateTimeOffset Created { get; set; }
+
+    public long Version { get; set; }
 }
 
 internal sealed class ProjectedRow
@@ -224,6 +229,8 @@ public static class WyrdModelBuilderExtensions
             e.Property(r => r.TraceState).HasColumnName("trace_state");
             e.HasIndex(r => r.MessageId).IsUnique().HasDatabaseName("ix_published_message_id");
             e.HasIndex(r => r.RelayedAt).HasDatabaseName("ix_published_relayed_at");
+            // Without a transport a published message expires from when it was published.
+            e.HasIndex(r => r.RecordedAt).HasDatabaseName("ix_published_recorded_at");
             // Only what is waiting for the relay: the index stays as small as the backlog.
             e.HasIndex(r => r.Seq).HasFilter("relayed_at IS NULL").HasDatabaseName("ix_published_pending");
         });
@@ -234,6 +241,7 @@ public static class WyrdModelBuilderExtensions
             e.Property(r => r.MessageId).HasColumnName("message_id").ValueGeneratedNever();
             Text(e.Property(r => r.Reply), "reply");
             e.Property(r => r.RecordedAt).HasColumnName("recorded_at");
+            e.Property(r => r.Fence).HasColumnName("fence");
             e.HasIndex(r => r.RecordedAt).HasDatabaseName("ix_inbox_recorded_at");
         });
 
@@ -263,6 +271,7 @@ public static class WyrdModelBuilderExtensions
             Text(e.Property(r => r.Type), "type");
             Text(e.Property(r => r.Payload), "payload");
             e.Property(r => r.Created).HasColumnName("created");
+            e.Property(r => r.Version).HasColumnName("version");
         });
 
         modelBuilder.Entity<ProjectedRow>(e =>

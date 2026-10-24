@@ -178,6 +178,25 @@ public abstract class EfCoreRuntimeTests(Database database)
     }
 
     [Fact]
+    public async Task workers_projecting_different_streams_into_one_view_lose_no_update()
+    {
+        const int items = 40;
+#pragma warning disable IL2026, IL3050 // reflection JSON: the view is not in the shop's JSON context
+        var shop = ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(await database.NewAsync(), Database.Retention, Database.Options))
+            .AddProjection(new AllStocks());
+#pragma warning restore IL2026, IL3050
+        for (var i = 1; i <= items; i++)
+        {
+            await shop.SendAsync(new Restock($"SKU-{i:00}", 1)); // one stream each, one view for all
+        }
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+        await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Task.Run(() => DrainAsync(shop, cancellationToken: timeout.Token))));
+
+        Assert.Equal(new AllStock(items), await shop.ViewAsync<AllStock>("all"));
+    }
+
+    [Fact]
     public async Task a_step_whose_command_nobody_can_handle_suspends_its_instance_without_blocking_the_queue()
     {
         // ShipOrder has no owner here, so the step's command can never be handled: it reaches the process as a
@@ -491,6 +510,30 @@ public abstract class EfCoreRuntimeTests(Database database)
         await runtime.ForgetExpiredAsync();
 
         Assert.Equal(ProcessStatus.Suspended, await runtime.StatusOfAsync(broken, "A-1"));
+    }
+
+    [Fact]
+    public async Task a_fence_outlives_the_deduplication_window()
+    {
+        var clock = Database.Clock();
+        var contexts = await database.NewAsync();
+        var shop = Database.Shop(contexts, clock, Database.Retention with { Deduplication = Keep.For(TimeSpan.FromDays(7)) });
+        Guid fenced = Guid.NewGuid(), answered = Guid.NewGuid();
+        await using (var db = await contexts.CreateDbContextAsync())
+        {
+            var store = new EfCoreStore(db, clock.GetUtcNow());
+            var changes = new Changes();
+            changes.Replies[fenced] = new ReplyMessage(ReplyOutcome.Fenced);
+            changes.Replies[answered] = new ReplyMessage(ReplyOutcome.Rejected);
+            await store.CommitAsync(changes, CancellationToken.None);
+        }
+
+        clock.Advance(TimeSpan.FromDays(365));
+        await shop.ForgetExpiredAsync();
+
+        // A late copy of a fenced command must never run, however late it is (semantics 3.4).
+        await using var check = await contexts.CreateDbContextAsync();
+        Assert.Equal([fenced], await check.Set<InboxRow>().Select(r => r.MessageId).ToListAsync());
     }
 
     private static async Task<(int Inbox, int Handled, int Published, int Events)> CountAsync(IDbContextFactory<WyrdDbContext> contexts)

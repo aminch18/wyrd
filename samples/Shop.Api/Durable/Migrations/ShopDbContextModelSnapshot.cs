@@ -136,6 +136,10 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("message_id");
 
+                    b.Property<bool>("Fence")
+                        .HasColumnType("boolean")
+                        .HasColumnName("fence");
+
                     b.Property<DateTimeOffset>("RecordedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("recorded_at");
@@ -295,6 +299,9 @@ namespace Shop.Api.Durable.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_published_message_id");
 
+                    b.HasIndex("RecordedAt")
+                        .HasDatabaseName("ix_published_recorded_at");
+
                     b.HasIndex("RelayedAt")
                         .HasDatabaseName("ix_published_relayed_at");
 
@@ -402,6 +409,10 @@ namespace Shop.Api.Durable.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("type");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
 
                     b.HasKey("ViewType", "Key");
 

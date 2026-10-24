@@ -29,8 +29,9 @@ handles it, and deletes it in the same transaction.
 
 ### 3. Optimistic concurrency and unique keys settle races
 
-States and instances are written with their expected version in the `WHERE` clause; inbox, handled, parked, held and
-view rows are inserted on `SaveChanges`, where a key taken by another worker fails the transaction. A conflict rolls
+States, instances and read models are written with their expected version in the `WHERE` clause (a view built from
+several streams is written by workers handling different streams at once); inbox, handled, parked and held rows, and
+new views, are inserted on `SaveChanges`, where a key taken by another worker fails the transaction. A conflict rolls
 everything back and the message is handled again against what the other worker committed; it never counts as a
 failed delivery.
 
@@ -73,10 +74,11 @@ The constructor takes a `Retention` with every member required ([semantics](sema
 are recognised, finished instances and their histories kept, relayed messages, domain events and dead letters. Workers
 remove what expired every `CleanupInterval`, in batches (`Take(n)` with `ExecuteDelete`, translated by both
 providers), each in its own short transaction, so cleanup never holds many locks or slows a message. Dates are
-indexed (`finished_at` only for finished instances, a filtered index).
+indexed (`finished_at` only for finished instances, a filtered index). Inbox rows that are fences (`fence`) are never
+removed.
 
-- **Gives:** tables bounded by the periods the application chose; nobody finds out in production what the default was,
-  because there is none.
+- **Gives:** what can expire is bounded by the periods the application chose (fences are the one permanent exception:
+  they grow with failures, not traffic); nobody finds out in production what the default was, because there is none.
 - **Costs:** a few lines more to set up the host, and a decision the team has to make before starting.
 
 ## Not yet

@@ -12,7 +12,7 @@ using Shop.Api.Durable;
 namespace Shop.Api.Durable.Migrations
 {
     [DbContext(typeof(ShopDbContext))]
-    [Migration("20261019183250_InitialWyrd")]
+    [Migration("20261024105521_InitialWyrd")]
     partial class InitialWyrd
     {
         /// <inheritdoc />
@@ -138,6 +138,10 @@ namespace Shop.Api.Durable.Migrations
                     b.Property<Guid>("MessageId")
                         .HasColumnType("uuid")
                         .HasColumnName("message_id");
+
+                    b.Property<bool>("Fence")
+                        .HasColumnType("boolean")
+                        .HasColumnName("fence");
 
                     b.Property<DateTimeOffset>("RecordedAt")
                         .HasColumnType("timestamp with time zone")
@@ -298,6 +302,9 @@ namespace Shop.Api.Durable.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_published_message_id");
 
+                    b.HasIndex("RecordedAt")
+                        .HasDatabaseName("ix_published_recorded_at");
+
                     b.HasIndex("RelayedAt")
                         .HasDatabaseName("ix_published_relayed_at");
 
@@ -405,6 +412,10 @@ namespace Shop.Api.Durable.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("type");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
 
                     b.HasKey("ViewType", "Key");
 

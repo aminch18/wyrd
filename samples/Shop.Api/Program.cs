@@ -37,7 +37,17 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 var connectionString = builder.Configuration.GetConnectionString("Wyrd");
 if (connectionString is null)
 {
-    builder.Services.AddSingleton(_ => ShopModule.CreateRuntime());
+    // In memory nothing outlives the process, but a sample left running for days must not keep its delivery machinery
+    // forever (Q2.3): a day of each, measured on the clock WyrdClock moves. Orders and their read models are business
+    // data and have no retention, so a sample fed new orders still grows with them.
+    builder.Services.AddSingleton(_ => ShopModule.CreateRuntime().UseRetention(new Retention
+    {
+        Deduplication = Keep.For(1.Days),
+        FinishedInstances = Keep.For(1.Days),
+        RelayedMessages = Keep.For(1.Days),
+        Events = Keep.For(1.Days),
+        DeadLetters = Keep.For(1.Days),
+    }));
     builder.Services.AddSingleton<IWyrdRuntime>(services => services.GetRequiredService<InMemoryRuntime>());
     builder.Services.AddHostedService<WyrdClock>();
 }
