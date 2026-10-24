@@ -106,6 +106,15 @@ public sealed class RabbitMqTransportTests(Broker broker) : IClassFixture<Broker
         Assert.Equal(sent, await received.Task.WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
+    [Fact]
+    public async Task a_subscriber_without_a_prefetch_limit_is_refused()
+    {
+        using var shipping = new InMemoryRuntime().AddProjection(new Shipments());
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            RabbitMqSubscriber.StartAsync(broker.Connection, shipping, Queue(), broker.NewOptions() with { Prefetch = 0 }));
+    }
+
     private static string Queue() => $"shipping-{Guid.NewGuid():N}";
 
     private static TransportMessage Message(string orderId) =>

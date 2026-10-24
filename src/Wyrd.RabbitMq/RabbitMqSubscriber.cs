@@ -34,6 +34,8 @@ public sealed partial class RabbitMqSubscriber : IAsyncDisposable
     /// <summary>
     /// Declares the exchange and <paramref name="queue"/> (one per service: its instances share it), binds the queue to
     /// every contract <paramref name="runtime"/> uses and starts consuming. <paramref name="connection"/> stays yours.
+    /// The bindings are those of the runtime as registered now: register every process, projection and upcaster first,
+    /// since a contract used only by something registered later has no binding and the broker drops it.
     /// </summary>
     public static async Task<RabbitMqSubscriber> StartAsync(
         IConnection connection,
@@ -47,6 +49,7 @@ public sealed partial class RabbitMqSubscriber : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(runtime);
         ArgumentException.ThrowIfNullOrWhiteSpace(queue);
         options ??= new RabbitMqOptions();
+        ArgumentOutOfRangeException.ThrowIfZero(options.Prefetch, "options.Prefetch");
 
         var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
         await channel.ExchangeDeclareAsync(options.Exchange, ExchangeType.Topic, durable: true, autoDelete: false, cancellationToken: cancellationToken)
