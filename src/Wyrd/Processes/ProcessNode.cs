@@ -1,12 +1,19 @@
 namespace Wyrd.Processes;
 
+/// <summary>How retry delays increase between attempts. Every computed delay is capped at one minute.</summary>
 public enum Backoff
 {
+    /// <summary>Retries without waiting on the clock.</summary>
     Immediate,
+    /// <summary>Waits one second for the first retry, two for the second, and so on.</summary>
     Linear,
+    /// <summary>Doubles the delay after each retry, starting at one second.</summary>
     Exponential,
 }
 
+/// <summary>The retry count and delay strategy for a step, undo or compensation outcome.</summary>
+/// <param name="Attempts">How many retries are allowed after the initial attempt.</param>
+/// <param name="Backoff">How delays grow between retries.</param>
 public sealed record RetryPolicy(Attempts Attempts, Backoff Backoff)
 {
     private static readonly TimeSpan MaxDelay = TimeSpan.FromMinutes(1);
@@ -50,6 +57,8 @@ public sealed record StepRef(string Name)
     /// <summary>The command type the step produces.</summary>
     internal Type? Output { get; init; }
 
+    /// <summary>Creates a named reference from a delegate for process data and diagrams. It does not bind a callable runtime step.</summary>
+    /// <example><code>StepRef reference = StepRef.From((Func&lt;OrderPlaced, ReserveStock&gt;)Stock.Reserve);</code></example>
     public static StepRef From(Delegate step)
     {
         ArgumentNullException.ThrowIfNull(step);
@@ -125,13 +134,17 @@ public sealed record StepRef(string Name)
         }
     }
 
+    /// <summary>Compares step names; delegate instances and event-reading metadata do not affect equality.</summary>
     public bool Equals(StepRef? other) => other is not null && Name == other.Name;
 
+    /// <summary>Returns a hash of the step name, matching name-based equality.</summary>
     public override int GetHashCode() => StringComparer.Ordinal.GetHashCode(Name);
 
+    /// <summary>Returns the step name for diagrams and diagnostics.</summary>
     public override string ToString() => Name;
 }
 
+/// <summary>A step, wait or compensation outcome in the declarative process model.</summary>
 public abstract record ProcessNode;
 
 /// <summary>
@@ -171,8 +184,10 @@ public sealed record AwaitNode(Type Event, TimeSpan? Timeout = null) : ProcessNo
 {
     internal Func<object, object>? KeyOf { get; init; }
 
+    /// <summary>Compares the awaited event type and timeout; correlation delegates do not affect equality.</summary>
     public bool Equals(AwaitNode? other) => other is not null && Event == other.Event && Timeout == other.Timeout;
 
+    /// <summary>Returns a hash of the awaited event type and timeout.</summary>
     public override int GetHashCode() => HashCode.Combine(Event, Timeout);
 }
 

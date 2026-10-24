@@ -20,12 +20,15 @@ public sealed class Process : IEquatable<Process>
         Outcome = outcome;
     }
 
+    /// <summary>The process name used to identify instances, histories, journals and diagrams.</summary>
     public string Name { get; }
 
+    /// <summary>The event type that starts an instance when its correlated key is first seen.</summary>
     public Type Trigger { get; }
 
     internal Func<object, object> KeyOf { get; }
 
+    /// <summary>The steps and waits in execution order. The compensation outcome is stored separately.</summary>
     public ImmutableArray<ProcessNode> Nodes { get; }
 
     /// <summary>The command sent once compensation has finished, and its retry policy, if any.</summary>
@@ -78,8 +81,10 @@ public sealed class Process : IEquatable<Process>
         other is not null && Name == other.Name && Trigger == other.Trigger && Nodes.SequenceEqual(other.Nodes)
         && Equals(Outcome, other.Outcome);
 
+    /// <summary>Compares the name, trigger, ordered nodes and compensation outcome with another process.</summary>
     public override bool Equals(object? obj) => Equals(obj as Process);
 
+    /// <summary>Returns a hash of the same process data used by equality.</summary>
     public override int GetHashCode()
     {
         var hash = new HashCode();
