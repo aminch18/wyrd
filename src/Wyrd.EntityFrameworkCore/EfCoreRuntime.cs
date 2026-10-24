@@ -29,6 +29,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     private Dialect? _dialect;
     private readonly Retention _retention;
     private IWyrdTransport? _transport;
+    private IHistoryArchive? _archive;
     // UTC ticks of the last cleanup and health measurement: every worker loop shares them, and claims a turn atomically.
     private long _lastCleanup;
     private long _lastHealth;
@@ -139,6 +140,17 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     {
         ArgumentNullException.ThrowIfNull(process);
         _application.Add(process);
+        return this;
+    }
+
+    /// <summary>
+    /// Hands the histories of finished instances to <paramref name="archive"/> before retention removes them, outside any
+    /// transaction; an instance is removed only once its history is archived.
+    /// </summary>
+    public EfCoreRuntime<TContext> UseHistoryArchive(IHistoryArchive archive)
+    {
+        ArgumentNullException.ThrowIfNull(archive);
+        _archive = archive;
         return this;
     }
 
@@ -570,8 +582,14 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         }
     }
 
+    /// <summary>
+    /// Finished instances whose retention passed, in batches. With an archive, each batch is read whole (its histories)
+    /// outside any transaction, archived, and only then removed; a failed archive keeps the batch for the next pass.
+    /// </summary>
     private async Task ForgetFinishedInstancesAsync(CleanupPass pass, DateTimeOffset cutoff, int batchSize, CancellationToken cancellationToken)
     {
+        // Whole rows are read for the archive: smaller batches keep the worker's memory flat.
+        var size = _archive is null ? batchSize : Math.Min(batchSize, ArchiveBatchSize);
         for (var batches = 0; ; batches++)
         {
             if (batches == pass.MaxBatches)
@@ -580,35 +598,101 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                 return;
             }
 
-            await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-
-            // Set-based, each delete checking the condition again: a parked event goes only while its instance is still
-            // a finished, expired row, so the event of a new instance that re-used the key (its row isn't finished, and
-            // can only exist once the old one is gone) is never taken with it. Parked events go first, in batches of
-            // their own (an instance can have several); what is left of them goes with the instances, in one transaction.
-            var parked = db.Set<ParkedRow>()
-                .Where(p => db.Set<InstanceRow>().Any(i => i.Process == p.Process && i.Key == p.Key && i.FinishedAt <= cutoff));
-            var parkedBatch = await parked.OrderBy(p => p.Process).ThenBy(p => p.Key).ThenBy(p => p.Step).Take(batchSize)
-                .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
-            pass.Removed += parkedBatch;
-            if (parkedBatch == batchSize)
+            // Each batch adds what it removed to the pass, and says how full it was.
+            var batch = _archive is null
+                ? await ForgetFinishedBatchAsync(pass, cutoff, size, cancellationToken).ConfigureAwait(false)
+                : await ArchiveFinishedBatchAsync(pass, _archive, cutoff, size, cancellationToken).ConfigureAwait(false);
+            if (batch is not { } full)
             {
-                continue;
+                return; // the archive failed: the batch stays for the next pass
             }
 
-            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            pass.Removed += await parked.ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
-            var batch = await db.Set<InstanceRow>()
-                .Where(r => r.FinishedAt <= cutoff).OrderBy(r => r.FinishedAt).Take(batchSize)
-                .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
-            pass.Removed += batch;
-
-            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-            if (batch < batchSize)
+            if (full < size)
             {
                 return;
             }
         }
+    }
+
+    private const int ArchiveBatchSize = 100;
+
+    private async Task<int?> ForgetFinishedBatchAsync(CleanupPass pass, DateTimeOffset cutoff, int size, CancellationToken cancellationToken)
+    {
+        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        // Set-based, each delete checking the condition again: a parked event goes only while its instance is still a
+        // finished, expired row, so the event of a new instance that re-used the key (its row isn't finished, and can only
+        // exist once the old one is gone) is never taken with it. Parked events go first, in batches of their own (an
+        // instance can have several); what is left of them goes with the instances, in one transaction.
+        var parked = db.Set<ParkedRow>()
+            .Where(p => db.Set<InstanceRow>().Any(i => i.Process == p.Process && i.Key == p.Key && i.FinishedAt <= cutoff));
+        var parkedBatch = await parked.OrderBy(p => p.Process).ThenBy(p => p.Key).ThenBy(p => p.Step).Take(size)
+            .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+        pass.Removed += parkedBatch;
+        if (parkedBatch == size)
+        {
+            return size; // more parked events first: the next batch goes on
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        pass.Removed += await parked.ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+        var removed = await db.Set<InstanceRow>()
+            .Where(r => r.FinishedAt <= cutoff).OrderBy(r => r.FinishedAt).Take(size)
+            .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        pass.Removed += removed;
+        return removed;
+    }
+
+    private async Task<int?> ArchiveFinishedBatchAsync(
+        CleanupPass pass, IHistoryArchive archive, DateTimeOffset cutoff, int size, CancellationToken cancellationToken)
+    {
+        List<InstanceRow> finished;
+        await using (var reader = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+        {
+            finished = await reader.Set<InstanceRow>().AsNoTracking()
+                .Where(r => r.FinishedAt <= cutoff).OrderBy(r => r.FinishedAt).Take(size)
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        if (finished.Count == 0)
+        {
+            return 0;
+        }
+
+        // Archived before anything is removed, with no transaction open.
+        try
+        {
+            // WaitAsync: a worker that is stopping doesn't wait for an archive that ignores the token; nothing was removed yet.
+            await archive.ArchiveAsync([.. finished.Select(HistoryOf)], cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            LogArchiveFailed(finished.Count, ex);
+            return null;
+        }
+
+        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var removed = 0;
+        foreach (var instance in finished)
+        {
+            // Parked events first, through the instance that must still be a finished, expired row: another cleanup that
+            // removed it meanwhile may have freed the key for a new instance, whose early events stay.
+            pass.Removed += await db.Set<ParkedRow>()
+                .Where(p => p.Process == instance.Process && p.Key == instance.Key
+                    && db.Set<InstanceRow>().Any(i => i.Process == instance.Process && i.Key == instance.Key && i.FinishedAt <= cutoff))
+                .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+            removed += await db.Set<InstanceRow>()
+                .Where(r => r.Process == instance.Process && r.Key == instance.Key && r.FinishedAt <= cutoff)
+                .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        pass.Removed += removed;
+
+        // Another cleanup may have removed some meanwhile: the batch counts as full when its read was.
+        return finished.Count;
     }
 
     /// <summary>A transport that is down doesn't stop the worker: the outbox keeps the messages until it is back.</summary>
@@ -755,6 +839,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             return null;
         }
 
+        return HistoryOf(row);
+    }
+
+    private static InstanceHistory HistoryOf(InstanceRow row)
+    {
         var instance = EfCoreStore.Deserialize(row);
         return new InstanceHistory(instance.Process, instance.Key, instance.Fingerprint, instance.History);
     }
@@ -815,7 +904,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             PendingSteps: await pending.LongCountAsync(cancellationToken).ConfigureAwait(false),
             OldestPendingStep: Age(await pending.MinAsync(r => r.PendingSince, cancellationToken).ConfigureAwait(false), now),
             // A literal, so the filtered index ix_instances_suspended answers it.
-            Suspended: await db.Set<InstanceRow>().LongCountAsync(r => r.Status == "Suspended", cancellationToken).ConfigureAwait(false));
+            Suspended: await db.Set<InstanceRow>().LongCountAsync(r => r.Status == "Suspended", cancellationToken).ConfigureAwait(false),
+            // Answered by the finished_at index; nothing expires while the retention keeps finished instances forever.
+            ExpiredKept: _retention.FinishedInstances.Cutoff(now) is { } cutoff
+                ? await db.Set<InstanceRow>().LongCountAsync(r => r.FinishedAt <= cutoff, cancellationToken).ConfigureAwait(false)
+                : 0);
 
         static TimeSpan Age(DateTimeOffset? since, DateTimeOffset now) => since < now ? now - since.Value : TimeSpan.Zero;
     }
@@ -908,6 +1001,9 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Worker failed (database unavailable?); queued messages are safe, retrying")]
     private partial void LogWorkerFailed(Exception error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "History archive failed: {Count} finished instances kept for the next cleanup")]
+    private partial void LogArchiveFailed(int count, Exception error);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Message {Id} was taken by another worker meanwhile: its failure is not recorded twice")]
     private partial void LogTakenMeanwhile(long id);

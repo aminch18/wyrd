@@ -468,11 +468,11 @@ public abstract class EfCoreRuntimeTests(Database database)
 #pragma warning restore IL2026, IL3050
 
         await runtime.SendAsync(new StartJob("J-1"));
-        Assert.Equal(new QueueHealth(1, TimeSpan.Zero, 0, 0, 0, TimeSpan.Zero, 0), await runtime.HealthAsync());
+        Assert.Equal(new QueueHealth(1, TimeSpan.Zero, 0, 0, 0, TimeSpan.Zero, 0, 0), await runtime.HealthAsync());
 
         await runtime.ProcessPendingAsync(max: 1); // the process starts and sends RunJob
         clock.Advance(TimeSpan.FromSeconds(30));
-        Assert.Equal(new QueueHealth(1, TimeSpan.FromSeconds(30), 0, 0, 1, TimeSpan.FromSeconds(30), 0), await runtime.HealthAsync());
+        Assert.Equal(new QueueHealth(1, TimeSpan.FromSeconds(30), 0, 0, 1, TimeSpan.FromSeconds(30), 0, 0), await runtime.HealthAsync());
 
         while (await runtime.ProcessPendingAsync() > 0)
         {
@@ -532,6 +532,76 @@ public abstract class EfCoreRuntimeTests(Database database)
         var options = Database.Options with { PollInterval = TimeSpan.FromSeconds(5), MaxPollInterval = TimeSpan.FromSeconds(1) };
 
         Assert.Throws<ArgumentOutOfRangeException>(() => new EfCoreRuntime<WyrdDbContext>(contexts, ShopJson.Default, Database.Retention, options));
+    }
+
+    [Fact]
+    public async Task an_expired_instance_is_archived_before_it_is_removed_and_still_replays()
+    {
+        var clock = Database.Clock();
+        var archive = new FlakyArchive();
+        var shop = Database.Shop(await database.NewAsync(), clock, Database.Retention with { FinishedInstances = Keep.For(TimeSpan.FromDays(30)) })
+            .UseHistoryArchive(archive);
+        await ShipAsync(shop, "A-1");
+        clock.Advance(TimeSpan.FromDays(30));
+
+        await shop.ForgetExpiredAsync(); // the archive is down: nothing is removed, and the health says so
+        Assert.Equal(ProcessStatus.Completed, await shop.StatusOfAsync(Fulfillment, "A-1"));
+        Assert.Equal(1, (await shop.HealthAsync()).ExpiredKept);
+
+        await shop.ForgetExpiredAsync();
+        Assert.Null(await shop.StatusOfAsync(Fulfillment, "A-1"));
+        var archived = Assert.Single(archive.Histories);
+        (await Urd.ReplayAsync(ShopModule.CreateRuntime, Fulfillment, InstanceHistory.FromJson(archived.ToJson()))).ThrowIfDiverged();
+    }
+
+    [Fact]
+    public async Task a_cleanup_that_is_stopped_doesnt_wait_for_an_archive_that_ignores_its_token()
+    {
+        var clock = Database.Clock();
+        var archive = new HangingArchive();
+        var shop = Database.Shop(await database.NewAsync(), clock, Database.Retention with { FinishedInstances = Keep.For(TimeSpan.FromDays(30)) })
+            .UseHistoryArchive(archive);
+        await ShipAsync(shop, "A-1");
+        clock.Advance(TimeSpan.FromDays(30));
+        using var stop = new CancellationTokenSource();
+
+        var cleanup = shop.ForgetExpiredAsync(cancellationToken: stop.Token);
+        await archive.Called.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await stop.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cleanup.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(ProcessStatus.Completed, await shop.StatusOfAsync(Fulfillment, "A-1")); // nothing removed
+    }
+
+    /// <summary>An archive that never returns and ignores its token.</summary>
+    private sealed class HangingArchive : IHistoryArchive
+    {
+        public TaskCompletionSource Called { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task ArchiveAsync(IReadOnlyList<InstanceHistory> histories, CancellationToken cancellationToken)
+        {
+            Called.TrySetResult();
+            return new TaskCompletionSource().Task;
+        }
+    }
+
+    private sealed class FlakyArchive : IHistoryArchive
+    {
+        private bool _down = true;
+
+        public List<InstanceHistory> Histories { get; } = [];
+
+        public Task ArchiveAsync(IReadOnlyList<InstanceHistory> histories, CancellationToken cancellationToken)
+        {
+            if (_down)
+            {
+                _down = false;
+                throw new IOException("storage unavailable");
+            }
+
+            Histories.AddRange(histories);
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]

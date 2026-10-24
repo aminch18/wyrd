@@ -25,6 +25,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     private readonly List<PublishedMessage> _unrelayed = [];
     private IWyrdTransport? _transport;
     private Retention _retention = Retention.InMemory;
+    private IHistoryArchive? _archive;
     private long _member;
     private long _ids;
 
@@ -58,6 +59,18 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     {
         ArgumentNullException.ThrowIfNull(retention);
         _retention = retention;
+        return this;
+    }
+
+    /// <summary>
+    /// Hands the histories of finished instances to <paramref name="archive"/> before retention removes them; an instance
+    /// is removed only once its history is archived. It is called while the clock moves (<see cref="AdvanceAsync"/>), and
+    /// nothing else runs on this runtime meanwhile.
+    /// </summary>
+    public InMemoryRuntime UseHistoryArchive(IHistoryArchive archive)
+    {
+        ArgumentNullException.ThrowIfNull(archive);
+        _archive = archive;
         return this;
     }
 
@@ -228,7 +241,8 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
             }
 
             Write(() => _now = until);
-            _store.Forget(_retention, relays: _transport is not null); // only time makes anything expire
+            // Only time makes anything expire.
+            _store.Forget(_retention, relays: _transport is not null, await ArchiveExpiredAsync(cancellationToken).ConfigureAwait(false));
         }
         finally
         {
@@ -387,6 +401,37 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
     }
 
     public void Dispose() => _gate.Dispose();
+
+    /// <summary>
+    /// Hands the expired histories to the archive, and returns the instances to remove: those archived, none when it
+    /// failed (they stay for the next pass), or null without an archive.
+    /// </summary>
+    private async Task<IReadOnlyList<StoredInstance>?> ArchiveExpiredAsync(CancellationToken cancellationToken)
+    {
+        if (_archive is null)
+        {
+            return null; // expiring is deleting
+        }
+
+        var expired = _store.ExpiredInstances(_retention);
+        if (expired.Count == 0)
+        {
+            return expired;
+        }
+
+        try
+        {
+            await _archive.ArchiveAsync([.. expired.Select(i => new InstanceHistory(i.Process, i.Key, i.Fingerprint, i.History))], cancellationToken)
+                .ConfigureAwait(false);
+            return expired;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            // A timeout of the archive's own (an OperationCanceledException nobody asked for) is a failure like any other.
+            Log(Engine.External, null, $"history archive failed, finished instances kept: {ex.GetType().Name}: {ex.Message}");
+            return [];
+        }
+    }
 
     /// <summary>
     /// Sends what this runtime publishes (integration events) to other services through <paramref name="transport"/>.

@@ -128,7 +128,7 @@ Work happens on `feature/verdandi` (PR #11), in this order:
       the EF Core outbox relay and trace context across services. Left: the `Wyrd.RabbitMq` package, kept thin
 - [x] OpenTelemetry with process-level traces
 - [ ] Catching up a projection added to an existing store
-- [ ] **History archive** (`IHistoryArchive`): before retention removes a finished instance, its history
+- [x] **History archive** (`IHistoryArchive`): before retention removes a finished instance, its history
       (`InstanceHistory`, the JSON Urd replays) is handed to the application — blob storage, a cold table, a data lake —
       and removed only once the archive confirms; a failed archive keeps the instance for the next pass. Hot tables
       stay small, the process audit trail is kept, and an archived instance still replays as a test

@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Wyrd.Processes;
 using Wyrd.Runtime;
+using Wyrd.Testing;
 
 namespace Wyrd.Tests;
 
@@ -196,6 +197,81 @@ public class RetentionTests
         await runtime.AdvanceAsync(1.Seconds);
         Assert.Equal(ProcessStatus.Suspended, runtime.StatusOf(Fulfillment, "A-1"));
         return runtime;
+    }
+
+    [Fact]
+    public async Task an_expired_instance_is_archived_before_it_is_removed()
+    {
+        var archive = new Archive();
+        _runtime.UseHistoryArchive(archive);
+        await CompleteAsync("A-1");
+
+        await _runtime.AdvanceAsync(1.Hours);
+
+        Assert.Null(_runtime.StatusOf(Fulfillment, "A-1"));
+        var archived = Assert.Single(archive.Histories);
+        Assert.Equal((Fulfillment.Name, "A-1", HistoryKind.Completed), (archived.Process, archived.Key, archived.Entries[^1].Kind));
+        // What is archived is what Urd replays.
+        var replay = await Urd.ReplayAsync(() => TestSystem.Create(Fulfillment), Fulfillment, InstanceHistory.FromJson(archived.ToJson()));
+        replay.ThrowIfDiverged();
+    }
+
+    [Fact]
+    public async Task a_failed_archive_keeps_the_instance_for_the_next_pass()
+    {
+        var archive = new Archive { FailNext = true };
+        _runtime.UseHistoryArchive(archive);
+        await CompleteAsync("A-1");
+
+        await _runtime.AdvanceAsync(1.Hours);
+        Assert.Equal(ProcessStatus.Completed, _runtime.StatusOf(Fulfillment, "A-1"));
+        Assert.Contains(_runtime.Journal, e => e.Message == "history archive failed, finished instances kept: IOException: storage unavailable");
+
+        await _runtime.AdvanceAsync(1.Minutes);
+        Assert.Null(_runtime.StatusOf(Fulfillment, "A-1"));
+        Assert.Single(archive.Histories);
+    }
+
+    [Fact]
+    public async Task an_archive_that_times_out_keeps_the_instance_and_lets_the_rest_expire()
+    {
+        var archive = new Archive { TimeOutNext = true };
+        _runtime.UseHistoryArchive(archive);
+        await CompleteAsync("A-1");
+
+        await _runtime.AdvanceAsync(1.Hours); // no exception: the clock moved, and what isn't archived still expires
+
+        Assert.Equal(ProcessStatus.Completed, _runtime.StatusOf(Fulfillment, "A-1"));
+        Assert.Empty(_runtime.History);
+        Assert.Contains(_runtime.Journal, e => e.Message == "history archive failed, finished instances kept: TaskCanceledException: The archive timed out.");
+    }
+
+    private sealed class Archive : IHistoryArchive
+    {
+        public List<InstanceHistory> Histories { get; } = [];
+
+        public bool FailNext { get; set; }
+
+        /// <summary>The next call times out on its own, as an HttpClient does: a cancellation nobody asked for.</summary>
+        public bool TimeOutNext { get; set; }
+
+        public Task ArchiveAsync(IReadOnlyList<InstanceHistory> histories, CancellationToken cancellationToken)
+        {
+            if (FailNext)
+            {
+                FailNext = false;
+                throw new IOException("storage unavailable");
+            }
+
+            if (TimeOutNext)
+            {
+                TimeOutNext = false;
+                throw new TaskCanceledException("The archive timed out.");
+            }
+
+            Histories.AddRange(histories);
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]
