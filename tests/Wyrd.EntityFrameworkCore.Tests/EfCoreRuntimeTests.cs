@@ -554,6 +554,37 @@ public abstract class EfCoreRuntimeTests(Database database)
         (await Urd.ReplayAsync(ShopModule.CreateRuntime, Fulfillment, InstanceHistory.FromJson(archived.ToJson()))).ThrowIfDiverged();
     }
 
+    [Fact]
+    public async Task a_cleanup_that_is_stopped_doesnt_wait_for_an_archive_that_ignores_its_token()
+    {
+        var clock = Database.Clock();
+        var archive = new HangingArchive();
+        var shop = Database.Shop(await database.NewAsync(), clock, Database.Retention with { FinishedInstances = Keep.For(TimeSpan.FromDays(30)) })
+            .UseHistoryArchive(archive);
+        await ShipAsync(shop, "A-1");
+        clock.Advance(TimeSpan.FromDays(30));
+        using var stop = new CancellationTokenSource();
+
+        var cleanup = shop.ForgetExpiredAsync(cancellationToken: stop.Token);
+        await archive.Called.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await stop.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cleanup.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(ProcessStatus.Completed, await shop.StatusOfAsync(Fulfillment, "A-1")); // nothing removed
+    }
+
+    /// <summary>An archive that never returns and ignores its token.</summary>
+    private sealed class HangingArchive : IHistoryArchive
+    {
+        public TaskCompletionSource Called { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task ArchiveAsync(IReadOnlyList<InstanceHistory> histories, CancellationToken cancellationToken)
+        {
+            Called.TrySetResult();
+            return new TaskCompletionSource().Task;
+        }
+    }
+
     private sealed class FlakyArchive : IHistoryArchive
     {
         private bool _down = true;

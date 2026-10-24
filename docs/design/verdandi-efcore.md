@@ -33,7 +33,8 @@ back to `PollInterval` as soon as there is work. A message this runtime queues i
 
 Slowness is observed, not turned into failures ([semantics](semantics.md) 3.5): `HealthAsync` measures the queue's lag
 (due messages, the oldest one's age), what waits for its time, dead letters, pending steps (`pending_since` on the
-instance: when the step it waits on was first sent, retries included) and suspended instances. Workers publish it every
+instance: when the step it waits on was first sent, retries included), suspended instances, and finished instances
+kept past their retention (`ExpiredKept`: cleanup is behind, or the archive keeps failing). Workers publish it every
 `HealthInterval` on the `Wyrd` meter (`System.Diagnostics.Metrics`, no dependency), with counters of handled, failed
 and dead-lettered messages: alerts belong on these.
 
@@ -85,8 +86,9 @@ are recognised, finished instances and their histories kept, relayed messages, d
 remove what expired every `CleanupInterval`, in batches (`Take(n)` with `ExecuteDelete`, translated by both
 providers), each in its own short transaction, so cleanup never holds many locks or slows a message. Dates are
 indexed (`finished_at` only for finished instances, a filtered index). Inbox rows that are fences (`fence`) are never
-removed. With a history archive, each batch of expired instances is handed to it first, with no transaction open, and
-removed only once it returned.
+removed. With a history archive, each batch of expired instances, 100 at most whatever the cleanup's batch size (whole
+rows are read for their histories), is handed to it first, with no transaction open, and removed only once it
+returned; a worker that is stopping doesn't wait for an archive that ignores its token.
 
 - **Gives:** what can expire is bounded by the periods the application chose (fences are the one permanent exception:
   they grow with failures, not traffic); nobody finds out in production what the default was, because there is none.
