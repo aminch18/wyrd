@@ -118,6 +118,8 @@ internal sealed class ViewRow
 
     /// <summary>When the view was first written: views are listed in creation order (then by key).</summary>
     public DateTimeOffset Created { get; set; }
+
+    public long Version { get; set; }
 }
 
 internal sealed class ProjectedRow
@@ -294,6 +296,7 @@ public static class WyrdModelBuilderExtensions
             Text(e.Property(r => r.Type), "type");
             Text(e.Property(r => r.Payload), "payload");
             e.Property(r => r.Created).HasColumnName("created");
+            e.Property(r => r.Version).HasColumnName("version");
         });
 
         modelBuilder.Entity<ProjectedRow>(e =>
