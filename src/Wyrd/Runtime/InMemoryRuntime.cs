@@ -391,14 +391,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         }
 
         // Once idle. What the drain handled is committed, so a failing seed is logged, never thrown at the caller.
-        try
-        {
-            await CatchUpCoreAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
-        {
-            Log(Engine.External, null, $"catching up read models failed: {ex.GetType().Name}: {ex.Message}");
-        }
+        await CatchUpCoreAsync(isolateFailures: true, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -411,7 +404,7 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await CatchUpCoreAsync(cancellationToken).ConfigureAwait(false);
+            await CatchUpCoreAsync(isolateFailures: false, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -419,7 +412,11 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         }
     }
 
-    private async Task CatchUpCoreAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Seeds every catching-up projection. With <paramref name="isolateFailures"/> a failing state is logged with its
+    /// view, state type and key, and the other states and projections go on; otherwise the failure is thrown.
+    /// </summary>
+    private async Task CatchUpCoreAsync(bool isolateFailures, CancellationToken cancellationToken)
     {
         foreach (var projection in _application.Registry.CatchingUp.ToList())
         {
@@ -427,11 +424,27 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
             {
                 foreach (var state in await _store.UnseededAsync(projection.View.FullName!, seed.FullName!, int.MaxValue, cancellationToken).ConfigureAwait(false))
                 {
-                    await _engine.SeedAsync(projection, state, cancellationToken).ConfigureAwait(false);
+                    await CatchUpStepAsync(projection, state, () => _engine.SeedAsync(projection, state, cancellationToken), isolateFailures, cancellationToken)
+                        .ConfigureAwait(false);
                 }
             }
 
-            await _engine.CompleteCatchUpAsync(projection, cancellationToken).ConfigureAwait(false);
+            await CatchUpStepAsync(projection, state: null, async () => await _engine.CompleteCatchUpAsync(projection, cancellationToken).ConfigureAwait(false), isolateFailures, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async Task CatchUpStepAsync(
+        IProjectionHandler projection, StoredState? state, Func<ValueTask> step, bool isolateFailures, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await step().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (isolateFailures && (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested))
+        {
+            Log(Engine.External, state?.Key,
+                $"catching up {projection.View.Name} failed on {state?.StateType ?? "completion"}: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

@@ -374,12 +374,15 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             {
                 var handled = await ProcessPendingAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
                 var relayed = await RelayOrWaitAsync(cancellationToken).ConfigureAwait(false);
-                // One loop of this runtime catches up at a time, a bounded batch per pass, between messages.
+
+                // One loop of this runtime catches up at a time, a bounded batch per pass, between messages. Seeding is
+                // work: a worker that seeded doesn't back off before the next batch.
+                var seeded = 0;
                 if (_application.Registry.CatchingUp.Any() && Interlocked.CompareExchange(ref _catchingUp, 1, 0) == 0)
                 {
                     try
                     {
-                        await CatchUpAsync(CatchUpBatchPerPass, cancellationToken).ConfigureAwait(false);
+                        seeded = await CatchUpPassAsync(CatchUpBatchPerPass, cancellationToken).ConfigureAwait(false);
                     }
                     finally
                     {
@@ -399,7 +402,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                     QueueMetrics.Record(await QueueNameAsync(cancellationToken).ConfigureAwait(false), await HealthAsync(cancellationToken).ConfigureAwait(false));
                 }
 
-                if (handled == 0 && relayed == 0)
+                if (handled == 0 && relayed == 0 && seeded == 0)
                 {
                     await IdleAsync(idle, cancellationToken).ConfigureAwait(false);
                     idle = TimeSpan.FromTicks(Math.Min(idle.Ticks * 2, _options.MaxPollInterval.Ticks));
@@ -524,6 +527,14 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     public async Task<bool> CatchUpAsync(int batchSize = 1_000, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(batchSize, 1);
+        await CatchUpPassAsync(batchSize, cancellationToken).ConfigureAwait(false);
+        return !_application.Registry.CatchingUp.Any();
+    }
+
+    /// <summary>One pass of catching up; returns how many states it seeded.</summary>
+    private async Task<int> CatchUpPassAsync(int batchSize, CancellationToken cancellationToken)
+    {
+        var seeded = 0;
         foreach (var projection in _application.Registry.CatchingUp.ToList())
         {
             var viewType = projection.View.FullName!;
@@ -547,15 +558,18 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
             foreach (var state in batches.SelectMany(b => b))
             {
-                await CatchUpStepAsync(projection, state, engine => engine.SeedAsync(projection, state, cancellationToken), cancellationToken)
-                    .ConfigureAwait(false);
+                if (await CatchUpStepAsync(projection, state, engine => engine.SeedAsync(projection, state, cancellationToken), cancellationToken)
+                    .ConfigureAwait(false))
+                {
+                    seeded++;
+                }
             }
 
             await CatchUpStepAsync(projection, state: null, async engine => await engine.CompleteCatchUpAsync(projection, cancellationToken).ConfigureAwait(false), cancellationToken)
                 .ConfigureAwait(false);
         }
 
-        return !_application.Registry.CatchingUp.Any();
+        return seeded;
     }
 
     private const int CatchUpBatchPerPass = 100;
@@ -563,9 +577,9 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// <summary>
     /// One step of a catch-up in its own transaction. A conflict (another worker seeded the stream, or an event changed
     /// the state meanwhile) leaves it for the next pass; any other failure is logged with what it was about, and the
-    /// projection stays catching up, its other states seeded.
+    /// projection stays catching up, its other states seeded. Returns whether the step committed.
     /// </summary>
-    private async Task CatchUpStepAsync(IProjectionHandler projection, StoredState? state, Func<Engine, ValueTask> step, CancellationToken cancellationToken)
+    private async Task<bool> CatchUpStepAsync(IProjectionHandler projection, StoredState? state, Func<Engine, ValueTask> step, CancellationToken cancellationToken)
     {
         try
         {
@@ -573,6 +587,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
             await step(Engine(db, _time.GetUtcNow())).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return true;
         }
         catch (Exception ex) when (IsConflict(ex))
         {
@@ -582,6 +597,8 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         {
             LogCatchUpFailed(projection.View.Name, state?.StateType ?? "-", state?.Key ?? "-", ex);
         }
+
+        return false;
     }
 
     /// <summary>

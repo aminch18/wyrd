@@ -292,6 +292,16 @@ internal sealed class Engine(
 
     private async ValueTask ProjectAsync(IEvent @event, StreamRef? stream, Changes changes, CancellationToken cancellationToken)
     {
+        if (stream is { Version: 1 })
+        {
+            // A stream that begins while a projection catches up is followed from here, whether or not this first event
+            // is one the projection handles: otherwise a later event of it would wait for a seed that never comes.
+            foreach (var projection in registry.CatchingUp.Where(p => p.Seeds.Any(s => s.FullName == stream.StateType)))
+            {
+                await FollowsAsync(projection, stream, changes, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
         foreach (var projection in registry.Projections)
         {
             foreach (var handled in projection.Events)
