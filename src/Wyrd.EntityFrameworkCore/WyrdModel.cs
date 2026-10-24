@@ -36,6 +36,9 @@ internal sealed class InstanceRow
 
     /// <summary>When it completed or was compensated; null while it runs, waits or is suspended.</summary>
     public DateTimeOffset? FinishedAt { get; set; }
+
+    /// <summary>When the step it waits on was first sent; null unless it is running with a command out.</summary>
+    public DateTimeOffset? PendingSince { get; set; }
 }
 
 internal sealed class EventRow
@@ -204,6 +207,10 @@ public static class WyrdModelBuilderExtensions
             e.Property(r => r.FinishedAt).HasColumnName("finished_at");
             // Only finished instances: what retention looks for, as small as what it can remove.
             e.HasIndex(r => r.FinishedAt).HasFilter("finished_at IS NOT NULL").HasDatabaseName("ix_instances_finished");
+            e.Property(r => r.PendingSince).HasColumnName("pending_since");
+            // What the queue's health reads: pending steps and suspended instances, each index as small as what it finds.
+            e.HasIndex(r => r.PendingSince).HasFilter("pending_since IS NOT NULL").HasDatabaseName("ix_instances_pending");
+            e.HasIndex(r => r.Status).HasFilter("status = 'Suspended'").HasDatabaseName("ix_instances_suspended");
         });
 
         modelBuilder.Entity<EventRow>(e =>

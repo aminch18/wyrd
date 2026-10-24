@@ -65,6 +65,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   in memory and Native AOT.
 - Ordered read models and instance histories on the durable host; `IWyrdRuntime.HistoryOfAsync` on both hosts, so an
   instance recorded in the database replays locally with Urd.
+- **A hardened queue** on the EF Core host: idle workers back off from `PollInterval` to `MaxPollInterval` (2 s), and a
+  message the runtime queues itself wakes them at once. `HealthAsync` returns a `QueueHealth` (due messages and the
+  oldest one's age, scheduled messages, dead letters, pending steps and the oldest one's age, suspended instances);
+  workers publish it every `HealthInterval` on the `Wyrd` meter, with counters of handled, failed and dead-lettered
+  messages. Instances carry `pending_since`; `EfCoreRuntime` is `IDisposable`.
 
 ### Changed
 

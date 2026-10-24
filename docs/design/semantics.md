@@ -104,8 +104,9 @@ simulate and version.
   stays scheduled for an instance that no longer waits. **Implemented** in memory and on the EF Core host.
 - **Slowness is not failure.** There are no technical timeouts on steps: durable messaging waits, a slow third party
   only makes processes wait, and latency is *observed* (age of pending steps, alerts), never turned into failures.
-  **Observability planned (v0.5).** A business deadline on a step is modelled as an explicit wait for its
-  confirmation with `.Within`.
+  A business deadline on a step is modelled as an explicit wait for its confirmation with `.Within`. **Implemented**
+  on the EF Core host: `HealthAsync` and the `Wyrd` meter. In memory there is no queue to watch: the journal and
+  `StatusOf` show it.
 
 ### 3.6 When Wyrd can't resolve something: suspend
 

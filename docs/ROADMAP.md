@@ -121,8 +121,8 @@ Work happens on `feature/verdandi` (PR #11), in this order:
 - [x] One retry layer on durable hosts: a process command that ends in dead letters reaches its process as a failure
       ([semantics](design/semantics.md) 3.3)
 - [x] Operators on durable hosts: resume and compensate suspended instances
-- [ ] A hardened queue: `LISTEN/NOTIFY` (or polling backoff) instead of busy polling, batched cleanup, metrics for
-      queue depth and the age of pending steps ([semantics](design/semantics.md) 3.5)
+- [x] A hardened queue: polling backoff (with an immediate wake-up for what the runtime queues itself) instead of busy
+      polling, batched cleanup, metrics for queue depth and the age of pending steps ([semantics](design/semantics.md) 3.5)
 - [ ] RabbitMQ transport between services (the outbox stays in the database; the broker carries what leaves it).
       Done: the port (`IWyrdTransport`, `ReceiveAsync`, only integration events cross services), `InMemoryTransport`,
       the EF Core outbox relay and trace context across services. Left: the `Wyrd.RabbitMq` package, kept thin

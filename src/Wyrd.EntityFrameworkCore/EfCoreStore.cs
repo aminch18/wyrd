@@ -206,11 +206,15 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
         var data = JsonSerializer.Serialize(instance, WyrdJsonContext.Default.StoredInstance);
         var status = instance.Status.ToString();
         DateTimeOffset? finishedAt = instance.Status is ProcessStatus.Completed or ProcessStatus.Compensated ? now : null;
+        var pendingSince = instance is { Status: ProcessStatus.Running, Pending: not null }
+            ? instance.History.LastOrDefault(e => e.Kind == HistoryKind.Sent && e.Attempt == 1)?.At
+            : null;
         if (instance.Version == 0)
         {
             db.Add(new InstanceRow
             {
                 Process = instance.Process, Key = instance.Key, Status = status, Deadline = instance.Deadline, Data = data, Version = 1, FinishedAt = finishedAt,
+                PendingSince = pendingSince,
             });
             return;
         }
@@ -221,6 +225,7 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
                 s => s.SetProperty(r => r.Status, status)
                     .SetProperty(r => r.Deadline, instance.Deadline)
                     .SetProperty(r => r.FinishedAt, finishedAt)
+                    .SetProperty(r => r.PendingSince, pendingSince)
                     .SetProperty(r => r.Data, data)
                     .SetProperty(r => r.Version, instance.Version + 1),
                 cancellationToken).ConfigureAwait(false);

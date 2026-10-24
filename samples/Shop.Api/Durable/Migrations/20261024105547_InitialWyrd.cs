@@ -102,7 +102,8 @@ namespace Shop.Api.Durable.Migrations
                     deadline = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     data = table.Column<string>(type: "text", nullable: false),
                     version = table.Column<long>(type: "bigint", nullable: false),
-                    finished_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                    finished_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    pending_since = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -234,6 +235,20 @@ namespace Shop.Api.Durable.Migrations
                 table: "instances",
                 column: "finished_at",
                 filter: "finished_at IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_instances_pending",
+                schema: "wyrd",
+                table: "instances",
+                column: "pending_since",
+                filter: "pending_since IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_instances_suspended",
+                schema: "wyrd",
+                table: "instances",
+                column: "status",
+                filter: "status = 'Suspended'");
 
             migrationBuilder.CreateIndex(
                 name: "ix_published_message_id",
