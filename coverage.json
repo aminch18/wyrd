@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "b621286",
+  "reportGeneratorVersion": "5.5.11",
+  "packages": {
+    "Wyrd": {
+      "line": 94.9,
+      "branch": 83.6
+    },
+    "Wyrd.Testing": {
+      "line": 94.1,
+      "branch": 79.9
+    }
+  }
+}

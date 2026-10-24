@@ -9,6 +9,8 @@ public sealed record StockReserved(string Sku, int Quantity, string OrderId) : I
 
 public sealed record StockReleased(string Sku, int Quantity, string OrderId) : IDomainEvent;
 
+public sealed record StockConsumed(string Sku, int Quantity, string OrderId) : IDomainEvent;
+
 public enum InventoryError
 {
     OutOfStock,
@@ -17,8 +19,9 @@ public enum InventoryError
 }
 
 /// <summary>
-/// Stock for one SKU, and who holds it. Knowing the reservations makes releases safe to repeat or to send for an
-/// order that never reserved: compensations must be harmless when there is nothing to undo.
+/// Stock for one SKU, and the orders still holding reservations. Shipping consumes a reservation without returning
+/// units. Knowing the reservations makes releases safe to repeat or to send for an order that never reserved:
+/// compensations must be harmless when there is nothing to undo.
 /// </summary>
 public sealed record StockItem(int Available, ImmutableDictionary<string, int> Reservations) : IState<StockItem>
 {
@@ -39,6 +42,7 @@ public sealed record StockItem(int Available, ImmutableDictionary<string, int> R
             Available = Available + released.Quantity,
             Reservations = Reservations.Remove(released.OrderId),
         },
+        StockConsumed consumed => this with { Reservations = Reservations.Remove(consumed.OrderId) },
         _ => this,
     };
 }
