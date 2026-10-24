@@ -4,9 +4,9 @@ using Wyrd;
 
 namespace Shop.Shipping;
 
-public sealed record ShipOrder(string OrderId) : ICommand;
+public sealed record ShipOrder(string OrderId, string Sku) : ICommand;
 
-public sealed record OrderShipped(string OrderId) : IDomainEvent;
+public sealed record OrderShipped(string OrderId, string Sku) : IDomainEvent;
 
 public enum ShippingError
 {
@@ -34,7 +34,7 @@ public sealed class ShipOrderSlice : Slice<ShipOrder, Shipment, OrderShipped, Sh
 
     public override Result<OrderShipped, ShippingError> Decide(ShipOrder command, Shipment shipment) => shipment switch
     {
-        Shipment.Pending => new OrderShipped(command.OrderId),
+        Shipment.Pending => new OrderShipped(command.OrderId, command.Sku),
         Shipment.Shipped => ShippingError.AlreadyShipped,
     };
 }

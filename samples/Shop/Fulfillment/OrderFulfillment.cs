@@ -20,6 +20,12 @@ public static class Processes
         .Await<PaymentConfirmed>(e => e.OrderId).Within(15.Minutes)
         .Then(Shipping.Ship).Retry(5.Times)
         .OnCompensated(Orders.Cancel).Retry(5.Times);
+
+    // Shipping cannot be undone. Inventory cleanup retries independently, so an operator never has to
+    // compensate fulfillment (refund payment and return shipped units) to recover a failed cleanup.
+    public static Process StockConsumption => Process
+        .StartOn<OrderShipped>(e => e.OrderId)
+        .Then(Stock.Consume).Retry(5.Times);
 }
 
 // Steps are pure functions: the order that started the process -> the next command.
@@ -31,6 +37,8 @@ internal static class Orders
 
 internal static class Stock
 {
+    public static ConsumeStock Consume(OrderShipped order) => new(order.Sku, order.OrderId);
+
     public static ReserveStock Reserve(OrderPlaced order) => new(order.Sku, order.Quantity, order.OrderId);
 
     public static ReleaseStock Release(OrderPlaced order) => new(order.Sku, order.Quantity, order.OrderId);
@@ -45,5 +53,5 @@ internal static class Payments
 
 internal static class Shipping
 {
-    public static ShipOrder Ship(OrderPlaced order) => new(order.OrderId);
+    public static ShipOrder Ship(OrderPlaced order) => new(order.OrderId, order.Sku);
 }
