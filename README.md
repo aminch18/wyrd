@@ -718,6 +718,11 @@ samples/Shop.Tests/        the shop's business specifications
 docs/                      philosophy, DDD migration guide, roadmap and design notes
 ```
 
+How the code works, for reviewers and contributors: [architecture](https://github.com/aminch18/wyrd/blob/main/docs/design/architecture.md)
+(the model, the patterns, the invariants and where they are enforced) and
+[the engine and the hosts](https://github.com/aminch18/wyrd/blob/main/docs/design/runtime.md) (one message, one
+transaction, one order end to end on PostgreSQL).
+
 ## License
 
 [MIT](https://github.com/aminch18/wyrd/blob/main/LICENSE). Free for any use, forever.
