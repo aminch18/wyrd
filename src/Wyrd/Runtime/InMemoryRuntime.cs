@@ -241,8 +241,8 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
             }
 
             Write(() => _now = until);
-            var archived = await ArchiveExpiredAsync(cancellationToken).ConfigureAwait(false);
-            _store.Forget(_retention, relays: _transport is not null, removeFinished: archived); // only time makes anything expire
+            // Only time makes anything expire.
+            _store.Forget(_retention, relays: _transport is not null, await ArchiveExpiredAsync(cancellationToken).ConfigureAwait(false));
         }
         finally
         {
@@ -402,23 +402,34 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
 
     public void Dispose() => _gate.Dispose();
 
-    /// <summary>Hands the expired histories to the archive; false when it failed, so the instances stay for the next pass.</summary>
-    private async Task<bool> ArchiveExpiredAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Hands the expired histories to the archive, and returns the instances to remove: those archived, none when it
+    /// failed (they stay for the next pass), or null without an archive.
+    /// </summary>
+    private async Task<IReadOnlyList<StoredInstance>?> ArchiveExpiredAsync(CancellationToken cancellationToken)
     {
-        if (_archive is null || _store.ExpiredHistories(_retention) is not { Count: > 0 } histories)
+        if (_archive is null)
         {
-            return true;
+            return null; // expiring is deleting
+        }
+
+        var expired = _store.ExpiredInstances(_retention);
+        if (expired.Count == 0)
+        {
+            return expired;
         }
 
         try
         {
-            await _archive.ArchiveAsync(histories, cancellationToken).ConfigureAwait(false);
-            return true;
+            await _archive.ArchiveAsync([.. expired.Select(i => new InstanceHistory(i.Process, i.Key, i.Fingerprint, i.History))], cancellationToken)
+                .ConfigureAwait(false);
+            return expired;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
+            // A timeout of the archive's own (an OperationCanceledException nobody asked for) is a failure like any other.
             Log(Engine.External, null, $"history archive failed, finished instances kept: {ex.GetType().Name}: {ex.Message}");
-            return false;
+            return [];
         }
     }
 
