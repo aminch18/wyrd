@@ -129,8 +129,12 @@ export function ApiReferenceDoc() {
                 <a href={`${import.meta.env.BASE_URL}docs/read-models/`}>
                     read-model guide
                 </a>
-                . The current host is in memory; durable transports and
-                integrations remain planned.
+                . Every host implements the same contracts: in memory, and
+                durable on EF Core (see{' '}
+                <a href={`${import.meta.env.BASE_URL}docs/running-durable/`}>
+                    Running durable
+                </a>
+                ).
             </p>
             <div className={styles['api-controls']}>
                 <label>

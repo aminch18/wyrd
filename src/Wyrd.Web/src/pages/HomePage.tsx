@@ -49,7 +49,7 @@ export function HomePage() {
                     </div>
                     <TerminalInstall />
                     <div className={styles['alpha-note']}>
-                        <span>v0.3 preview</span> · built for .NET 10 and C# 14
+                        <span>v0.5.0-rc.1</span> · built for .NET 10 and C# 14
                     </div>
                 </div>
                 <div
@@ -309,8 +309,11 @@ export function HomePage() {
                         no longer weird.
                     </h2>
                     <p>
-                        Wyrd is early-alpha software. Try the model, read the
-                        source, and help shape what comes next.
+                        Wyrd is pre-1.0: try the model in memory,{' '}
+                        <a href={routePath('docs', 'running-durable')}>
+                            run it durable
+                        </a>
+                        , read the source, and help shape 1.0.
                     </p>
                     <div className={styles['hero-actions']}>
                         <a

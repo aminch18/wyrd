@@ -37,7 +37,7 @@ export const GUARANTEES: Feature[] = [
     },
     {
         title: 'Processes are data',
-        copy: 'Run, draw, inspect, and simulate one model today, with replay on the roadmap.',
+        copy: 'Run, draw, inspect, simulate and replay one model, in memory or durable.',
         icon: Route,
     },
     {
@@ -68,8 +68,8 @@ export const NORNS: Norn[] = [
         name: 'Verdandi',
         tense: 'what is',
         label: 'Run',
-        status: 'Core available',
+        status: 'Available',
         icon: Network,
-        copy: 'Execute one message and commit state, events, inbox, outbox, and timers atomically.',
+        copy: 'Run the same module durable on EF Core (PostgreSQL, SQL Server): one transaction per message, integrations as the only I/O, explicit retention, operators, and RabbitMQ between services.',
     },
 ]
