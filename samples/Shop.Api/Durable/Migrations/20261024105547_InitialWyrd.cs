@@ -265,6 +265,12 @@ namespace Shop.Api.Durable.Migrations
                 filter: "relayed_at IS NULL");
 
             migrationBuilder.CreateIndex(
+                name: "ix_published_recorded_at",
+                schema: "wyrd",
+                table: "published",
+                column: "recorded_at");
+
+            migrationBuilder.CreateIndex(
                 name: "ix_published_relayed_at",
                 schema: "wyrd",
                 table: "published",
