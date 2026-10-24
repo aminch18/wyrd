@@ -5,6 +5,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.5.0-rc.1] - 2026-10-24
+
+Verdandi: the durable runtime. A release candidate: the whole quality bar is green except Q2.3's retained-memory
+check, which comes before 0.5.0; the public API may still change until then.
+
+### Benchmarks (Q1.4)
+
+The Shop on the in-memory host, 10,000 orders per scenario, Release, .NET 10.0.201, Apple M3 Pro (`--gate`; orders/s
+is one run, for information):
+
+| Scenario | KB/order | B/message | Orders/s | 10k/1k |
+| --- | ---: | ---: | ---: | ---: |
+| SingleSku | 73.0 | 4,400 | 6,225 | 1.003 |
+| SkuPerOrder | 79.0 | 4,256 | 10,114 | 0.997 |
+| Compensated | 64.1 | 4,376 | 19,002 | 0.993 |
+| Timers | 81.0 | 4,149 | 10,818 | 0.983 |
+
+Against 0.4's code base the same gate allocates 5% to 11% more per message (retention, versioned read models,
+cancelled timers); `benchmarks/README.md` has the before and after.
+
 ### Fixed
 
 - The Shop consumes shipped stock reservations through an independent inventory process, keeping per-SKU state bounded by outstanding reservations. Add business and hostile-future specifications and guidance on state that only grows.
@@ -271,7 +291,8 @@ First preview: the core model, a deterministic in-memory runtime and versioned i
   timeouts, duplicate detection and correlation.
 - `samples/Shop`: an order fulfillment process across four vertical slices.
 
-[Unreleased]: https://github.com/aminch18/wyrd/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/aminch18/wyrd/compare/v0.5.0-rc.1...HEAD
+[0.5.0-rc.1]: https://github.com/aminch18/wyrd/compare/v0.4.0...v0.5.0-rc.1
 [0.4.0]: https://github.com/aminch18/wyrd/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/aminch18/wyrd/compare/v0.2.0-alpha.1...v0.3.0
 [0.2.0-alpha.1]: https://github.com/aminch18/wyrd/compare/v0.1.0-alpha.1...v0.2.0-alpha.1
