@@ -256,6 +256,8 @@ public static class WyrdModelBuilderExtensions
             e.Property(r => r.TraceState).HasColumnName("trace_state");
             e.HasIndex(r => r.MessageId).IsUnique().HasDatabaseName("ix_published_message_id");
             e.HasIndex(r => r.RelayedAt).HasDatabaseName("ix_published_relayed_at");
+            // Without a transport a published message expires from when it was published.
+            e.HasIndex(r => r.RecordedAt).HasDatabaseName("ix_published_recorded_at");
             // Only what is waiting for the relay: the index stays as small as the backlog.
             e.HasIndex(r => r.Seq).HasFilter("relayed_at IS NULL").HasDatabaseName("ix_published_pending");
         });

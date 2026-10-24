@@ -12,7 +12,7 @@ using Shop.Api.Durable;
 namespace Shop.Api.Durable.Migrations
 {
     [DbContext(typeof(ShopDbContext))]
-    [Migration("20261024104242_InitialWyrd")]
+    [Migration("20261024105655_InitialWyrd")]
     partial class InitialWyrd
     {
         /// <inheritdoc />
@@ -329,6 +329,9 @@ namespace Shop.Api.Durable.Migrations
                     b.HasIndex("MessageId")
                         .IsUnique()
                         .HasDatabaseName("ix_published_message_id");
+
+                    b.HasIndex("RecordedAt")
+                        .HasDatabaseName("ix_published_recorded_at");
 
                     b.HasIndex("RelayedAt")
                         .HasDatabaseName("ix_published_relayed_at");
