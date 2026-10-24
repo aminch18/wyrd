@@ -367,14 +367,15 @@ internal sealed class Engine(
         var current = stored?.Payload is null ? null : types.Deserialize(stored.Type!, stored.Payload);
 
         var next = projection.Apply(current, @event);
+        var read = stored?.Version ?? 0;
         if (next is null)
         {
-            changes.Views[(viewType, key)] = new StoredView(viewType, key, null, null);
+            changes.Views[(viewType, key)] = new StoredView(viewType, key, null, null, read);
             return;
         }
 
         var (type, payload) = types.Serialize(next, projection.View);
-        changes.Views[(viewType, key)] = new StoredView(viewType, key, type, payload);
+        changes.Views[(viewType, key)] = new StoredView(viewType, key, type, payload, read);
     }
 
     private async ValueTask StartAsync(Process process, IEvent trigger, Changes changes, CancellationToken cancellationToken)
