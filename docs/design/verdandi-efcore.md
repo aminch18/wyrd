@@ -39,8 +39,9 @@ and dead-lettered messages: alerts belong on these.
 
 ### 3. Optimistic concurrency and unique keys settle races
 
-States and instances are written with their expected version in the `WHERE` clause; inbox, handled, parked, held and
-view rows are inserted on `SaveChanges`, where a key taken by another worker fails the transaction. A conflict rolls
+States, instances and read models are written with their expected version in the `WHERE` clause (a view built from
+several streams is written by workers handling different streams at once); inbox, handled, parked and held rows, and
+new views, are inserted on `SaveChanges`, where a key taken by another worker fails the transaction. A conflict rolls
 everything back and the message is handled again against what the other worker committed; it never counts as a
 failed delivery.
 
