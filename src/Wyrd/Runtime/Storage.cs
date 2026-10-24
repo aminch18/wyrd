@@ -57,8 +57,11 @@ internal sealed record StoredHeld(string StateType, string Key, long Version, st
 /// <remarks>The stream's key, not the view's: one view can be seeded from many states.</remarks>
 internal sealed record StoredSeeded(string ViewType, string StateType, string Key);
 
-/// <summary>A read-model document. A null payload deletes it.</summary>
-internal sealed record StoredView(string ViewType, string Key, string? Type, string? Payload);
+/// <summary>
+/// A read-model document. A null payload deletes it. <c>Version</c> is the version read (0 when new), checked on commit:
+/// a view built from several streams is written by workers handling different streams at once.
+/// </summary>
+internal sealed record StoredView(string ViewType, string Key, string? Type, string? Payload, long Version = 0);
 
 /// <summary>
 /// Everything that handling one message changes. A store commits it atomically: state, events, process
