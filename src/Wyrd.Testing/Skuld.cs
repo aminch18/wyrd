@@ -23,6 +23,8 @@ namespace Wyrd.Testing;
 /// </example>
 public static class Skuld
 {
+    /// <summary>Creates a fresh runtime for each seeded future, runs the scenario with hostile deliveries, and checks the supplied invariants after settling virtual time.</summary>
+    /// <remarks>Keep the runtime factory and scenario reproducible so shrinking can replay the same starting conditions.</remarks>
     public static async Task<SimulationReport> SimulateAsync(
         Func<InMemoryRuntime> system,
         Func<InMemoryRuntime, Task> scenario,

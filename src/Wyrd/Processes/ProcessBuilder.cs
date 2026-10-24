@@ -25,6 +25,7 @@ public sealed class ProcessBuilder<TTrigger>
         _outcomeIsLast = outcomeIsLast;
     }
 
+    /// <summary>Appends a command-producing step that reads the trigger. Declare its retry and compensation policies next.</summary>
     public ProcessBuilder<TTrigger> Then<TCommand>(Func<TTrigger, TCommand> step)
         where TCommand : ICommand =>
         Append(new StepNode(StepRef.Typed(step)));
@@ -78,13 +79,17 @@ public sealed class ProcessBuilder<TTrigger>
     /// </summary>
     public ProcessBuilder<TTrigger> NoCompensation(string reason) => ModifyLast(n => NodeModifiers.NoCompensation(n, reason));
 
+    /// <summary>Sets retries for the preceding step or compensation outcome. Exhausted forward steps suspend unless <c>OrCompensate()</c> is selected.</summary>
     public ProcessBuilder<TTrigger> Retry(Attempts attempts, Backoff backoff = Backoff.Exponential) =>
         ModifyLast(n => NodeModifiers.Retry(n, attempts, backoff));
 
+    /// <summary>Sets the business deadline of the preceding wait; expiry starts compensation.</summary>
     public ProcessBuilder<TTrigger> Within(TimeSpan timeout) => ModifyLast(n => NodeModifiers.Within(n, timeout));
 
+    /// <summary>Builds the immutable process definition for registration, rendering or comparison.</summary>
     public Process ToProcess() => new(_name, typeof(TTrigger), _keyOf, _nodes, _outcome);
 
+    /// <summary>Builds the process definition when assigning a fluent builder to a <see cref="Process"/>.</summary>
     public static implicit operator Process(ProcessBuilder<TTrigger> builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
