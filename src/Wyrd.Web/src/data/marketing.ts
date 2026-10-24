@@ -62,7 +62,7 @@ export const NORNS: Norn[] = [
         label: 'Replay',
         status: 'Available',
         icon: Clock3,
-        copy: 'Capture an in-memory process instance and replay its recorded replies and clock as a deterministic local test.',
+        copy: 'Capture a process instance, in memory or from the database, and replay its recorded replies and clock as a deterministic local test.',
     },
     {
         name: 'Verdandi',

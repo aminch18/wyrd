@@ -31,7 +31,7 @@ The decision to charge a payment and a network request to a payment provider are
 
 Wyrd keeps user-facing deciders and process steps pure. They return facts or intentions instead of publishing, persisting, or scheduling directly. The runtime owns message handling, state persistence, deduplication, declared retries, timers, and process progress. Business authors still choose the policy: which steps may retry, how long a wait lasts, and what compensates a completed action.
 
-This is an architectural direction as well as an implementation boundary. The current host is in memory. Durable storage, transports, and the integration APIs for real external I/O are roadmap work. A sample payment decision is not a production payment-provider adapter.
+This is an architectural direction as well as an implementation boundary. The same module runs in memory (tests, simulation, replay) and durable on EF Core (PostgreSQL, SQL Server); integrations are the only place with real external I/O, and services exchange integration events over RabbitMQ. A sample payment decision is not a production payment-provider adapter.
 
 ## Functional C# without a new language
 
@@ -45,7 +45,7 @@ An order, a payment, and a stock reservation do not become one aggregate because
 
 A Wyrd process expresses that policy as immutable data: start on this event, send these commands, await this fact, and compensate these completed steps if the flow cannot finish. The fluent and pipe syntaxes describe the same process model.
 
-Because the process is data, it can be inspected and rendered as a diagram today. Deterministic simulation and recorded-instance replay build on the same idea, but remain planned in the current documented version. The promise is one model serving several tools, rather than a diagram maintained separately from the running behavior.
+Because the process is data, it can be inspected and rendered as a diagram. Deterministic simulation (Skuld) and recorded-instance replay (Urd) build on the same idea. The promise is one model serving several tools, rather than a diagram maintained separately from the running behavior.
 
 Compensation is a business action, not time travel. A refund does not erase the charge that happened. An email cannot be unsent. Choosing a meaningful undo policy remains domain work; the framework provides the execution mechanics around the policy you declare.
 
@@ -71,7 +71,7 @@ Wyrd does not choose your bounded contexts, discover your invariants, or turn an
 
 ## Choose it for the problem you actually have
 
-Wyrd is worth exploring when business rules, message boundaries, and long-running processes are the difficult part of the application. It is early-alpha software, and the current runtime is not durable across restarts. A production requirement for a durable broker-backed host is not satisfied by the in-memory sample.
+Wyrd is worth exploring when business rules, message boundaries, and long-running processes are the difficult part of the application. It is pre-1.0 software: the durable host runs on PostgreSQL and SQL Server, but APIs may still change before 1.0, and migrating in-flight instances across a structural change of their process is planned for 1.0.
 
 For a simple CRUD application, the extra command/event/state model may add more ceremony than value. Adoption can begin with one meaningful workflow or one bounded context; a rewrite of the entire application is not the goal.
 

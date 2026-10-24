@@ -67,7 +67,7 @@ export function DecisionsDoc() {
         >
             <Callout title="Implemented or planned">
                 Each decision is marked <Status kind="implemented" />,{' '}
-                <Status kind="planned" version="v0.5" /> or{' '}
+                <Status kind="planned" version="v1.0" /> or{' '}
                 <Status kind="limit" />. The reference for the exact rules is{' '}
                 <a href={`${import.meta.env.BASE_URL}docs/semantics/`}>
                     How Wyrd behaves
@@ -97,11 +97,11 @@ export function DecisionsDoc() {
             <Decision
                 title="Pure decisions, framework-owned effects"
                 status="implemented"
-                note="in the in-memory host; real I/O integrations are planned for v0.5"
+                note="integrations are the only I/O, on every host"
                 problem="A decision that also calls a payment provider cannot know whether a timeout happened before or after the provider accepted the request. Its result then depends on more than its inputs, so it cannot be reproduced, simulated or replayed."
                 decision="Deciders and process steps are pure functions. They return facts or intentions. Wyrd owns delivery, persistence, deduplication, retries, timers and compensation, and there is no API that lets user code publish, persist or schedule directly."
                 gives="Decisions can be tested without a database or broker, the same code runs in tests and in simulation, and a failing run can be replayed exactly."
-                costs="You cannot call an external API from a decision. External calls need their own narrow shape (integrations, planned for v0.5, with idempotency keys and recorded outcomes), so today the framework does not talk to real systems."
+                costs="You cannot call an external API from a decision. An external call has its own narrow shape, an integration, with an idempotency key and a recorded outcome, and a call that never answered is undone on compensation in case it acted."
             />
 
             <Decision
@@ -129,11 +129,11 @@ export function DecisionsDoc() {
             <Decision
                 title="One retry layer"
                 status="implemented"
-                note="in the in-memory host; durable hosts are planned for v0.5"
+                note="in memory and on the EF Core host"
                 problem="When a process retries three times and the transport also retries three times, one failure becomes nine attempts that nobody configured and nobody can explain."
                 decision="A failure of a process command reaches the process as a failure, and the step's policy is the only decision. Hosts do not multiply attempts behind the process's back; a command that cannot be delivered or handled ends as a failure reply. A business rejection is never retried, because a pure decision would answer the same."
                 gives="The number of attempts you read in the process is the number that happens, and simulation and production agree."
-                costs="Durable hosts have to be built to this rule (planned for v0.5), and you cannot lean on broker-level retries to hide a missing step policy."
+                costs="Durable hosts are built to this rule (a command they cannot handle reaches its process as a failure, never a silent dead letter), and you cannot lean on broker-level retries to hide a missing step policy."
             />
 
             <Decision
@@ -158,11 +158,11 @@ export function DecisionsDoc() {
             <Decision
                 title="Time limits are business decisions only"
                 status="implemented"
-                note="the observability for slow steps is planned for v0.5"
+                note="slow steps are observed on the EF Core host's Wyrd meter"
                 problem="Technical timeouts turn a slow answer into a failure. A payment provider that takes 40 seconds then triggers compensation of an order that would have succeeded."
                 decision="Steps have no technical timeouts. Durable messaging waits, and a slow third party only makes a process wait. A deadline is a business choice, modelled as an explicit wait with .Within(duration), and when it expires the process compensates on purpose. A wait without .Within is reported by WYRD0012. Latency is observed, never turned into a failure."
                 gives="Every compensation has a business reason you can read in the process."
-                costs="A step that never answers waits forever unless you model a confirmation with .Within. Until the observability arrives, slow steps are not surfaced for you."
+                costs="A step that never answers waits forever unless you model a confirmation with .Within. The EF Core host publishes the age of the oldest pending step, so an alert can see it."
             />
 
             <Decision

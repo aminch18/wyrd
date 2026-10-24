@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import { QuickStartDoc } from './QuickStartDoc'
 import { OverviewDoc } from './OverviewDoc'
 import { ReadModelsDoc } from './ReadModelsDoc'
+import { RunningDurableDoc } from './RunningDurableDoc'
 import { ApiReferenceDoc } from './ApiReferenceDoc'
 import { FromDddDoc } from './FromDddDoc'
 import { MessagesDoc } from './MessagesDoc'
@@ -21,6 +22,7 @@ export const DOC_COMPONENTS: Record<string, ComponentType> = {
     decisions: DecisionsDoc,
     'from-ddd': FromDddDoc,
     'read-models': ReadModelsDoc,
+    'running-durable': RunningDurableDoc,
     'api-reference': ApiReferenceDoc,
     messages: MessagesDoc,
     processes: ProcessesDoc,

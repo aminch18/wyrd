@@ -200,9 +200,9 @@ There is no `IWyrdRuntime` interface in the current v0.3 API. The sample endpoin
 
 ## Know what the current host does not provide
 
-The in-memory host loses its data on restart. Durable hosts are planned for v0.5, including projection catch-up when a projection is added to an existing durable store. Registering a projection is not a current API for rebuilding it from all historical events, and changing a handler does not automatically migrate existing rows.
+The in-memory host loses its data on restart; the EF Core host keeps views in the database, committed with the event that changed them. A projection added to a store that already has data catches up from the current states it names (`Seed<TState>`, see [Running durable](running-durable.md)): Wyrd keeps state, not every past event, so it is not rebuilt from all historical events, and changing a handler does not automatically migrate existing rows.
 
-If a report needs many rows, aggregates, indexes, or filtering that `Views<TView>()` does not provide, describe that requirement explicitly. A production SQL query host is not supplied by the current in-memory API. Keep the view's rules pure so a future host can execute the same model without moving business logic into the endpoint.
+If a report needs many rows, aggregates, indexes, or filtering that `Views<TView>()` does not provide, describe that requirement explicitly. Wyrd doesn't provide a query host for reports like that. Keep the view's rules pure so a future host can execute the same model without moving business logic into the endpoint.
 
 ## Mistakes to catch in review
 

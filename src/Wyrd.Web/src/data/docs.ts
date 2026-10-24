@@ -39,6 +39,13 @@ export const DOC_SECTIONS: DocSection[] = [
         subtitle: 'Pure projections, screen models, ordering and queries.',
     },
     {
+        id: 'running-durable',
+        group: 'Guides',
+        title: 'Running durable',
+        subtitle:
+            'EF Core on PostgreSQL or SQL Server, retention, operators, health and RabbitMQ.',
+    },
+    {
         id: 'quick-start',
         group: 'Guides',
         title: 'Quick start',

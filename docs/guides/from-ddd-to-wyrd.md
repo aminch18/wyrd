@@ -161,7 +161,7 @@ The mistake to avoid is turning an aggregate into a bag of records and moving al
 
 For a rule local to an order, keep the policy close to the order model. For a calculation shared by several operations, use a pure domain function. For a fact owned by another bounded context, model how that fact enters your boundary rather than querying a remote service from `Decide`.
 
-In particular, do not call a payment provider, read the wall clock, or fetch inventory over HTTP inside a decider. Those actions make the result depend on an environment that is absent from the function's inputs. External integrations need an explicit execution boundary; the current in-memory host does not supply production adapters for them.
+In particular, do not call a payment provider, read the wall clock, or fetch inventory over HTTP inside a decider. Those actions make the result depend on an environment that is absent from the function's inputs. External calls go through an integration (`Integration<TCommand, TEvent, TError>`): the one execution boundary with I/O, given an idempotency key and with its outcome recorded.
 
 ## Separate local consistency from long-running policy
 
@@ -201,7 +201,7 @@ Add specifications for a placed order being cancelled and a missing order being 
 5. Introduce projections and public-event mappings where the surrounding application needs them. Keep the public contract deliberate.
 6. Add process orchestration when several owners must participate over time. Specify failure policy alongside the happy path.
 
-Today, use the in-memory host to learn and validate the model. It loses its data on restart; durable persistence and transport hosts remain planned. Existing production persistence is not replaced simply by removing a repository interface from your code. Resolve the host and operational requirements before routing production traffic through a new model.
+Use the in-memory host to learn and validate the model, then run the same module durable on EF Core ([Running durable](running-durable.md)). Existing production persistence is not replaced simply by removing a repository interface from your code. Resolve the host and operational requirements before routing production traffic through a new model.
 
 ## Continue from the example
 
