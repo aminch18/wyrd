@@ -17,6 +17,10 @@ Before 1.0, minor versions may contain breaking changes; they are always called 
    previous release, and the benchmark results for the release notes (orders/s and KB/order per scenario, Q1.4).
    Move each package's `PublicAPI.Unshipped.txt` entries into `PublicAPI.Shipped.txt` when releasing;
    keep the nullable header and clear Unshipped. Document any intentional breaking change under *Breaking*.
+   Update each package's line and branch floors in `coverage.json` from the release's Ubuntu CI
+   `coverage-report/Summary.json` artifact (`coverage` and `branchcoverage`); never lower an existing floor.
+   The initial floor was measured on `main` at `b621286`. CI uses ReportGenerator to merge all test suites and
+   excludes generated `*.g.cs` files; normal local `dotnet test` does not collect coverage.
 1. Move the `Unreleased` entries in `CHANGELOG.md` under a new `## [x.y.z] - YYYY-MM-DD` heading and update the
    compare links at the bottom.
 2. Commit: `Release x.y.z`.

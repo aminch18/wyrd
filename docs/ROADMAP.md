@@ -91,13 +91,13 @@ explicit failures, honest tests. **0.5.0 ships only when every rule is enforced,
 then 1.0) only with the whole bar green.** Baseline and rules: [QUALITY.md](QUALITY.md).
 
 - [ ] Benchmarks, with the scaling and allocation gates in CI (Q1)
-- [ ] The Shop's stock forgets shipped orders; the guides teach bounded state (Q2.1, Q6.1)
+- [x] The Shop's stock forgets shipped orders; the guides teach bounded state (Q2.1)
 - [ ] A wait's timer is cancelled when the wait ends (Q2.2)
 - [ ] Retention for everything a host keeps, in semantics and the in-memory host (Q2.3; includes v0.5's instance
       history retention)
 - [x] Public API tracked and documented; package validation against the last release (Q3)
 - [ ] Typed exceptions; no sync-over-async in hosts (Q4.1, Q4.2)
-- [ ] Coverage reported in CI, never lower than the previous release (Q5.2)
+- [x] Coverage reported in CI, never lower than the previous release (Q5.2)
 
 ## v0.5 — Verdandi (run the present)
 
