@@ -30,7 +30,9 @@ jobs:
         working-directory: src/Wyrd.Web
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false # the site is built and uploaded as an artifact: nothing pushes with git
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
