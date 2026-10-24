@@ -91,10 +91,10 @@ dotnet run --project src/Wyrd.Tool -- diagram --help`}
                 Export <code>shop.HistoryOf(process, key).ToJson()</code> to a
                 file. The replay command prints its timeline;{' '}
                 <code>--as-test</code>
-                writes an xUnit test embedding the history and invoking Urd.
-                Instance history capture and replay are available in memory
-                today; reading histories from durable stores comes with
-                Verdandi.
+                writes an xUnit test embedding the history and invoking Urd. A
+                history comes from any host: the in-memory runtime, a durable
+                one (<code>HistoryOfAsync</code>), or a history archive. It
+                replays the same way.
             </p>
             <CodeBlock
                 language="shellscript"

@@ -24,9 +24,7 @@ export function Footer() {
                         NuGet
                     </a>
                 </div>
-                <p className={styles['footer-note']}>
-                    Early alpha · MIT licensed
-                </p>
+                <p className={styles['footer-note']}>Pre-1.0 · MIT licensed</p>
             </div>
         </footer>
     )
