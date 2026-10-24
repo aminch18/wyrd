@@ -35,7 +35,7 @@ jobs:
           persist-credentials: false # the site is built and uploaded as an artifact: nothing pushes with git
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
