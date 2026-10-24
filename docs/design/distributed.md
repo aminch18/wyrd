@@ -7,7 +7,9 @@
 > so processes send commands only to slices and integrations of their own service; another service is reached by
 > publishing an integration event it reacts to. The broker hop for commands sketched below ("Executing a step") is
 > therefore not planned. What crosses is `TransportMessage` (contract, payload, stable message id) through
-> `IWyrdTransport`; the receiver handles a redelivery once.
+> `IWyrdTransport`; the receiver handles a redelivery once. On RabbitMQ (`Wyrd.RabbitMq`): one durable topic exchange,
+> the contract as the routing key, one durable queue per service bound to the contracts its runtime uses
+> (`IWyrdRuntime.Subscriptions`), publisher confirms, and an acknowledgement once the runtime has the message.
 
 ## Goal
 

@@ -17,7 +17,7 @@ idempotency, enforces versioned message contracts at compile time, and simulates
 > [!WARNING]
 > **Preview for feedback, not for production yet.** Available today: the message and process model, the analyzers
 > and contract snapshots, the in-memory runtime, `Wyrd.Testing`, the `dotnet wyrd` tool and **Skuld** (failure
-> simulation), and the durable runtime on EF Core (PostgreSQL, SQL Server). The RabbitMQ transport is in progress.
+> simulation), and the durable runtime on EF Core (PostgreSQL, SQL Server). Services talk through RabbitMQ (`Wyrd.RabbitMq`).
 > Everything marked ✅ works and is covered by tests; 🔜 and 🚧 are designed and on the [roadmap](https://github.com/aminch18/wyrd/blob/main/docs/ROADMAP.md). APIs may change before 1.0.
 > Please [tell us what you think](https://github.com/aminch18/wyrd/discussions).
 
@@ -120,7 +120,7 @@ In Norse myth, *wyrd* — fate — is woven by three Norns. Wyrd is built on the
 |---|---|---|---|
 | ⏩ | **Skuld** — *what will be* | **Simulation.** Run your scenario in hundreds of hostile futures — faults, duplicates, reordering, timeouts — before you deploy. | ✅ |
 | ⏪ | **Urd** — *what was* | **Replay.** Export a process instance's history and replay it locally, deterministically, as a test. In memory today; from a durable store with Verdandi. | ✅ |
-| ▶️ | **Verdandi** — *what is* | **Runtime.** Deterministic in-memory runtime ✅; durable on PostgreSQL and SQL Server through EF Core ✅ (one transaction per message, the database as the queue); RabbitMQ transport in progress. | 🚧 |
+| ▶️ | **Verdandi** — *what is* | **Runtime.** Deterministic in-memory runtime ✅; durable on PostgreSQL and SQL Server through EF Core ✅ (one transaction per message, the database as the queue); RabbitMQ between services ✅. | 🚧 |
 
 ## Quick start
 
@@ -694,7 +694,7 @@ additional process analyzers are on the roadmap.
 
 Atomic handling of one envelope is not an atomic transaction across an entire business process. Compensation
 is a domain action that can itself fail, not an erasure of the original action. The EF Core host is durable
-across restarts; a broker transport (RabbitMQ) between services is still planned.
+across restarts, and services exchange integration events through RabbitMQ, at least once.
 
 It does **not** know your business rules. If you compute the tax wrong, Wyrd will deterministically compute it wrong.
 
@@ -703,6 +703,7 @@ It does **not** know your business rules. If you compute the tax wrong, Wyrd wil
 ```
 src/Wyrd/                  the library
 src/Wyrd.EntityFrameworkCore/  Verdandi: the durable runtime on EF Core, PostgreSQL and SQL Server (package)
+src/Wyrd.RabbitMq/         RabbitMQ between services: the outbox relay's transport and a subscriber (package)
 src/Wyrd.Analyzers/        Roslyn analyzers, shipped inside the Wyrd package
 src/Wyrd.Analyzers.CodeFixes/  IDE code fixes, shipped inside the Wyrd package
 tests/Wyrd.Tests/          unit and runtime tests

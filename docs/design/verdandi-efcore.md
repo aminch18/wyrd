@@ -111,4 +111,3 @@ a projection added later knows which events have arrived.
 ## Not yet
 
 - `LISTEN/NOTIFY` on PostgreSQL, for messages queued by another process.
-- A broker package (`Wyrd.RabbitMq`) implementing `IWyrdTransport`.

@@ -224,6 +224,9 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         Wake();
     }
 
+    /// <inheritdoc />
+    public IReadOnlyList<string> Subscriptions => _application.Subscriptions;
+
     /// <summary>
     /// Queues an integration event another service published (from a transport), keeping its message id: a redelivery
     /// is handled once. A contract nobody uses here is ignored. Acknowledge the message to the broker after this returns.

@@ -66,6 +66,16 @@ public class TransportTests
     }
 
     [Fact]
+    public void a_runtime_subscribes_to_the_contracts_it_uses_not_to_those_it_publishes()
+    {
+        var shop = ShippingService().AddSlice(new ChargePaymentSlice()).AddPublication(new PaymentChargedV1Publication());
+
+        Assert.Equal(["payments.payment-charged v1"], ShippingService().Subscriptions);
+        Assert.Equal(["payments.payment-charged v1"], shop.Subscriptions); // it also publishes it: still used here
+        Assert.Empty(PaymentsService().Subscriptions);
+    }
+
+    [Fact]
     public async Task a_contract_nobody_uses_is_ignored()
     {
         var transport = new InMemoryTransport();
