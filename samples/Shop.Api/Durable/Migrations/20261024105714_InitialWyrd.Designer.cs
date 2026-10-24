@@ -12,7 +12,7 @@ using Shop.Api.Durable;
 namespace Shop.Api.Durable.Migrations
 {
     [DbContext(typeof(ShopDbContext))]
-    [Migration("20261024105655_InitialWyrd")]
+    [Migration("20261024105714_InitialWyrd")]
     partial class InitialWyrd
     {
         /// <inheritdoc />
