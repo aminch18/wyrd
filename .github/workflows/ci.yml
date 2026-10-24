@@ -29,6 +29,11 @@ jobs:
       - run: dotnet restore
       - run: dotnet build --no-restore -c Release
       - run: dotnet test --no-build -c Release
+      - name: Allocation gates (Q1.2, Q1.3)
+        if: matrix.os == 'ubuntu-latest'
+        # Task016/PR35 removes this known Q1.2 failure; allocation budgets remain strict.
+        run: dotnet run --no-build -c Release --project benchmarks/Wyrd.Benchmarks -- --gate --known-single-sku-failure
+
       - name: Sample smoke test
         run: dotnet run --no-build -c Release --project samples/Shop.Console
 

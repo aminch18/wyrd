@@ -55,9 +55,9 @@ What the numbers say:
 
 | Id | Rule | Check | |
 |---|---|---|---|
-| Q1.1 | `benchmarks/Wyrd.Benchmarks` (BenchmarkDotNet) covers: the Shop happy path on one SKU and on one SKU per order, a compensated order, and a timer-heavy run (waits that end early and waits that time out). | Builds in CI | 🔜 |
+| Q1.1 | `benchmarks/Wyrd.Benchmarks` (BenchmarkDotNet) covers: the Shop happy path on one SKU and on one SKU per order, a compensated order, and a timer-heavy run (waits that end early and waits that time out). | Builds in CI | ✅ |
 | Q1.2 | **Cost doesn't grow with history.** Bytes allocated per order at 10,000 orders are at most **1.10×** those at 1,000 orders, in every scenario of Q1.1. Allocations, not time: deterministic, so the check never flakes. | CI, fast mode | 🔜 |
-| Q1.3 | **Allocation budget.** Bytes allocated per message stay within **+10%** of `benchmarks/baseline.json`. The baseline changes only in a PR that explains the new cost. | CI, fast mode | 🔜 |
+| Q1.3 | **Allocation budget.** Bytes allocated per message stay within **+10%** of `benchmarks/baseline.json`. The baseline changes only in a PR that explains the new cost. | CI, fast mode | ✅ |
 | Q1.4 | **Throughput is reported, not gated** (CI machines are noisy): every release note includes orders/s and KB/order for the Q1.1 scenarios, and a PR touching `src/Wyrd/Runtime` pastes before/after numbers. | Release checklist, review | 🔜 |
 
 ### Q2. Memory is bounded
