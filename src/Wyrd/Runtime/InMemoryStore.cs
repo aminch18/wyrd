@@ -95,6 +95,14 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
                 }
             }
 
+            foreach (var view in changes.Views.Values)
+            {
+                if ((_views.GetValueOrDefault((view.ViewType, view.Key))?.Version ?? 0) != view.Version)
+                {
+                    throw new ConcurrencyConflictException($"Concurrency conflict on read model {view.ViewType} '{view.Key}'.");
+                }
+            }
+
             foreach (var state in changes.States)
             {
                 _states[(state.StateType, state.Key)] = state;
@@ -127,7 +135,7 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
                 }
                 else
                 {
-                    _views[(view.ViewType, view.Key)] = view;
+                    _views[(view.ViewType, view.Key)] = view with { Version = view.Version + 1 };
                 }
             }
 

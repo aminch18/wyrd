@@ -105,3 +105,12 @@ public sealed class RecordingTransport : IWyrdTransport
         return Task.CompletedTask;
     }
 }
+
+/// <summary>Every restock of the shop in one view, from as many streams as there are stock items.</summary>
+public sealed record AllStock(int Restocked);
+
+public sealed class AllStocks : Projection<AllStock>
+{
+    public AllStocks() =>
+        On<Shop.Inventory.StockAdded>(_ => "all", (view, e) => new AllStock((view?.Restocked ?? 0) + e.Quantity));
+}

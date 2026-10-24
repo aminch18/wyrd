@@ -202,7 +202,8 @@ namespace Shop.Api.Durable.Migrations
                     key = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     type = table.Column<string>(type: "text", nullable: false),
                     payload = table.Column<string>(type: "text", nullable: false),
-                    created = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                    created = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    version = table.Column<long>(type: "bigint", nullable: false)
                 },
                 constraints: table =>
                 {

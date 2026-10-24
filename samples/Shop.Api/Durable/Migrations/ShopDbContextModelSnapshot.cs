@@ -407,6 +407,10 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnType("text")
                         .HasColumnName("type");
 
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
                     b.HasKey("ViewType", "Key");
 
                     b.ToTable("views", "wyrd");

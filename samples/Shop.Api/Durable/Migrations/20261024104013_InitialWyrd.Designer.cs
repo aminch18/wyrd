@@ -12,7 +12,7 @@ using Shop.Api.Durable;
 namespace Shop.Api.Durable.Migrations
 {
     [DbContext(typeof(ShopDbContext))]
-    [Migration("20261023150601_InitialWyrd")]
+    [Migration("20261024104013_InitialWyrd")]
     partial class InitialWyrd
     {
         /// <inheritdoc />
@@ -409,6 +409,10 @@ namespace Shop.Api.Durable.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("type");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
 
                     b.HasKey("ViewType", "Key");
 
