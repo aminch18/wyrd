@@ -78,8 +78,7 @@ internal sealed class Engine(
         if (registry.OwnerOf(command.GetType()) is not IIntegrationHandler integration
             || await store.FindReplyAsync(envelope.MessageId, cancellationToken).ConfigureAwait(false) is not null
             || (envelope.Process is not null && fault(envelope, command.GetType()))
-            || (envelope.Fences is { } original
-                && await store.FindReplyAsync(original, cancellationToken).ConfigureAwait(false) is not { Outcome: ReplyOutcome.Accepted }))
+            || (envelope.Fences is { } original && await FenceAnswersAsync(envelope, original, cancellationToken).ConfigureAwait(false)))
         {
             return IntegrationCall.None;
         }
@@ -237,6 +236,14 @@ internal sealed class Engine(
         if (outcome is null)
         {
             changes.Replies[original] = new ReplyMessage(ReplyOutcome.Fenced);
+            if (CallsOutside(undo))
+            {
+                // A failed call to the outside world is no proof it didn't act (a timeout, a connection cut after the
+                // provider charged): a late copy is fenced, and the undo runs in case the call did.
+                log(External, key, $"{command.GetType().Name}: the original call's outcome is unknown, fenced and undone");
+                return false;
+            }
+
             log(External, key, $"{command.GetType().Name}: the original command never ran, fenced");
         }
 
@@ -246,6 +253,23 @@ internal sealed class Engine(
         Reply(undo, reply, changes);
         return true;
     }
+
+    /// <summary>Whether the fence answers an undo without running it: the original never ran, or was rejected.</summary>
+    private async ValueTask<bool> FenceAnswersAsync(Envelope undo, Guid original, CancellationToken cancellationToken) =>
+        await store.FindReplyAsync(original, cancellationToken).ConfigureAwait(false) switch
+        {
+            { Outcome: ReplyOutcome.Accepted } => false,
+            null => !CallsOutside(undo),
+            _ => true,
+        };
+
+    /// <summary>Whether the step an undo compensates calls the outside world: its owner is an integration.</summary>
+    private bool CallsOutside(Envelope undo) =>
+        undo.Process is { } target
+        && registry.ProcessNamed(target.Process).Nodes is var nodes
+        && target.Step < nodes.Length
+        && nodes[target.Step] is StepNode { Action.Output: { } command }
+        && registry.FindOwner(command) is IIntegrationHandler;
 
     private void Reply(Envelope command, ReplyMessage reply, Changes changes)
     {

@@ -86,6 +86,23 @@ public class IntegrationTests
     }
 
     [Fact]
+    public async Task a_call_that_never_answered_is_undone_in_case_it_acted()
+    {
+        var gateway = new FakeGateway { TimeOutNext = 10 }; // every attempt times out: did the provider charge? Unknown.
+        var runtime = TestSystem.WithGateway(gateway, Fulfillment);
+
+        await runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+        await runtime.AdvanceAsync(1.Hours); // retries exhausted: suspended
+        await runtime.CompensateAsync(Fulfillment, "A-1");
+
+        // Not "never ran, fenced": the refund is asked for. This shop's refund finds no charge it knows of and refuses,
+        // so the instance waits for an operator again instead of compensating as if nothing could have happened.
+        Assert.Contains(runtime.Journal, e => e.Message == "RefundPayment: the original call's outcome is unknown, fenced and undone");
+        Assert.DoesNotContain(runtime.Journal, e => e.Message.EndsWith("the original command never ran, fenced", StringComparison.Ordinal));
+        Assert.Equal(ProcessStatus.Suspended, runtime.StatusOf(Fulfillment, "A-1"));
+    }
+
+    [Fact]
     public async Task a_failure_is_retried_with_the_same_idempotency_key()
     {
         var gateway = new FakeGateway { FailNext = 2 };

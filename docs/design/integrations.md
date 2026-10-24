@@ -56,6 +56,11 @@ runtime.AddIntegration(new PaymentGateway(http));
    In memory, and when Wyrd joins your own transaction (`SendAsync(command, context)`), the call is made inline.
 6. **Timeouts are the integration's own business.** Wyrd adds no technical timeout ([semantics](semantics.md) 3.5);
    an `HttpClient` timeout is the integration author's choice and surfaces as a transient failure.
+7. **A call that never answered may have acted.** When every attempt failed, Wyrd can't know whether the provider
+   acted (a connection cut after the charge), so compensation runs the step's undo instead of taking the failure as
+   proof ([semantics](semantics.md) 3.4); a late copy of the call is fenced. *Requirement:* the undo is idempotent by
+   its key and treats "nothing to undo" (a refund of a charge that never happened) as done; one that refuses suspends
+   the instance for an operator.
 
 ## Not in scope
 
