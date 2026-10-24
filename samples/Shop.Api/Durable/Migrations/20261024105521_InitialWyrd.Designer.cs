@@ -12,7 +12,7 @@ using Shop.Api.Durable;
 namespace Shop.Api.Durable.Migrations
 {
     [DbContext(typeof(ShopDbContext))]
-    [Migration("20261024103906_InitialWyrd")]
+    [Migration("20261024105521_InitialWyrd")]
     partial class InitialWyrd
     {
         /// <inheritdoc />
@@ -78,6 +78,9 @@ namespace Shop.Api.Durable.Migrations
 
                     b.HasKey("Seq");
 
+                    b.HasIndex("RecordedAt")
+                        .HasDatabaseName("ix_events_recorded_at");
+
                     b.ToTable("events", "wyrd");
                 });
 
@@ -87,7 +90,14 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("message_id");
 
+                    b.Property<DateTimeOffset>("HandledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("handled_at");
+
                     b.HasKey("MessageId");
+
+                    b.HasIndex("HandledAt")
+                        .HasDatabaseName("ix_handled_at");
 
                     b.ToTable("handled", "wyrd");
                 });
@@ -129,6 +139,10 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("message_id");
 
+                    b.Property<bool>("Fence")
+                        .HasColumnType("boolean")
+                        .HasColumnName("fence");
+
                     b.Property<DateTimeOffset>("RecordedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("recorded_at");
@@ -139,6 +153,9 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnName("reply");
 
                     b.HasKey("MessageId");
+
+                    b.HasIndex("RecordedAt")
+                        .HasDatabaseName("ix_inbox_recorded_at");
 
                     b.ToTable("inbox", "wyrd");
                 });
@@ -164,6 +181,10 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deadline");
 
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -175,6 +196,10 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnName("version");
 
                     b.HasKey("Process", "Key");
+
+                    b.HasIndex("FinishedAt")
+                        .HasDatabaseName("ix_instances_finished")
+                        .HasFilter("finished_at IS NOT NULL");
 
                     b.ToTable("instances", "wyrd");
                 });
@@ -276,6 +301,12 @@ namespace Shop.Api.Durable.Migrations
                     b.HasIndex("MessageId")
                         .IsUnique()
                         .HasDatabaseName("ix_published_message_id");
+
+                    b.HasIndex("RecordedAt")
+                        .HasDatabaseName("ix_published_recorded_at");
+
+                    b.HasIndex("RelayedAt")
+                        .HasDatabaseName("ix_published_relayed_at");
 
                     b.HasIndex("Seq")
                         .HasDatabaseName("ix_published_pending")

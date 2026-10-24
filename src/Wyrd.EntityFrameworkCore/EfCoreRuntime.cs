@@ -1,5 +1,6 @@
 using System.Data.Common;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq.Expressions;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
@@ -26,16 +27,22 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
     private Dialect? _dialect;
+    private readonly Retention _retention;
     private IWyrdTransport? _transport;
+    private DateTimeOffset _lastCleanup = DateTimeOffset.MinValue;
 
-    /// <summary>Source-generated JSON from your <c>[WyrdJsonContext]</c>.</summary>
+    /// <summary>
+    /// Source-generated JSON from your <c>[WyrdJsonContext]</c>. <paramref name="retention"/> says how long each kind of
+    /// data is kept: there is no default, it is your decision.
+    /// </summary>
     public EfCoreRuntime(
         IDbContextFactory<TContext> contexts,
         JsonSerializerContext json,
+        Retention retention,
         EfCoreRuntimeOptions? options = null,
         TimeProvider? time = null,
         ILogger<EfCoreRuntime<TContext>>? logger = null)
-        : this(contexts, MessageTypes.FromContext(json ?? throw new ArgumentNullException(nameof(json))), options, time, logger)
+        : this(contexts, MessageTypes.FromContext(json ?? throw new ArgumentNullException(nameof(json))), retention, options, time, logger)
     {
     }
 
@@ -44,17 +51,19 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     [RequiresDynamicCode("Reflection-based System.Text.Json. Pass a [WyrdJsonContext] for trimming.")]
     public EfCoreRuntime(
         IDbContextFactory<TContext> contexts,
+        Retention retention,
         EfCoreRuntimeOptions? options = null,
         TimeProvider? time = null,
         ILogger<EfCoreRuntime<TContext>>? logger = null)
-        : this(contexts, MessageTypes.Reflection(), options, time, logger)
+        : this(contexts, MessageTypes.Reflection(), retention, options, time, logger)
     {
     }
 
     private EfCoreRuntime(
-        IDbContextFactory<TContext> contexts, MessageTypes types, EfCoreRuntimeOptions? options, TimeProvider? time, ILogger? logger)
+        IDbContextFactory<TContext> contexts, MessageTypes types, Retention retention, EfCoreRuntimeOptions? options, TimeProvider? time, ILogger? logger)
     {
         _contexts = contexts ?? throw new ArgumentNullException(nameof(contexts));
+        _retention = retention ?? throw new ArgumentNullException(nameof(retention));
         _application = new Application(types);
         _options = options ?? new EfCoreRuntimeOptions();
         _time = time ?? TimeProvider.System;
@@ -331,6 +340,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             {
                 var handled = await ProcessPendingAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
                 var relayed = await RelayOrWaitAsync(cancellationToken).ConfigureAwait(false);
+                if (_time.GetUtcNow() - _lastCleanup >= _options.CleanupInterval)
+                {
+                    _lastCleanup = _time.GetUtcNow();
+                    await ForgetExpiredAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
                 if (handled == 0 && relayed == 0)
                 {
                     await Task.Delay(_options.PollInterval, _time, cancellationToken).ConfigureAwait(false);
@@ -385,6 +399,93 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Removes what the retention no longer keeps (Q2.3), in batches of <paramref name="batchSize"/> so no transaction
+    /// holds many locks; returns how many rows went. Suspended and running instances stay; a removed instance takes its
+    /// parked events with it. Workers call it every <see cref="EfCoreRuntimeOptions.CleanupInterval"/>.
+    /// </summary>
+    public async Task<int> ForgetExpiredAsync(int batchSize = 1_000, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(batchSize, 1);
+        var now = _time.GetUtcNow();
+        var removed = 0;
+        if (_retention.Deduplication.Cutoff(now) is { } dedup)
+        {
+            // A fence blocks its command forever (semantics 3.4): it never expires.
+            removed += await ForgetAsync<InboxRow, Guid>(r => r.RecordedAt <= dedup && !r.Fence, r => r.MessageId, batchSize, cancellationToken).ConfigureAwait(false);
+            removed += await ForgetAsync<HandledRow, Guid>(r => r.HandledAt <= dedup, r => r.MessageId, batchSize, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (_retention.FinishedInstances.Cutoff(now) is { } finished)
+        {
+            removed += await ForgetFinishedInstancesAsync(finished, batchSize, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (_retention.RelayedMessages.Cutoff(now) is { } relayed)
+        {
+            // Without a transport nothing leaves: a published message expires from when it was published.
+            removed += _transport is null
+                ? await ForgetAsync<PublishedRow, long>(r => r.RecordedAt <= relayed, r => r.Seq, batchSize, cancellationToken).ConfigureAwait(false)
+                : await ForgetAsync<PublishedRow, long>(r => r.RelayedAt <= relayed, r => r.Seq, batchSize, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (_retention.Events.Cutoff(now) is { } events)
+        {
+            removed += await ForgetAsync<EventRow, long>(r => r.RecordedAt <= events, r => r.Seq, batchSize, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (_retention.DeadLetters.Cutoff(now) is { } dead)
+        {
+            removed += await ForgetAsync<DeadLetterRow, long>(r => r.FailedAt <= dead, r => r.Id, batchSize, cancellationToken).ConfigureAwait(false);
+        }
+
+        return removed;
+    }
+
+    private async Task<int> ForgetAsync<TRow, TKey>(
+        Expression<Func<TRow, bool>> expired, Expression<Func<TRow, TKey>> key, int batchSize, CancellationToken cancellationToken)
+        where TRow : class
+    {
+        var removed = 0;
+        int batch;
+        do
+        {
+            await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            batch = await db.Set<TRow>().Where(expired).OrderBy(key).Take(batchSize).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+            removed += batch;
+        }
+        while (batch == batchSize);
+
+        return removed;
+    }
+
+    private async Task<int> ForgetFinishedInstancesAsync(DateTimeOffset cutoff, int batchSize, CancellationToken cancellationToken)
+    {
+        var removed = 0;
+        int batch;
+        do
+        {
+            await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+            // Set-based, each delete checking the condition again: a parked event goes only while its instance is still
+            // a finished, expired row, so the event of a new instance that re-used the key (its row isn't finished, and
+            // can only exist once the old one is gone) is never taken with it.
+            await db.Set<ParkedRow>()
+                .Where(p => db.Set<InstanceRow>().Any(i => i.Process == p.Process && i.Key == p.Key && i.FinishedAt <= cutoff))
+                .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+            batch = await db.Set<InstanceRow>()
+                .Where(r => r.FinishedAt <= cutoff).OrderBy(r => r.FinishedAt).Take(batchSize)
+                .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+            removed += batch;
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        while (batch == batchSize);
+
+        return removed;
     }
 
     /// <summary>A transport that is down doesn't stop the worker: the outbox keeps the messages until it is back.</summary>

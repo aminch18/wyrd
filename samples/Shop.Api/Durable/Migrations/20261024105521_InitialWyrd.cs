@@ -52,7 +52,8 @@ namespace Shop.Api.Durable.Migrations
                 schema: "wyrd",
                 columns: table => new
                 {
-                    message_id = table.Column<Guid>(type: "uuid", nullable: false)
+                    message_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    handled_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -82,7 +83,8 @@ namespace Shop.Api.Durable.Migrations
                 {
                     message_id = table.Column<Guid>(type: "uuid", nullable: false),
                     reply = table.Column<string>(type: "text", nullable: false),
-                    recorded_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                    recorded_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    fence = table.Column<bool>(type: "boolean", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -99,7 +101,8 @@ namespace Shop.Api.Durable.Migrations
                     status = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     deadline = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     data = table.Column<string>(type: "text", nullable: false),
-                    version = table.Column<long>(type: "bigint", nullable: false)
+                    version = table.Column<long>(type: "bigint", nullable: false),
+                    finished_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -208,6 +211,31 @@ namespace Shop.Api.Durable.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "ix_events_recorded_at",
+                schema: "wyrd",
+                table: "events",
+                column: "recorded_at");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_handled_at",
+                schema: "wyrd",
+                table: "handled",
+                column: "handled_at");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_inbox_recorded_at",
+                schema: "wyrd",
+                table: "inbox",
+                column: "recorded_at");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_instances_finished",
+                schema: "wyrd",
+                table: "instances",
+                column: "finished_at",
+                filter: "finished_at IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
                 name: "ix_published_message_id",
                 schema: "wyrd",
                 table: "published",
@@ -220,6 +248,18 @@ namespace Shop.Api.Durable.Migrations
                 table: "published",
                 column: "seq",
                 filter: "relayed_at IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_published_recorded_at",
+                schema: "wyrd",
+                table: "published",
+                column: "recorded_at");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_published_relayed_at",
+                schema: "wyrd",
+                table: "published",
+                column: "relayed_at");
 
             migrationBuilder.CreateIndex(
                 name: "ix_queue_available",

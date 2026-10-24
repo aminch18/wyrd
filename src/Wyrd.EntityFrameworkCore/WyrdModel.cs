@@ -33,6 +33,9 @@ internal sealed class InstanceRow
     public string Data { get; set; } = "";
 
     public long Version { get; set; }
+
+    /// <summary>When it completed or was compensated; null while it runs, waits or is suspended.</summary>
+    public DateTimeOffset? FinishedAt { get; set; }
 }
 
 internal sealed class EventRow
@@ -75,11 +78,16 @@ internal sealed class InboxRow
     public string Reply { get; set; } = "";
 
     public DateTimeOffset RecordedAt { get; set; }
+
+    /// <summary>A fence: it blocks its command forever, so retention never removes it.</summary>
+    public bool Fence { get; set; }
 }
 
 internal sealed class HandledRow
 {
     public Guid MessageId { get; set; }
+
+    public DateTimeOffset HandledAt { get; set; }
 }
 
 internal sealed class ParkedRow
@@ -193,6 +201,9 @@ public static class WyrdModelBuilderExtensions
             e.Property(r => r.Deadline).HasColumnName("deadline");
             Text(e.Property(r => r.Data), "data");
             e.Property(r => r.Version).HasColumnName("version");
+            e.Property(r => r.FinishedAt).HasColumnName("finished_at");
+            // Only finished instances: what retention looks for, as small as what it can remove.
+            e.HasIndex(r => r.FinishedAt).HasFilter("finished_at IS NOT NULL").HasDatabaseName("ix_instances_finished");
         });
 
         modelBuilder.Entity<EventRow>(e =>
@@ -202,6 +213,7 @@ public static class WyrdModelBuilderExtensions
             Text(e.Property(r => r.Type), "type");
             Text(e.Property(r => r.Payload), "payload");
             e.Property(r => r.RecordedAt).HasColumnName("recorded_at");
+            e.HasIndex(r => r.RecordedAt).HasDatabaseName("ix_events_recorded_at");
         });
 
         modelBuilder.Entity<PublishedRow>(e =>
@@ -216,6 +228,9 @@ public static class WyrdModelBuilderExtensions
             e.Property(r => r.TraceParent).HasColumnName("trace_parent").HasMaxLength(55);
             e.Property(r => r.TraceState).HasColumnName("trace_state");
             e.HasIndex(r => r.MessageId).IsUnique().HasDatabaseName("ix_published_message_id");
+            e.HasIndex(r => r.RelayedAt).HasDatabaseName("ix_published_relayed_at");
+            // Without a transport a published message expires from when it was published.
+            e.HasIndex(r => r.RecordedAt).HasDatabaseName("ix_published_recorded_at");
             // Only what is waiting for the relay: the index stays as small as the backlog.
             e.HasIndex(r => r.Seq).HasFilter("relayed_at IS NULL").HasDatabaseName("ix_published_pending");
         });
@@ -226,12 +241,16 @@ public static class WyrdModelBuilderExtensions
             e.Property(r => r.MessageId).HasColumnName("message_id").ValueGeneratedNever();
             Text(e.Property(r => r.Reply), "reply");
             e.Property(r => r.RecordedAt).HasColumnName("recorded_at");
+            e.Property(r => r.Fence).HasColumnName("fence");
+            e.HasIndex(r => r.RecordedAt).HasDatabaseName("ix_inbox_recorded_at");
         });
 
         modelBuilder.Entity<HandledRow>(e =>
         {
             e.ToTable("handled", schema).HasKey(r => r.MessageId);
             e.Property(r => r.MessageId).HasColumnName("message_id").ValueGeneratedNever();
+            e.Property(r => r.HandledAt).HasColumnName("handled_at");
+            e.HasIndex(r => r.HandledAt).HasDatabaseName("ix_handled_at");
         });
 
         modelBuilder.Entity<ParkedRow>(e =>
