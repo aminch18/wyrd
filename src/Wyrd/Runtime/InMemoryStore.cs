@@ -219,21 +219,22 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
     }
 
     /// <summary>The histories of the finished instances <paramref name="retention"/> no longer keeps, oldest first.</summary>
-    public IReadOnlyList<InstanceHistory> ExpiredHistories(Retention retention)
+    /// <summary>The finished instances <paramref name="retention"/> no longer keeps, oldest first: one scan per pass.</summary>
+    public IReadOnlyList<StoredInstance> ExpiredInstances(Retention retention)
     {
         var at = now();
         lock (Sync)
         {
-            return [.. Finished(retention, at).Select(i => new InstanceHistory(i.Process, i.Key, i.Fingerprint, i.History))];
+            return Finished(retention, at);
         }
     }
 
     /// <summary>
     /// Removes what <paramref name="retention"/> no longer keeps (Q2.3). Suspended and running instances stay; a removed
-    /// instance takes its parked events with it. Finished instances stay too unless <paramref name="removeFinished"/>:
-    /// their archive failed.
+    /// instance takes its parked events with it. Of the finished instances, <paramref name="finished"/> go (those just
+    /// archived, none when the archive failed); without it, every expired one.
     /// </summary>
-    public void Forget(Retention retention, bool relays, bool removeFinished = true)
+    public void Forget(Retention retention, bool relays, IReadOnlyList<StoredInstance>? finished = null)
     {
         var at = now();
         lock (Sync)
@@ -250,7 +251,7 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
                 _handled.Remove(id);
             }
 
-            foreach (var instance in removeFinished ? Finished(retention, at) : [])
+            foreach (var instance in finished ?? Finished(retention, at))
             {
                 _instances.Remove((instance.Process, instance.Key));
                 _parked.RemoveAll(p => p.Process == instance.Process && p.Key == instance.Key);

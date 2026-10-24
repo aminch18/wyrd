@@ -37,6 +37,23 @@ public class ProjectionCatchUpTests
         Assert.Equal(new OrderLog("A-2", 2), runtime.View<OrderLog>("A-2"));
     }
 
+    private sealed class BrokenSeed : Projection<OrderLog>
+    {
+        public BrokenSeed() => Seed<EventLog>((orderId, _) => orderId, (_, _, _) => throw new InvalidOperationException("bug in the seed"));
+    }
+
+    [Fact]
+    public async Task a_failing_seed_is_logged_and_never_fails_a_command_that_was_decided()
+    {
+        var runtime = TestSystem.Create();
+        await runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+        runtime.AddProjection(new BrokenSeed());
+
+        Assert.IsType<Decision.Accepted>(await runtime.SendAsync(new PlaceOrder("A-2", Quantity: 1, Amount: 70)));
+        Assert.Contains(runtime.Journal, e => e.Message == "catching up read models failed: InvalidOperationException: bug in the seed");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.CatchUpAsync());
+    }
+
     [Fact]
     public async Task a_projection_with_seeds_on_a_new_runtime_follows_every_stream_from_its_first_event()
     {

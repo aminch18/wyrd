@@ -37,8 +37,9 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 var connectionString = builder.Configuration.GetConnectionString("Wyrd");
 if (connectionString is null)
 {
-    // In memory nothing outlives the process, but a sample left running for days must not grow forever (Q2.3): a day
-    // of everything is plenty to look around, measured on the clock WyrdClock moves.
+    // In memory nothing outlives the process, but a sample left running for days must not keep its delivery machinery
+    // forever (Q2.3): a day of each, measured on the clock WyrdClock moves. Orders and their read models are business
+    // data and have no retention, so a sample fed new orders still grows with them.
     builder.Services.AddSingleton(_ => ShopModule.CreateRuntime().UseRetention(new Retention
     {
         Deduplication = Keep.For(1.Days),
