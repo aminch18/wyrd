@@ -5,9 +5,9 @@ import { guideLink } from '../src/pages/docs/guideLinks.ts'
 
 const repository = 'https://github.com/aminch18/wyrd/blob/main/'
 test('guide chapters stay in the learning path', () => {
-    assert.equal(guideLink('read-models.md'), '#/docs/read-models')
-    assert.equal(guideLink('./from-ddd-to-wyrd.md'), '#/docs/from-ddd')
-    assert.equal(guideLink('philosophy.md'), '#/docs/overview')
+    assert.equal(guideLink('read-models.md'), '/wyrd/docs/read-models/')
+    assert.equal(guideLink('./from-ddd-to-wyrd.md'), '/wyrd/docs/from-ddd/')
+    assert.equal(guideLink('philosophy.md'), '/wyrd/docs/overview/')
 })
 test('relative source and design links resolve from docs/guides', () => {
     assert.equal(
@@ -44,7 +44,7 @@ test('every relative guide link points to an existing repository file', async ()
             if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(link)) continue
             assert.match(
                 guideLink(link),
-                /^(?:#\/docs\/|https:\/\/github.com\/aminch18\/wyrd\/blob\/main\/)/,
+                /^(?:\/wyrd\/docs\/|https:\/\/github.com\/aminch18\/wyrd\/blob\/main\/)/,
             )
             await access(
                 new URL(

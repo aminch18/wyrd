@@ -2,7 +2,7 @@ import styles from '../../styles/site.module.css'
 import { useState } from 'react'
 import { ArrowRight, Github, Menu, Moon, Sun, X } from 'lucide-react'
 import { GITHUB_URL } from '../../app/links'
-import { navigate, type Page } from '../../app/navigation'
+import { routePath, type Page } from '../../app/navigation'
 import type { Theme } from '../../hooks/useTheme'
 import { Brand } from './Brand'
 
@@ -14,11 +14,6 @@ interface HeaderProps {
 
 export function Header({ page, theme, onThemeChange }: HeaderProps) {
     const [open, setOpen] = useState(false)
-
-    const go = (target: Page, section?: string) => {
-        navigate(target, section)
-        setOpen(false)
-    }
 
     return (
         <header className={styles['site-header']}>
@@ -40,20 +35,18 @@ export function Header({ page, theme, onThemeChange }: HeaderProps) {
                     ].join(' ')}
                     aria-label="Main navigation"
                 >
-                    <button
+                    <a
                         className={page === 'home' ? styles.active : ''}
-                        type="button"
-                        onClick={() => go('home')}
+                        href={routePath('home')}
                     >
                         Why Wyrd
-                    </button>
-                    <button
+                    </a>
+                    <a
                         className={page === 'docs' ? styles.active : ''}
-                        type="button"
-                        onClick={() => go('docs')}
+                        href={routePath('docs')}
                     >
                         Documentation
-                    </button>
+                    </a>
                     <a href={GITHUB_URL} target="_blank" rel="noreferrer">
                         GitHub <Github size={16} />
                     </a>
@@ -69,13 +62,12 @@ export function Header({ page, theme, onThemeChange }: HeaderProps) {
                             <Moon size={16} />
                         )}
                     </button>
-                    <button
+                    <a
                         className={styles['nav-cta']}
-                        type="button"
-                        onClick={() => go('docs', 'quick-start')}
+                        href={routePath('docs', 'quick-start')}
                     >
                         Get started <ArrowRight size={15} />
-                    </button>
+                    </a>
                 </nav>
             </div>
         </header>

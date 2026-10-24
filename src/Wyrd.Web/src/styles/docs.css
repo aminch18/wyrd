@@ -29,7 +29,7 @@
 .docs-sidebar nav {
     display: grid;
 }
-.docs-sidebar nav button {
+.docs-sidebar nav a {
     padding: 10px;
     display: flex;
     justify-content: space-between;
@@ -42,8 +42,8 @@
     text-align: left;
     font-size: 13px;
 }
-.docs-sidebar nav button:hover,
-.docs-sidebar nav button.current {
+.docs-sidebar nav a:hover,
+.docs-sidebar nav a.current {
     color: var(--heading);
     border-left-color: var(--cyan);
     background: linear-gradient(
@@ -52,10 +52,10 @@
         transparent
     );
 }
-.docs-sidebar nav button svg {
+.docs-sidebar nav a svg {
     opacity: 0;
 }
-.docs-sidebar nav button.current svg {
+.docs-sidebar nav a.current svg {
     opacity: 1;
     color: var(--cyan);
 }

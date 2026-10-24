@@ -11,11 +11,16 @@ export function OverviewDoc() {
             lead="Make business decisions explicit, keep effects at the boundary, and turn a process into a model people can reason about."
             after={
                 <Callout title="Go deeper into the design">
-                    <a href="#/docs/semantics">How Wyrd behaves</a> lists the
-                    rules (messages, slices, processes, delivery), each marked
-                    implemented or planned.{' '}
-                    <a href="#/docs/decisions">Design decisions</a> explains why
-                    each choice was made, what it gives you and what it costs.
+                    <a href={`${import.meta.env.BASE_URL}docs/semantics/`}>
+                        How Wyrd behaves
+                    </a>{' '}
+                    lists the rules (messages, slices, processes, delivery),
+                    each marked implemented or planned.{' '}
+                    <a href={`${import.meta.env.BASE_URL}docs/decisions/`}>
+                        Design decisions
+                    </a>{' '}
+                    explains why each choice was made, what it gives you and
+                    what it costs.
                 </Callout>
             }
         />

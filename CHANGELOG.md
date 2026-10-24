@@ -18,6 +18,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Website SEO: prerendered HTML and clean URLs for every documentation chapter, unique metadata, canonical and social links, structured data and a generated sitemap; existing hash bookmarks remain supported.
 - Document all public library and testing members, enforce CS1591, track each package's API against 0.4.0 with PublicApiAnalyzers, and validate library packages against the 0.4.0 NuGet baseline.
 - Ubuntu CI now reports line and branch coverage for `Wyrd` and `Wyrd.Testing`, uploads the full HTML report, and enforces the per-package release floors in `coverage.json`; release floors can only rise.
 - Add BenchmarkDotNet Shop scenarios and fast allocation/scaling gates with a measured baseline. Ubuntu enforces every budget and reports the known single-SKU scaling defect until task 016 lands.

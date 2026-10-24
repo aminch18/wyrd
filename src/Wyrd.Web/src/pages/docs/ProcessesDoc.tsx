@@ -65,8 +65,14 @@ export function ProcessesDoc() {
                 <code>.Retry(3.Times).OrCompensate()</code> opts a step into
                 compensating instead. <Status kind="implemented" /> The rules
                 and the reasons are in{' '}
-                <a href="#/docs/semantics">How Wyrd behaves</a> and{' '}
-                <a href="#/docs/decisions">Design decisions</a>.
+                <a href={`${import.meta.env.BASE_URL}docs/semantics/`}>
+                    How Wyrd behaves
+                </a>{' '}
+                and{' '}
+                <a href={`${import.meta.env.BASE_URL}docs/decisions/`}>
+                    Design decisions
+                </a>
+                .
             </p>
             <h2>Observe the exact history</h2>
             <CodeBlock

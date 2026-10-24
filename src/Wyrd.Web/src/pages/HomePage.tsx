@@ -1,7 +1,7 @@
 import styles from '../styles/site.module.css'
 import { ArrowRight, BookOpen, Check, Github } from 'lucide-react'
 import { GITHUB_URL, NUGET_URL } from '../app/links'
-import { navigate } from '../app/navigation'
+import { routePath } from '../app/navigation'
 import { CodeBlock } from '../components/common/CodeBlock'
 import { TerminalInstall } from '../components/common/TerminalInstall'
 import { ThreadMark } from '../components/common/ThreadMark'
@@ -28,15 +28,14 @@ export function HomePage() {
                         code naturally takes.
                     </p>
                     <div className={styles['hero-actions']}>
-                        <button
+                        <a
                             className={
                                 styles['button'] + ' ' + styles['primary']
                             }
-                            type="button"
-                            onClick={() => navigate('docs', 'quick-start')}
+                            href={routePath('docs', 'quick-start')}
                         >
                             Read the quick start <ArrowRight size={17} />
-                        </button>
+                        </a>
                         <a
                             className={
                                 styles['button'] + ' ' + styles['secondary']
@@ -207,13 +206,12 @@ export function HomePage() {
                                 clock in tests
                             </li>
                         </ul>
-                        <button
+                        <a
                             className={styles['text-link']}
-                            type="button"
-                            onClick={() => navigate('docs', 'processes')}
+                            href={routePath('docs', 'processes')}
                         >
                             Explore process modelling <ArrowRight size={16} />
-                        </button>
+                        </a>
                     </div>
                     <CodeBlock
                         code={SNIPPETS.fluentProcess}
@@ -287,14 +285,13 @@ export function HomePage() {
                                 <code>decimal</code> to <code>double</code>.
                             </p>
                         </div>
-                        <button
+                        <a
                             className={styles['text-link']}
-                            type="button"
-                            onClick={() => navigate('docs', 'contracts')}
+                            href={routePath('docs', 'contracts')}
                         >
                             Read about versioned contracts{' '}
                             <ArrowRight size={16} />
-                        </button>
+                        </a>
                     </div>
                     <CodeBlock code={SNIPPETS.messages} title="Payments.cs" />
                 </div>
@@ -316,15 +313,14 @@ export function HomePage() {
                         source, and help shape what comes next.
                     </p>
                     <div className={styles['hero-actions']}>
-                        <button
+                        <a
                             className={
                                 styles['button'] + ' ' + styles['primary']
                             }
-                            type="button"
-                            onClick={() => navigate('docs', 'quick-start')}
+                            href={routePath('docs', 'quick-start')}
                         >
                             Open the documentation <BookOpen size={17} />
-                        </button>
+                        </a>
                         <a
                             className={
                                 styles['button'] + ' ' + styles['secondary']
