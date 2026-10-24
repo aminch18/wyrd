@@ -102,7 +102,7 @@ then 1.0) only with the whole bar green.** Baseline and rules: [QUALITY.md](QUAL
 - [x] Typed exceptions; no sync-over-async in hosts (Q4.1, Q4.2)
 - [x] Coverage reported in CI, never lower than the previous release (Q5.2)
 
-## v0.5 — Verdandi (run the present)
+## v0.5 — Verdandi (run the present) · `0.5.0-rc.1`
 
 Work happens on `feature/verdandi` (PR #11), in this order:
 
