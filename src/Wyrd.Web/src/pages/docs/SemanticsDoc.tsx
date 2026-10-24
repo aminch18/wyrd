@@ -56,9 +56,9 @@ const LIMITS = [
         'Event sourcing is a possible future option.',
     ],
     [
-        'No real I/O yet',
-        'Integrations are designed, not built.',
-        'Integrations in v0.5: the only place with I/O, with idempotency keys and recorded outcomes.',
+        'A new projection starts from current states',
+        'There is no event log to replay; only what a state says can be rebuilt.',
+        'Keep what a future view needs in the state, or publish it as an event a view already counts.',
     ],
 ] as const
 
@@ -115,7 +115,7 @@ export function SemanticsDoc() {
             <Callout title="How to read the status markers">
                 This page follows the repository design document, which marks
                 every rule as <Status kind="implemented" />, as{' '}
-                <Status kind="planned" version="v0.5" /> (with the version that
+                <Status kind="planned" version="v1.0" /> (with the version that
                 plans it), or as a <Status kind="limit" /> that is a deliberate
                 boundary. A planned rule is a design decision, not a claim about
                 the current package. Where it matters, the table says what
@@ -382,12 +382,7 @@ export function SemanticsDoc() {
                             </>
                         ),
                         status: 'implemented',
-                        today: (
-                            <>
-                                in the in-memory host; durable hosts are planned
-                                for v0.5.
-                            </>
-                        ),
+                        today: <>in memory and on the EF Core host.</>,
                     },
                     {
                         rule: (
@@ -502,8 +497,11 @@ export function SemanticsDoc() {
                         status: 'implemented',
                         today: (
                             <>
-                                steps have no timeouts. The observability that
-                                surfaces slow steps is planned for v0.5.
+                                steps have no timeouts. On the EF Core host the
+                                queue&apos;s health (lag, the age of pending
+                                steps, suspended instances) is published on the{' '}
+                                <code>Wyrd</code> meter; a call to the outside
+                                world is made with no transaction open.
                             </>
                         ),
                     },
@@ -539,8 +537,8 @@ export function SemanticsDoc() {
                 undoes a forward-suspended instance and fences the step it gave
                 up on. A late success of the pending command resumes the
                 instance on its own. <Status kind="implemented" /> A changed
-                process structure suspends an instance the same way. Durable
-                hosts come with v0.5.
+                process structure suspends an instance the same way. Every host,
+                in memory and on EF Core, offers these operators.
             </p>
 
             <h3>Statuses</h3>
@@ -589,9 +587,9 @@ export function SemanticsDoc() {
                         status: 'implemented',
                         today: (
                             <>
-                                in the in-memory host. Durable hosts (EF Core on
-                                PostgreSQL and SQL Server) are on the roadmap
-                                for v0.5.
+                                in memory and on the EF Core host (PostgreSQL,
+                                SQL Server), where the transaction also takes
+                                the message off the queue.
                             </>
                         ),
                     },
