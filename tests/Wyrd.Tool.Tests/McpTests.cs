@@ -16,6 +16,7 @@ namespace Wyrd.Tool.Tests;
 public sealed class McpTests(ITestOutputHelper output)
 {
     private static readonly string Snapshot = Path.Combine(AppContext.BaseDirectory, "Samples", "contracts.wyrd.txt");
+    private static readonly string ProcessSnapshot = Path.Combine(AppContext.BaseDirectory, "Samples", "processes.wyrd.txt");
     private static readonly string ShopAssembly = typeof(ShopModule).Assembly.Location;
     private static readonly string[] TestUsings = ["Shop", "Shop.Fulfillment"];
 
@@ -25,7 +26,7 @@ public sealed class McpTests(ITestOutputHelper output)
         await using var session = await McpTestSession.StartAsync();
         var tools = await session.Client.ListToolsAsync(cancellationToken: session.Token);
 
-        Assert.Equal(["asyncapi", "contracts", "diagram", "replay"], tools.Select(tool => tool.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(["asyncapi", "contracts", "diagram", "processes", "replay"], tools.Select(tool => tool.Name).Order(StringComparer.Ordinal));
         foreach (var tool in tools)
         {
             Assert.False(string.IsNullOrWhiteSpace(tool.Description));
@@ -92,6 +93,51 @@ public sealed class McpTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task processes_snapshot_and_check_are_the_same_output_as_the_shop_cli()
+    {
+        await using var session = await McpTestSession.StartAsync();
+        var snapshot = await session.Client.CallToolAsync("processes", new Dictionary<string, object?> { ["assemblyPath"] = ShopAssembly }, cancellationToken: session.Token);
+        Assert.False(snapshot.IsError is true);
+        Assert.Equal(Cli("processes", "--assembly", ShopAssembly), Text(snapshot));
+        Assert.Equal(File.ReadAllText(ProcessSnapshot).ReplaceLineEndings("\n"), Text(snapshot));
+
+        var check = await session.Client.CallToolAsync("processes", new Dictionary<string, object?>
+        {
+            ["assemblyPath"] = ShopAssembly,
+            ["snapshotPath"] = ProcessSnapshot,
+        }, cancellationToken: session.Token);
+        Assert.False(check.IsError is true);
+        Assert.Equal(Cli("processes", "--assembly", ShopAssembly, "--check", ProcessSnapshot), Text(check));
+    }
+
+    [Fact]
+    public async Task a_changed_process_is_reported_in_the_text_like_the_cli_not_as_a_tool_error()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(path, File.ReadAllText(ProcessSnapshot).Replace("    - \"step Shipping.Ship\"\n", "", StringComparison.Ordinal));
+            await using var session = await McpTestSession.StartAsync();
+            var check = await session.Client.CallToolAsync("processes", new Dictionary<string, object?>
+            {
+                ["assemblyPath"] = ShopAssembly,
+                ["snapshotPath"] = path,
+            }, cancellationToken: session.Token);
+
+            Assert.False(check.IsError is true);
+            Assert.StartsWith("Changed process: OrderFulfillment", Text(check), StringComparison.Ordinal);
+            var app = new CommandAppTester();
+            app.Configure(config => Program.Configure(config, new TestConsole()));
+            Assert.Equal(1, app.Run("processes", "--assembly", ShopAssembly, "--check", path).ExitCode);
+            Assert.Equal(app.Console.Output, Text(check));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task timeline_and_generated_test_match_cli_for_a_real_shop_history()
     {
         var runtime = ShopModule.CreateRuntime();
@@ -141,6 +187,7 @@ public sealed class McpTests(ITestOutputHelper output)
         foreach (var (tool, argument, command, option) in new[]
         {
             ("diagram", "assemblyPath", "diagram", "--assembly"),
+            ("processes", "assemblyPath", "processes", "--assembly"),
             ("asyncapi", "contractsPath", "asyncapi", "--contracts"),
             ("contracts", "contractsPath", "asyncapi", "--contracts"),
             ("replay", "historyPath", "replay", (string?)null),
@@ -203,7 +250,7 @@ public sealed class McpTests(ITestOutputHelper output)
         {
             var tools = await client.ListToolsAsync(cancellationToken: timeout.Token);
             output.WriteLine($"tools/list: {string.Join(", ", tools.Select(tool => tool.Name).Order(StringComparer.Ordinal))}");
-            Assert.Equal(4, tools.Count);
+            Assert.Equal(5, tools.Count);
             var result = await client.CallToolAsync("diagram", new Dictionary<string, object?> { ["assemblyPath"] = ShopAssembly }, cancellationToken: timeout.Token);
             Assert.False(result.IsError is true);
             Assert.Equal(Cli("diagram", "--assembly", ShopAssembly), Text(result));
@@ -216,7 +263,7 @@ public sealed class McpTests(ITestOutputHelper output)
             }, cancellationToken: timeout.Token);
             Assert.False(noisy.IsError is true);
             Assert.Equal(Cli("diagram", "--assembly", typeof(TestProcesses).Assembly.Location), Text(noisy));
-            Assert.Equal(4, (await client.ListToolsAsync(cancellationToken: timeout.Token)).Count);
+            Assert.Equal(5, (await client.ListToolsAsync(cancellationToken: timeout.Token)).Count);
         }
 
         Assert.Contains("Process discovery diagnostic", diagnostics);
