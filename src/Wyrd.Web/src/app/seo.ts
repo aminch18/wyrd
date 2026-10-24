@@ -18,7 +18,7 @@ export function pageMetadata(route: Route) {
         description:
             route.page === 'home'
                 ? HOME_DESCRIPTION
-                : `${section!.subtitle} Learn ${section!.title.toLowerCase()} with Wyrd, the deterministic event-driven process library for .NET.`,
+                : `${section!.subtitle} Wyrd is the deterministic event-driven process library for .NET.`,
         url:
             route.page === 'home'
                 ? SITE_URL
