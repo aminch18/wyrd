@@ -521,6 +521,9 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
         _member = member;
     }
 
+    /// <inheritdoc />
+    public IReadOnlyList<string> Subscriptions => _application.Subscriptions;
+
     /// <summary>
     /// Delivers an integration event another service published. A contract nobody uses here is ignored; a message
     /// received twice is handled once.

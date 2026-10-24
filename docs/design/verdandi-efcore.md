@@ -117,4 +117,3 @@ are kept even without projections, so a projection added later knows which event
 ## Not yet
 
 - `LISTEN/NOTIFY` on PostgreSQL, for messages queued by another process.
-- A broker package (`Wyrd.RabbitMq`) implementing `IWyrdTransport`.

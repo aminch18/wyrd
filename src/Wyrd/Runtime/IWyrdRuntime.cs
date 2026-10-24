@@ -20,6 +20,12 @@ public interface IWyrdRuntime
     /// </summary>
     Task ReceiveAsync(TransportMessage message, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The integration-event contracts from other services this runtime uses (by a process, a projection or an
+    /// upcaster), in order: what a transport subscribes to. What it publishes itself is not in it.
+    /// </summary>
+    IReadOnlyList<string> Subscriptions { get; }
+
     /// <summary>Where the instance of the process with this key stands, or null if there is no such instance.</summary>
     Task<ProcessStatus?> StatusOfAsync(Process process, object key, CancellationToken cancellationToken = default);
 

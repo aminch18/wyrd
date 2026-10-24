@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>RabbitMQ between Wyrd services: what a service publishes (integration events) leaves its outbox through a durable topic exchange, and each service's queue receives the contracts it uses. At least once; the receiving runtime handles a redelivery once.</Description>
+    <RootNamespace>Wyrd.RabbitMq</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RabbitMQ.Client" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Wyrd\Wyrd.csproj" />
+  </ItemGroup>
+
+</Project>

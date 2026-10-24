@@ -123,9 +123,10 @@ Work happens on `feature/verdandi` (PR #11), in this order:
 - [x] Operators on durable hosts: resume and compensate suspended instances
 - [x] A hardened queue: polling backoff (with an immediate wake-up for what the runtime queues itself) instead of busy
       polling, batched cleanup, metrics for queue depth and the age of pending steps ([semantics](design/semantics.md) 3.5)
-- [ ] RabbitMQ transport between services (the outbox stays in the database; the broker carries what leaves it).
-      Done: the port (`IWyrdTransport`, `ReceiveAsync`, only integration events cross services), `InMemoryTransport`,
-      the EF Core outbox relay and trace context across services. Left: the `Wyrd.RabbitMq` package, kept thin
+- [x] RabbitMQ transport between services (the outbox stays in the database; the broker carries what leaves it):
+      the port (`IWyrdTransport`, `ReceiveAsync`, only integration events cross services), `InMemoryTransport`, the
+      EF Core outbox relay, trace context across services, and `Wyrd.RabbitMq` (`RabbitMqTransport`,
+      `RabbitMqSubscriber`), kept thin
 - [x] OpenTelemetry with process-level traces
 - [x] Catching up a projection added to an existing store: seeded from the current states it names (`Seed<TState>`),
       then from their events, with no event applied twice or missed

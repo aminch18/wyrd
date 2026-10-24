@@ -14,6 +14,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   (`ex.GetType() == typeof(InvalidOperationException)`, `Assert.Throws<InvalidOperationException>`) no longer match.
   A command without an owner now says "Nothing owns X. Register its owner with AddSlice() or AddIntegration()."
   instead of "No slice owns X".
+- `IWyrdRuntime` has a new member, `Subscriptions`: a class of yours that implements it needs it too.
 
 ### Added
 
@@ -63,6 +64,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   their events after that; an event already in a seed is skipped, a later one applied. Hosts catch up on their own
   (workers on EF Core, the in-memory runtime when idle) or on `CatchUpAsync()`. Projected versions are now kept even
   in applications without projections.
+- **`Wyrd.RabbitMq`**: RabbitMQ between services, kept thin. `RabbitMqTransport` (give it to `UseTransport`) publishes
+  each integration event to a durable topic exchange with its contract as the routing key, persistent, with its
+  message id and trace context, and counts it sent once the broker confirms: an unconfirmed message stays in the
+  outbox. `RabbitMqSubscriber.StartAsync(connection, runtime, queue)` binds the service's durable queue to the
+  contracts the runtime uses and acknowledges a message once the runtime has it; the runtime handles a redelivery
+  once. `IWyrdRuntime.Subscriptions` lists those contracts (processes, projections, upcasters; not what the service
+  only publishes).
 - `IWyrdBuilder<T>`: register a module the same way on any host (`ShopModule.Register(runtime)`).
 - `IWyrdRuntime`: what application code needs (send, publish, query), implemented by both hosts.
 - `samples/Shop.Api` runs durable on PostgreSQL when built with `-p:WyrdHost=EfCore` and given a `Wyrd` connection

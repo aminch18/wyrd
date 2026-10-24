@@ -12,6 +12,14 @@ internal sealed class Application(MessageTypes types)
 
     public MessageTypes Types { get; } = types;
 
+    private readonly SortedSet<string> _subscriptions = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The integration-event contracts other services publish that are used here — by a process, a projection or an
+    /// upcaster — as a transport subscribes to them, in order. What this service publishes itself is not in it.
+    /// </summary>
+    public IReadOnlyList<string> Subscriptions => [.. _subscriptions];
+
     public void Add(ISliceHandler slice)
     {
         Registry.Add(slice);
@@ -34,12 +42,14 @@ internal sealed class Application(MessageTypes types)
     {
         Registry.Add(upcaster);
         Register(upcaster.From.Type, upcaster.To.Type);
+        Subscribe(upcaster.From.Type);
     }
 
     public void Add(IProjectionHandler projection)
     {
         Registry.Add(projection);
         Register([projection.View, .. projection.Events, .. projection.Seeds]);
+        Subscribe([.. projection.Events]);
     }
 
     public void Add(Process process)
@@ -78,11 +88,13 @@ internal sealed class Application(MessageTypes types)
     private void RegisterTypesOf(Process process)
     {
         Register(process.Trigger);
+        Subscribe(process.Trigger);
         foreach (var node in process.Nodes)
         {
             if (node is AwaitNode wait)
             {
                 Register(wait.Event);
+                Subscribe(wait.Event);
             }
             else if (node is StepNode step)
             {
@@ -91,6 +103,14 @@ internal sealed class Application(MessageTypes types)
         }
 
         Register(process.Outcome?.Action.Output);
+    }
+
+    private void Subscribe(params Type[] types)
+    {
+        foreach (var type in types.Where(typeof(IIntegrationEvent).IsAssignableFrom))
+        {
+            _subscriptions.Add(MessageTypes.NameOf(type));
+        }
     }
 
     private void Register(params Type?[] types)
