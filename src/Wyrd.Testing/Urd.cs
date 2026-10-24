@@ -17,6 +17,8 @@ namespace Wyrd.Testing;
 /// </example>
 public static class Urd
 {
+    /// <summary>Runs the named process using its recorded replies and compares its history to the recording, reporting the first difference.</summary>
+    /// <remarks>A changed process fingerprint is reported without replaying; command owners are not executed during replay.</remarks>
     public static async Task<ReplayReport> ReplayAsync(Func<InMemoryRuntime> system, Process process, InstanceHistory history)
     {
         ArgumentNullException.ThrowIfNull(system);

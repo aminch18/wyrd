@@ -11,6 +11,7 @@ public abstract class Upcaster<TFrom, TTo> : IUpcasterHandler
     where TFrom : IIntegrationEvent
     where TTo : IIntegrationEvent
 {
+    /// <summary>Purely converts the older integration contract to the next registered version for subscribers.</summary>
     public abstract TTo Map(TFrom previous);
 
     Contract IUpcasterHandler.From => Contract.Of(typeof(TFrom));
