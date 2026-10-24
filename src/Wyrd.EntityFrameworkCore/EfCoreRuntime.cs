@@ -36,6 +36,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     private string? _queueName;
     private volatile bool _disposed;
     private int _idleWaits;
+    private int _catchingUp;
     private readonly SemaphoreSlim _work = new(0, 1);
 
     /// <summary>
@@ -370,6 +371,22 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             {
                 var handled = await ProcessPendingAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
                 var relayed = await RelayOrWaitAsync(cancellationToken).ConfigureAwait(false);
+
+                // One loop of this runtime catches up at a time, a bounded batch per pass, between messages. Seeding is
+                // work: a worker that seeded doesn't back off before the next batch.
+                var seeded = 0;
+                if (_application.Registry.CatchingUp.Any() && Interlocked.CompareExchange(ref _catchingUp, 1, 0) == 0)
+                {
+                    try
+                    {
+                        seeded = await CatchUpPassAsync(CatchUpBatchPerPass, cancellationToken).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        Volatile.Write(ref _catchingUp, 0);
+                    }
+                }
+
                 if (ClaimTurn(ref _lastCleanup, _options.CleanupInterval)
                     && (await ForgetExpiredAsync(BatchSize, CleanupBatchesPerPass, cancellationToken).ConfigureAwait(false)).More)
                 {
@@ -382,7 +399,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                     QueueMetrics.Record(await QueueNameAsync(cancellationToken).ConfigureAwait(false), await HealthAsync(cancellationToken).ConfigureAwait(false));
                 }
 
-                if (handled == 0 && relayed == 0)
+                if (handled == 0 && relayed == 0 && seeded == 0)
                 {
                     await IdleAsync(idle, cancellationToken).ConfigureAwait(false);
                     idle = TimeSpan.FromTicks(Math.Min(idle.Ticks * 2, _options.MaxPollInterval.Ticks));
@@ -495,6 +512,90 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Catches up the projections added to a store that already has states (see
+    /// <see cref="Projection{TView}.Seed{TState}"/>): seeds up to <paramref name="batchSize"/> views of each, one
+    /// transaction per state, and marks a projection caught up once nothing is left. Workers call it while a projection is
+    /// catching up, and any number of them can: a state another worker seeded meanwhile is skipped. Returns true once
+    /// every projection has caught up.
+    /// </summary>
+    public async Task<bool> CatchUpAsync(int batchSize = 1_000, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(batchSize, 1);
+        await CatchUpPassAsync(batchSize, cancellationToken).ConfigureAwait(false);
+        return !_application.Registry.CatchingUp.Any();
+    }
+
+    /// <summary>One pass of catching up; returns how many states it seeded.</summary>
+    private async Task<int> CatchUpPassAsync(int batchSize, CancellationToken cancellationToken)
+    {
+        var seeded = 0;
+        foreach (var projection in _application.Registry.CatchingUp.ToList())
+        {
+            var viewType = projection.View.FullName!;
+            var batches = new List<IReadOnlyList<StoredState>>();
+            await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var store = new EfCoreStore(db, _time.GetUtcNow());
+
+                // After a restart, or on another instance of the service, only the store knows: caught up once, for good.
+                if (await store.IsCaughtUpAsync(viewType, cancellationToken).ConfigureAwait(false))
+                {
+                    _application.Registry.CaughtUp(projection);
+                    continue;
+                }
+
+                foreach (var seed in projection.Seeds)
+                {
+                    batches.Add(await store.UnseededAsync(viewType, seed.FullName!, batchSize, cancellationToken).ConfigureAwait(false));
+                }
+            }
+
+            foreach (var state in batches.SelectMany(b => b))
+            {
+                if (await CatchUpStepAsync(projection, state, engine => engine.SeedAsync(projection, state, cancellationToken), cancellationToken)
+                    .ConfigureAwait(false))
+                {
+                    seeded++;
+                }
+            }
+
+            await CatchUpStepAsync(projection, state: null, async engine => await engine.CompleteCatchUpAsync(projection, cancellationToken).ConfigureAwait(false), cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return seeded;
+    }
+
+    private const int CatchUpBatchPerPass = 100;
+
+    /// <summary>
+    /// One step of a catch-up in its own transaction. A conflict (another worker seeded the stream, or an event changed
+    /// the state meanwhile) leaves it for the next pass; any other failure is logged with what it was about, and the
+    /// projection stays catching up, its other states seeded. Returns whether the step committed.
+    /// </summary>
+    private async Task<bool> CatchUpStepAsync(IProjectionHandler projection, StoredState? state, Func<Engine, ValueTask> step, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            await step(Engine(db, _time.GetUtcNow())).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex) when (IsConflict(ex))
+        {
+            LogConflictRetry("a catch-up", 1);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            LogCatchUpFailed(projection.View.Name, state?.StateType ?? "-", state?.Key ?? "-", ex);
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -1004,6 +1105,9 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "History archive failed: {Count} finished instances kept for the next cleanup")]
     private partial void LogArchiveFailed(int count, Exception error);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Catching up {View} failed on {StateType} '{Key}': the view stays catching up, the rest goes on")]
+    private partial void LogCatchUpFailed(string view, string stateType, string key, Exception error);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Message {Id} was taken by another worker meanwhile: its failure is not recorded twice")]
     private partial void LogTakenMeanwhile(long id);

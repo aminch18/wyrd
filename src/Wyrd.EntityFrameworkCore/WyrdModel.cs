@@ -144,6 +144,26 @@ internal sealed class HeldRow
     public string Payload { get; set; } = "";
 }
 
+/// <summary>A stream a catching-up projection follows, with the version its seed was built from (0: none).</summary>
+internal sealed class SeededRow
+{
+    public string ViewType { get; set; } = "";
+
+    public string StateType { get; set; } = "";
+
+    public string Key { get; set; } = "";
+
+    public long Version { get; set; }
+}
+
+/// <summary>A projection that has caught up from existing states.</summary>
+internal sealed class CaughtUpRow
+{
+    public string ViewType { get; set; } = "";
+
+    public DateTimeOffset CaughtUpAt { get; set; }
+}
+
 internal sealed class QueueRow
 {
     public long Id { get; set; }
@@ -297,6 +317,23 @@ public static class WyrdModelBuilderExtensions
             e.Property(r => r.Version).HasColumnName("version").ValueGeneratedNever();
             Text(e.Property(r => r.Type), "type");
             Text(e.Property(r => r.Payload), "payload");
+        });
+
+        modelBuilder.Entity<SeededRow>(e =>
+        {
+            // Three key columns pass SQL Server's 900-byte limit for a clustered key; a nonclustered one allows 1,700.
+            e.ToTable("seeded", schema).HasKey(r => new { r.ViewType, r.StateType, r.Key }).HasAnnotation("SqlServer:Clustered", false);
+            Key(e.Property(r => r.ViewType), "view_type");
+            Key(e.Property(r => r.StateType), "state_type");
+            Key(e.Property(r => r.Key), "key");
+            e.Property(r => r.Version).HasColumnName("version");
+        });
+
+        modelBuilder.Entity<CaughtUpRow>(e =>
+        {
+            e.ToTable("caught_up", schema).HasKey(r => r.ViewType);
+            Key(e.Property(r => r.ViewType), "view_type");
+            e.Property(r => r.CaughtUpAt).HasColumnName("caught_up_at");
         });
 
         modelBuilder.Entity<QueueRow>(e =>

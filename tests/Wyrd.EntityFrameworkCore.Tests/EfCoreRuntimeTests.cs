@@ -90,6 +90,75 @@ public abstract class EfCoreRuntimeTests(Database database)
     }
 
     [Fact]
+    public async Task a_projection_added_to_a_store_with_states_catches_up_without_applying_an_event_twice()
+    {
+        var contexts = await database.NewAsync();
+        var shop = Database.Shop(contexts);
+        await shop.SendAsync(new Restock("KEYBOARD", 5));
+        await DrainAsync(shop);
+        await shop.SendAsync(new Restock("MOUSE", 2)); // its StockAdded is still queued
+
+        // Redeployed with a new read model.
+        var redeployed = ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(contexts, Database.Retention, Database.Options)).AddProjection(new StockLevels());
+        Assert.False(await redeployed.CatchUpAsync()); // seeded, but the queued StockAdded is already in the MOUSE seed
+        Assert.Equal(new StockLevel("KEYBOARD", 5), await redeployed.ViewAsync<StockLevel>("KEYBOARD"));
+        Assert.Equal(new StockLevel("MOUSE", 2), await redeployed.ViewAsync<StockLevel>("MOUSE"));
+
+        await DrainAsync(redeployed);
+        Assert.Equal(new StockLevel("MOUSE", 2), await redeployed.ViewAsync<StockLevel>("MOUSE"));
+        Assert.True(await redeployed.CatchUpAsync());
+
+        await redeployed.SendAsync(new Restock("MOUSE", 3));
+        await redeployed.SendAsync(new Restock("PAD", 1));
+        await DrainAsync(redeployed);
+        Assert.Equal(new StockLevel("MOUSE", 5), await redeployed.ViewAsync<StockLevel>("MOUSE"));
+        Assert.Equal(new StockLevel("PAD", 1), await redeployed.ViewAsync<StockLevel>("PAD"));
+    }
+
+    [Fact]
+    public async Task workers_catching_up_together_seed_each_view_once()
+    {
+        var contexts = await database.NewAsync();
+        var shop = Database.Shop(contexts);
+        foreach (var sku in Enumerable.Range(1, 20).Select(i => $"SKU-{i:00}"))
+        {
+            await shop.SendAsync(new Restock(sku, 1));
+        }
+
+        await DrainAsync(shop);
+
+        var workers = Enumerable.Range(0, 3)
+            .Select(_ => ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(contexts, Database.Retention, Database.Options)).AddProjection(new StockLevels()))
+            .ToList();
+        for (var pass = 1; !(await Task.WhenAll(workers.Select(w => w.CatchUpAsync()))).All(caughtUp => caughtUp); pass++)
+        {
+            Assert.True(pass < 20, "the workers never caught up");
+        }
+
+        Assert.All(await workers[0].ViewsAsync<StockLevel>(), level => Assert.Equal(1, level.Available));
+        Assert.Equal(20, (await workers[0].ViewsAsync<StockLevel>()).Count);
+    }
+
+    [Fact]
+    public async Task a_projection_that_caught_up_is_not_seeded_again_after_a_restart()
+    {
+        var contexts = await database.NewAsync();
+        var shop = Database.Shop(contexts);
+        await shop.SendAsync(new Restock("KEYBOARD", 5));
+        await shop.SendAsync(new Restock("MOUSE", 2));
+        await DrainAsync(shop);
+        EfCoreRuntime<WyrdDbContext> TotalOf() => ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(contexts, Database.Retention, Database.Options)).AddProjection(new TotalStocks());
+
+        Assert.True(await TotalOf().CatchUpAsync());
+        Assert.Equal(new TotalStock(7), await TotalOf().ViewAsync<TotalStock>("all"));
+
+        // Restarted, or another instance of the service: the store says it caught up, so nothing is folded in again.
+        var restarted = TotalOf();
+        Assert.True(await restarted.CatchUpAsync());
+        Assert.Equal(new TotalStock(7), await restarted.ViewAsync<TotalStock>("all"));
+    }
+
+    [Fact]
     public async Task only_a_suspended_instance_can_be_resumed()
     {
         var shop = Database.Shop(await database.NewAsync());

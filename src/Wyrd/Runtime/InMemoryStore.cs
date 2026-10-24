@@ -15,6 +15,8 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
     private readonly Dictionary<Guid, DateTimeOffset> _handled = [];
     private readonly Dictionary<(string StateType, string Key), long> _projected = [];
     private readonly List<StoredHeld> _held = [];
+    private readonly Dictionary<StoredSeeded, long> _seeded = [];
+    private readonly HashSet<string> _caughtUp = [];
     private long _sequence;
 
     /// <summary>
@@ -64,6 +66,24 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
     public ValueTask<StoredHeld?> FindHeldAsync(string stateType, string key, long version, CancellationToken cancellationToken) =>
         ValueTask.FromResult(_held.FirstOrDefault(h => h.StateType == stateType && h.Key == key && h.Version == version));
 
+    public ValueTask<bool> IsCaughtUpAsync(string viewType, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(_caughtUp.Contains(viewType));
+
+    public ValueTask<long?> LoadSeededAsync(StoredSeeded seeded, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(_seeded.TryGetValue(seeded, out var version) ? version : (long?)null);
+
+    public ValueTask<bool> SeedsAheadAsync(string viewType, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(_seeded.Any(s => s.Key.ViewType == viewType && _projected.GetValueOrDefault((s.Key.StateType, s.Key.Key)) < s.Value));
+
+    public ValueTask<IReadOnlyList<StoredState>> UnseededAsync(string viewType, string stateType, int max, CancellationToken cancellationToken) =>
+        ValueTask.FromResult<IReadOnlyList<StoredState>>(
+        [
+            .. _states.Values
+                .Where(s => s.StateType == stateType && !_seeded.ContainsKey(new StoredSeeded(viewType, stateType, s.Key)))
+                .OrderBy(s => s.Key, StringComparer.Ordinal) // like a database: a seed folding several states sees one order
+                .Take(max),
+        ]);
+
     public ValueTask CommitAsync(Changes changes, CancellationToken cancellationToken)
     {
         lock (Sync)
@@ -95,6 +115,22 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
                 }
             }
 
+            foreach (var state in changes.Unchanged)
+            {
+                if (_states.GetValueOrDefault((state.StateType, state.Key))?.Version != state.Version)
+                {
+                    throw new ConcurrencyConflictException($"Concurrency conflict seeding from {state.StateType} '{state.Key}'.");
+                }
+            }
+
+            foreach (var seeded in changes.Seeded.Keys)
+            {
+                if (_seeded.ContainsKey(seeded))
+                {
+                    throw new ConcurrencyConflictException($"Concurrency conflict seeding {seeded.ViewType} from {seeded.StateType} '{seeded.Key}'.");
+                }
+            }
+
             foreach (var view in changes.Views.Values)
             {
                 if ((_views.GetValueOrDefault((view.ViewType, view.Key))?.Version ?? 0) != view.Version)
@@ -112,6 +148,13 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
             {
                 _projected[(stateType, key)] = version;
             }
+
+            foreach (var (seeded, version) in changes.Seeded)
+            {
+                _seeded[seeded] = version;
+            }
+
+            _caughtUp.UnionWith(changes.CaughtUp); // the seed marks stay, like in a database
 
             _held.AddRange(changes.Hold);
             _held.RemoveAll(changes.Release.Contains);

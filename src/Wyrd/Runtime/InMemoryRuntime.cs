@@ -389,6 +389,63 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
             await _engine.HandleAsync(envelope, cancellationToken).ConfigureAwait(false);
             await TakeOutboxAsync(cancellationToken).ConfigureAwait(false);
         }
+
+        // Once idle. What the drain handled is committed, so a failing seed is logged, never thrown at the caller.
+        await CatchUpCoreAsync(isolateFailures: true, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Catches up the projections added to a runtime that already has states (see
+    /// <see cref="Projection{TView}.Seed{TState}"/>). The runtime does it on its own once it is idle, and logs a failure
+    /// to the journal; call this to have the views before the next message, and to see a failure as an exception.
+    /// </summary>
+    public async Task CatchUpAsync(CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await CatchUpCoreAsync(isolateFailures: false, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Seeds every catching-up projection. With <paramref name="isolateFailures"/> a failing state is logged with its
+    /// view, state type and key, and the other states and projections go on; otherwise the failure is thrown.
+    /// </summary>
+    private async Task CatchUpCoreAsync(bool isolateFailures, CancellationToken cancellationToken)
+    {
+        foreach (var projection in _application.Registry.CatchingUp.ToList())
+        {
+            foreach (var seed in projection.Seeds)
+            {
+                foreach (var state in await _store.UnseededAsync(projection.View.FullName!, seed.FullName!, int.MaxValue, cancellationToken).ConfigureAwait(false))
+                {
+                    await CatchUpStepAsync(projection, state, () => _engine.SeedAsync(projection, state, cancellationToken), isolateFailures, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
+
+            await CatchUpStepAsync(projection, state: null, async () => await _engine.CompleteCatchUpAsync(projection, cancellationToken).ConfigureAwait(false), isolateFailures, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async Task CatchUpStepAsync(
+        IProjectionHandler projection, StoredState? state, Func<ValueTask> step, bool isolateFailures, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await step().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (isolateFailures && (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested))
+        {
+            Log(Engine.External, state?.Key,
+                $"catching up {projection.View.Name} failed on {state?.StateType ?? "completion"}: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     /// <summary>The outbox relay: committed messages are handed to the transport.</summary>

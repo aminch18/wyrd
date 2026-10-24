@@ -106,6 +106,30 @@ public sealed class RecordingTransport : IWyrdTransport
     }
 }
 
+/// <summary>A read model added to a shop that already has stock: it catches up from the stock items' states.</summary>
+public sealed record StockLevel(string Sku, int Available);
+
+public sealed class StockLevels : Projection<StockLevel>
+{
+    public StockLevels()
+    {
+        Seed<Shop.Inventory.StockItem>((sku, _) => sku, (_, sku, item) => new StockLevel(sku, item.Available));
+        On<Shop.Inventory.StockAdded>(e => e.Sku, (view, e) => new StockLevel(e.Sku, (view?.Available ?? 0) + e.Quantity));
+    }
+}
+
+/// <summary>All the shop's stock in one view: its seed folds every stock item, so a second seed would show.</summary>
+public sealed record TotalStock(int Available);
+
+public sealed class TotalStocks : Projection<TotalStock>
+{
+    public TotalStocks()
+    {
+        Seed<Shop.Inventory.StockItem>((_, _) => "all", (view, _, item) => new TotalStock((view?.Available ?? 0) + item.Available));
+        On<Shop.Inventory.StockAdded>(_ => "all", (view, e) => new TotalStock((view?.Available ?? 0) + e.Quantity));
+    }
+}
+
 /// <summary>Every restock of the shop in one view, from as many streams as there are stock items.</summary>
 public sealed record AllStock(int Restocked);
 

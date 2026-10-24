@@ -183,7 +183,9 @@ the host doesn't start without a `Retention`, whose every member is required, ea
 - In memory there is a default, `Retention.InMemory`, that keeps everything (nothing outlives the process), and the
   journal keeps the most recent `JournalLimit` entries (10,000 by default).
 - Business data is not delivery machinery: states and read models have no retention, they live as long as the
-  application keeps them.
+  application keeps them. So does what describes them: the last version of each stream projected (one per state), and
+  for a projection that caught up from existing states (5), one seed mark per state it was seeded from and the fact
+  that it caught up. They grow with the states, never with traffic.
 
 ## 5. Read models
 
@@ -195,8 +197,10 @@ the host doesn't start without a `Retention`, whose every member is required, ea
   that arrives early is held until the gap is filled. Processes don't wait for read models. **Implemented.**
 - Across streams there is no order (two orders, or an order and its payment if they are different states), and
   integration events from outside carry no stream. A view combining several streams still tolerates reordering
-  between them. *Conscious limit.* Catching up a projection added to an existing durable store comes with the
-  durable hosts (v0.5).
+  between them. *Conscious limit.*
+- A projection added to a store that already has data catches up from the **current states** it names
+  (`Seed<TState>`), since Wyrd keeps state, not every past event, and then follows their events: an event already in a
+  seed is never applied again, and none is missed. Only what a state says can be rebuilt. **Implemented.**
 
 ## 6. Conscious limits
 
@@ -205,3 +209,4 @@ the host doesn't start without a `Retention`, whose every member is required, ea
 | One event per decision | Keeps decisions simple and explicit | A union of events |
 | Linear processes | Readable, simulable, versionable | Another process for the alternative |
 | Snapshot state | Simple storage, fast reads | Event sourcing as a future option |
+| A new projection starts from current states | There is no event log to replay; only what a state says can be rebuilt | Keep what a future view needs in the state, or publish it as an event a view already counts |
