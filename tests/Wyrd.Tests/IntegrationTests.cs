@@ -14,6 +14,9 @@ public sealed class FakeGateway : Integration<ChargePayment, PaymentCharged, Pay
     /// <summary>Calls that throw before reaching the provider (a network failure).</summary>
     public int FailNext { get; set; }
 
+    /// <summary>Calls that time out on the client side, as <c>HttpClient</c> does: a cancellation nobody asked for.</summary>
+    public int TimeOutNext { get; set; }
+
     /// <summary>Distinct charges actually made, whatever the number of calls.</summary>
     public int Charges => _charges.Count;
 
@@ -27,6 +30,12 @@ public sealed class FakeGateway : Integration<ChargePayment, PaymentCharged, Pay
         {
             FailNext--;
             throw new HttpRequestException("connection reset");
+        }
+
+        if (TimeOutNext > 0)
+        {
+            TimeOutNext--;
+            throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.");
         }
 
         if (command.Amount > 1000)
@@ -60,6 +69,20 @@ public class IntegrationTests
         Assert.Equal(ProcessStatus.Completed, runtime.StatusOf(Fulfillment, "A-1"));
         Assert.Contains(new PaymentCharged("A-1", 50), runtime.History);
         Assert.Single(runtime.Published.OfType<PaymentChargedV1>()); // publications apply to its events too
+    }
+
+    [Fact]
+    public async Task a_third_party_timeout_is_a_failure_the_process_retries()
+    {
+        var gateway = new FakeGateway { TimeOutNext = 1 };
+        var runtime = TestSystem.WithGateway(gateway, Fulfillment);
+
+        await runtime.SendAsync(new PlaceOrder("A-1", Quantity: 1, Amount: 50));
+        await runtime.AdvanceAsync(1.Minutes);
+
+        Assert.Equal(2, gateway.Calls.Count);
+        Assert.Equal(1, gateway.Charges);
+        Assert.Equal(ProcessStatus.Awaiting, runtime.StatusOf(Fulfillment, "A-1"));
     }
 
     [Fact]

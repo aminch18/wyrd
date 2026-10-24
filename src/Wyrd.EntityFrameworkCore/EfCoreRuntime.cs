@@ -403,7 +403,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
             await RedeliverLaterAsync(message, ex, now).ConfigureAwait(false);
@@ -432,7 +432,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             await using var reader = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
             call = await Engine(reader, _time.GetUtcNow()).CallAsync(envelope, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             await RedeliverLaterAsync(message, ex, _time.GetUtcNow()).ConfigureAwait(false);
             return;
@@ -443,22 +443,24 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             var now = _time.GetUtcNow();
             await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            var leased = db.Set<QueueRow>().Where(r => r.Id == message.Id && r.AvailableAt == leasedUntil);
+            // By id only: an outcome that arrives after the lease ran out is still a fact, and recorded, or a call that
+            // always outlives its lease would never be recorded. While the row is there nobody has recorded one yet;
+            // writing it locks it until the commit, so another worker that called meanwhile finds it gone.
+            var row = db.Set<QueueRow>().Where(r => r.Id == message.Id);
             try
             {
-                // Writing the row locks it: the lease stays this worker's until the commit.
-                if (await leased.ExecuteUpdateAsync(s => s.SetProperty(r => r.AvailableAt, leasedUntil), cancellationToken).ConfigureAwait(false) == 0)
+                if (await row.ExecuteUpdateAsync(s => s.SetProperty(r => r.Attempts, r => r.Attempts), cancellationToken).ConfigureAwait(false) == 0)
                 {
                     LogLeaseLost(message.Id);
                     return;
                 }
 
                 await Engine(db, now).HandleAsync(envelope, call, cancellationToken).ConfigureAwait(false);
-                await leased.ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+                await row.ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                 return;
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
                 if (attempt < _options.MaxConflictRetries && IsConflict(ex))
@@ -711,7 +713,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     [LoggerMessage(Level = LogLevel.Warning, Message = "Worker failed (database unavailable?); queued messages are safe, retrying")]
     private partial void LogWorkerFailed(Exception error);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Integration command {Id} outlived its lease: another worker took it, this outcome is not recorded")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Integration command {Id}: another worker recorded its outcome first, this one is not recorded twice")]
     private partial void LogLeaseLost(long id);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Message {Id} was taken by another worker meanwhile: its failure is not recorded twice")]

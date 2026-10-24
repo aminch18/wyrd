@@ -96,7 +96,7 @@ internal sealed class Engine(
             return new IntegrationCall(await integration.ExecuteAsync(
                 command, new IntegrationContext(envelope.MessageId, envelope.Process?.Attempt ?? 1), cancellationToken).ConfigureAwait(false));
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             Tracing.Failed(activity, ex);
             return new IntegrationCall(Failure: ExceptionDispatchInfo.Capture(ex));

@@ -244,20 +244,15 @@ public abstract class EfCoreRuntimeTests(Database database)
     }
 
     [Fact]
-    public async Task an_integration_call_that_outlives_its_lease_is_recorded_once_with_the_same_idempotency_key()
+    public async Task an_integration_call_that_always_outlives_its_lease_is_still_recorded()
     {
         var contexts = await database.NewAsync();
-        var first = true;
         var gateway = new JobGateway(async (_, context) =>
         {
-            if (first)
-            {
-                // The lease runs out while the first call is slow: the command is due again for another worker.
-                first = false;
-                await using var db = await contexts.CreateDbContextAsync();
-                await db.Set<QueueRow>().Where(r => r.MessageId == context.IdempotencyKey)
-                    .ExecuteUpdateAsync(s => s.SetProperty(r => r.AvailableAt, DateTimeOffset.UtcNow.AddSeconds(-1)));
-            }
+            // Slower than the lease, every time: the command is due again before the call returns.
+            await using var db = await contexts.CreateDbContextAsync();
+            await db.Set<QueueRow>().Where(r => r.MessageId == context.IdempotencyKey)
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.AvailableAt, DateTimeOffset.UtcNow.AddSeconds(-1)));
         });
         var runtime = JobRuntime(contexts, gateway);
 
@@ -265,7 +260,34 @@ public abstract class EfCoreRuntimeTests(Database database)
         await DrainAsync(runtime);
 
         Assert.Equal(ProcessStatus.Completed, await runtime.StatusOfAsync(Jobs.Process, "J-1"));
-        Assert.Equal(2, gateway.Keys.Count); // the late outcome was not recorded: the second call's was
+        Assert.Single(gateway.Keys); // the late outcome was recorded: nobody had to call again
+    }
+
+    [Fact]
+    public async Task two_workers_calling_with_the_same_key_after_a_lease_ran_out_record_one_outcome()
+    {
+        var contexts = await database.NewAsync();
+        EfCoreRuntime<WyrdDbContext>? other = null;
+        var gateway = new JobGateway(async (_, context) =>
+        {
+            if (other is { } worker)
+            {
+                // The lease runs out while the first call is slow, and another worker calls and records first.
+                other = null;
+                await using var db = await contexts.CreateDbContextAsync();
+                await db.Set<QueueRow>().Where(r => r.MessageId == context.IdempotencyKey)
+                    .ExecuteUpdateAsync(s => s.SetProperty(r => r.AvailableAt, DateTimeOffset.UtcNow.AddSeconds(-1)));
+                await worker.ProcessPendingAsync(max: 1);
+            }
+        });
+        var runtime = JobRuntime(contexts, gateway);
+        other = JobRuntime(contexts, gateway);
+
+        await runtime.SendAsync(new StartJob("J-1"));
+        await DrainAsync(runtime);
+
+        Assert.Equal(ProcessStatus.Completed, await runtime.StatusOfAsync(Jobs.Process, "J-1"));
+        Assert.Equal(2, gateway.Keys.Count);
         Assert.Single(gateway.Keys.Distinct());
         var history = (await runtime.HistoryOfAsync(Jobs.Process, "J-1"))!;
         Assert.Single(history.Entries, e => e.Kind == HistoryKind.Replied);
