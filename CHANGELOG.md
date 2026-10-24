@@ -5,7 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+
+- The Shop consumes shipped stock reservations through an independent inventory process, keeping per-SKU state bounded by outstanding reservations. Add business and hostile-future specifications and guidance on state that only grows.
+
 ### Breaking
+
+- `Shop.Shipping.ShipOrder` and `Shop.Shipping.OrderShipped` now require `Sku`. Regenerate persisted sample histories created with the previous message shapes before replaying them.
 
 - The tool executable is now `dotnet-wyrd`, so the documented `dotnet wyrd` command works after a global
   installation. Replace direct `wyrd` invocations with `dotnet wyrd` (or `dotnet-wyrd`).
@@ -13,6 +19,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Added
 
 - Ubuntu CI now reports line and branch coverage for `Wyrd` and `Wyrd.Testing`, uploads the full HTML report, and enforces the per-package release floors in `coverage.json`; release floors can only rise.
+- Add BenchmarkDotNet Shop scenarios and fast allocation/scaling gates with a measured baseline. Ubuntu enforces every budget and reports the known single-SKU scaling defect until task 016 lands.
 
 - Add BCL `Wyrd` process tracing with envelope context propagation, lifecycle/outcome tags and links for external continuations; Shop.Api exports to the console when `OTEL_EXPORTER=console`. Deterministic journals, domain state and replay histories are unchanged.
 - Documentation learning path with the shared read-model guide, working repository-relative links, and a searchable API reference checked against public declarations, analyzer rules and code-fix coverage during the website build.
