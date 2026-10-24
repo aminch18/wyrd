@@ -750,7 +750,8 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         // Archived before anything is removed, with no transaction open.
         try
         {
-            await archive.ArchiveAsync([.. finished.Select(HistoryOf)], cancellationToken).ConfigureAwait(false);
+            // WaitAsync: a worker that is stopping doesn't wait for an archive that ignores the token; nothing was removed yet.
+            await archive.ArchiveAsync([.. finished.Select(HistoryOf)], cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
