@@ -80,6 +80,7 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
         [
             .. _states.Values
                 .Where(s => s.StateType == stateType && !_seeded.ContainsKey(new StoredSeeded(viewType, stateType, s.Key)))
+                .OrderBy(s => s.Key, StringComparer.Ordinal) // like a database: a seed folding several states sees one order
                 .Take(max),
         ]);
 
@@ -145,14 +146,7 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
                 _seeded[seeded] = version;
             }
 
-            foreach (var viewType in changes.CaughtUp)
-            {
-                _caughtUp.Add(viewType);
-                foreach (var seeded in _seeded.Keys.Where(s => s.ViewType == viewType).ToList())
-                {
-                    _seeded.Remove(seeded);
-                }
-            }
+            _caughtUp.UnionWith(changes.CaughtUp); // the seed marks stay, like in a database
 
             _held.AddRange(changes.Hold);
             _held.RemoveAll(changes.Release.Contains);

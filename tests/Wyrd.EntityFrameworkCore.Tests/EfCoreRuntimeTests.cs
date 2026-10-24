@@ -116,6 +116,49 @@ public abstract class EfCoreRuntimeTests(Database database)
     }
 
     [Fact]
+    public async Task workers_catching_up_together_seed_each_view_once()
+    {
+        var contexts = await database.NewAsync();
+        var shop = Database.Shop(contexts);
+        foreach (var sku in Enumerable.Range(1, 20).Select(i => $"SKU-{i:00}"))
+        {
+            await shop.SendAsync(new Restock(sku, 1));
+        }
+
+        await DrainAsync(shop);
+
+        var workers = Enumerable.Range(0, 3)
+            .Select(_ => ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(contexts, Database.Retention, Database.Options)).AddProjection(new StockLevels()))
+            .ToList();
+        for (var pass = 1; !(await Task.WhenAll(workers.Select(w => w.CatchUpAsync()))).All(caughtUp => caughtUp); pass++)
+        {
+            Assert.True(pass < 20, "the workers never caught up");
+        }
+
+        Assert.All(await workers[0].ViewsAsync<StockLevel>(), level => Assert.Equal(1, level.Available));
+        Assert.Equal(20, (await workers[0].ViewsAsync<StockLevel>()).Count);
+    }
+
+    [Fact]
+    public async Task a_projection_that_caught_up_is_not_seeded_again_after_a_restart()
+    {
+        var contexts = await database.NewAsync();
+        var shop = Database.Shop(contexts);
+        await shop.SendAsync(new Restock("KEYBOARD", 5));
+        await shop.SendAsync(new Restock("MOUSE", 2));
+        await DrainAsync(shop);
+        EfCoreRuntime<WyrdDbContext> TotalOf() => ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(contexts, Database.Retention, Database.Options)).AddProjection(new TotalStocks());
+
+        Assert.True(await TotalOf().CatchUpAsync());
+        Assert.Equal(new TotalStock(7), await TotalOf().ViewAsync<TotalStock>("all"));
+
+        // Restarted, or another instance of the service: the store says it caught up, so nothing is folded in again.
+        var restarted = TotalOf();
+        Assert.True(await restarted.CatchUpAsync());
+        Assert.Equal(new TotalStock(7), await restarted.ViewAsync<TotalStock>("all"));
+    }
+
+    [Fact]
     public async Task only_a_suspended_instance_can_be_resumed()
     {
         var shop = Database.Shop(await database.NewAsync());
@@ -475,11 +518,11 @@ public abstract class EfCoreRuntimeTests(Database database)
 #pragma warning restore IL2026, IL3050
 
         await runtime.SendAsync(new StartJob("J-1"));
-        Assert.Equal(new QueueHealth(1, TimeSpan.Zero, 0, 0, 0, TimeSpan.Zero, 0), await runtime.HealthAsync());
+        Assert.Equal(new QueueHealth(1, TimeSpan.Zero, 0, 0, 0, TimeSpan.Zero, 0, 0), await runtime.HealthAsync());
 
         await runtime.ProcessPendingAsync(max: 1); // the process starts and sends RunJob
         clock.Advance(TimeSpan.FromSeconds(30));
-        Assert.Equal(new QueueHealth(1, TimeSpan.FromSeconds(30), 0, 0, 1, TimeSpan.FromSeconds(30), 0), await runtime.HealthAsync());
+        Assert.Equal(new QueueHealth(1, TimeSpan.FromSeconds(30), 0, 0, 1, TimeSpan.FromSeconds(30), 0, 0), await runtime.HealthAsync());
 
         while (await runtime.ProcessPendingAsync() > 0)
         {
@@ -499,18 +542,46 @@ public abstract class EfCoreRuntimeTests(Database database)
         using var shop = ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(await database.NewAsync(), ShopJson.Default, Database.Retention, slow));
         using var stop = new CancellationTokenSource();
         var worker = shop.RunAsync(stop.Token);
-        await Task.Delay(TimeSpan.FromMilliseconds(500)); // idle, waiting
-
-        var sent = Stopwatch.StartNew();
-        await shop.SendAsync(new Restock("KEYBOARD", 5));
-        while ((await shop.BacklogAsync()).Queued > 0)
+        try
         {
-            Assert.True(sent.Elapsed < TimeSpan.FromSeconds(5), "the worker was not woken");
-            await Task.Delay(TimeSpan.FromMilliseconds(20));
-        }
+            var started = Stopwatch.StartNew();
+            while (shop.IdleWaits == 0) // idle, waiting: the message is sent after the worker's first look
+            {
+                Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), "the worker never went idle");
+                await Task.Delay(TimeSpan.FromMilliseconds(10));
+            }
 
-        await stop.CancelAsync();
-        await worker;
+            var sent = Stopwatch.StartNew();
+            await shop.SendAsync(new Restock("KEYBOARD", 5));
+            while ((await shop.BacklogAsync()).Queued > 0)
+            {
+                Assert.True(sent.Elapsed < TimeSpan.FromSeconds(5), "the worker was not woken");
+                await Task.Delay(TimeSpan.FromMilliseconds(20));
+            }
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await worker;
+        }
+    }
+
+    [Fact]
+    public async Task a_runtime_disposed_after_a_commit_doesnt_fail_the_caller()
+    {
+        var shop = Database.Shop(await database.NewAsync());
+        shop.Dispose();
+
+        Assert.IsType<Decision.Accepted>(await shop.SendAsync(new Restock("KEYBOARD", 5)));
+    }
+
+    [Fact]
+    public async Task a_max_poll_interval_shorter_than_the_poll_interval_is_rejected()
+    {
+        var contexts = await database.NewAsync();
+        var options = Database.Options with { PollInterval = TimeSpan.FromSeconds(5), MaxPollInterval = TimeSpan.FromSeconds(1) };
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => new EfCoreRuntime<WyrdDbContext>(contexts, ShopJson.Default, Database.Retention, options));
     }
 
     [Fact]
@@ -523,8 +594,9 @@ public abstract class EfCoreRuntimeTests(Database database)
         await ShipAsync(shop, "A-1");
         clock.Advance(TimeSpan.FromDays(30));
 
-        await shop.ForgetExpiredAsync(); // the archive is down: nothing is removed
+        await shop.ForgetExpiredAsync(); // the archive is down: nothing is removed, and the health says so
         Assert.Equal(ProcessStatus.Completed, await shop.StatusOfAsync(Fulfillment, "A-1"));
+        Assert.Equal(1, (await shop.HealthAsync()).ExpiredKept);
 
         await shop.ForgetExpiredAsync();
         Assert.Null(await shop.StatusOfAsync(Fulfillment, "A-1"));

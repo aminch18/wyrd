@@ -101,8 +101,9 @@ simulate and version.
   stays scheduled for an instance that no longer waits. **Implemented** in memory and on the EF Core host.
 - **Slowness is not failure.** There are no technical timeouts on steps: durable messaging waits, a slow third party
   only makes processes wait, and latency is *observed* (age of pending steps, alerts), never turned into failures.
-  **Implemented** on the EF Core host: `HealthAsync` and the `Wyrd` meter. A business deadline on a step is modelled as an explicit wait for its
-  confirmation with `.Within`.
+  A business deadline on a step is modelled as an explicit wait for its confirmation with `.Within`. **Implemented**
+  on the EF Core host: `HealthAsync` and the `Wyrd` meter. In memory there is no queue to watch: the journal and
+  `StatusOf` show it.
 
 ### 3.6 When Wyrd can't resolve something: suspend
 
@@ -175,12 +176,15 @@ the host doesn't start without a `Retention`, whose every member is required, ea
 - In memory there is a default, `Retention.InMemory`, that keeps everything (nothing outlives the process), and the
   journal keeps the most recent `JournalLimit` entries (10,000 by default).
 - Business data is not delivery machinery: states and read models have no retention, they live as long as the
-  application keeps them.
+  application keeps them. So does what describes them: the last version of each stream projected (one per state), and
+  for a projection that caught up from existing states (5), one seed mark per state it was seeded from and the fact
+  that it caught up. They grow with the states, never with traffic.
 
 ## 5. Read models
 
 - A projection updates a view from events with pure functions, in the transaction that handles the event; the same
-  message is never applied twice. **Implemented.**
+  message is never applied twice: a domain event by its stream version, which never expires, and an integration event
+  from outside (it has no stream) by its message id, within the deduplication retention (4.1). **Implemented.**
 - Events of one stream (one state key) reach a projection **in the order they happened**, whatever the delivery
   order, so views don't defend against reordering by hand: each domain event carries its stream and version, and one
   that arrives early is held until the gap is filled. Processes don't wait for read models. **Implemented.**
@@ -198,3 +202,4 @@ the host doesn't start without a `Retention`, whose every member is required, ea
 | One event per decision | Keeps decisions simple and explicit | A union of events |
 | Linear processes | Readable, simulable, versionable | Another process for the alternative |
 | Snapshot state | Simple storage, fast reads | Event sourcing as a future option |
+| A new projection starts from current states | There is no event log to replay; only what a state says can be rebuilt | Keep what a future view needs in the state, or publish it as an event a view already counts |

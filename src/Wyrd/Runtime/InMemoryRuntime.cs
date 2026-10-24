@@ -64,7 +64,8 @@ public sealed class InMemoryRuntime : IWyrdBuilder<InMemoryRuntime>, IWyrdRuntim
 
     /// <summary>
     /// Hands the histories of finished instances to <paramref name="archive"/> before retention removes them; an instance
-    /// is removed only once its history is archived.
+    /// is removed only once its history is archived. It is called while the clock moves (<see cref="AdvanceAsync"/>), and
+    /// nothing else runs on this runtime meanwhile.
     /// </summary>
     public InMemoryRuntime UseHistoryArchive(IHistoryArchive archive)
     {

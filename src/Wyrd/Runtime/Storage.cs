@@ -108,7 +108,7 @@ internal sealed class Changes
     /// <summary>States a seed was built from: checked on commit, so an event that changed the state meanwhile wins.</summary>
     public List<StoredState> Unchanged { get; } = [];
 
-    /// <summary>Views whose projection has caught up: their seed marks go.</summary>
+    /// <summary>Views whose projection has caught up. Their seed marks stay, refusing a late second seed of a stream.</summary>
     public List<string> CaughtUp { get; } = [];
 
     /// <summary>Events handled by this transaction: a redelivery of the same message id is skipped.</summary>
