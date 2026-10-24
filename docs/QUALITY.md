@@ -89,7 +89,7 @@ What the numbers say:
 | Id | Rule | Check | |
 |---|---|---|---|
 | Q5.1 | `dotnet test -c Release` stays under **30 s** on the reference machine (today ~9 s). Expensive explorations take a budget. | Review | ✅ |
-| Q5.2 | **Coverage is reported** for `src/Wyrd` and `src/Wyrd.Testing` in every CI run, and **never decreases from one release to the next** (the floor is the previous release's number). | CI summary; release checklist | 🔜 |
+| Q5.2 | **Coverage is reported** for `src/Wyrd` and `src/Wyrd.Testing` in every CI run, and **never decreases from one release to the next** (the floor is the previous release's number). | CI summary; release checklist | ✅ |
 | Q5.3 | `samples/Shop.Tests/SkuldSpecs` green; `samples/Shop.Console` publishes and runs with Native AOT. | CI | ✅ |
 
 ### Q6. The samples are the reference
