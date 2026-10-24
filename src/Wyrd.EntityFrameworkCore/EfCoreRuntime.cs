@@ -519,31 +519,28 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     private async Task<int> ForgetFinishedInstancesAsync(DateTimeOffset cutoff, int batchSize, CancellationToken cancellationToken)
     {
         var removed = 0;
-        while (true)
+        int batch;
+        do
         {
             await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            var finished = await db.Set<InstanceRow>().AsNoTracking()
-                .Where(r => r.FinishedAt <= cutoff).OrderBy(r => r.FinishedAt).Take(batchSize)
-                .Select(r => new { r.Process, r.Key })
-                .ToListAsync(cancellationToken).ConfigureAwait(false);
-            if (finished.Count == 0)
-            {
-                return removed;
-            }
 
-            foreach (var instance in finished)
-            {
-                // Checked again in the delete: an instance can't be running again, but its row is only removed while finished.
-                removed += await db.Set<InstanceRow>()
-                    .Where(r => r.Process == instance.Process && r.Key == instance.Key && r.FinishedAt <= cutoff)
-                    .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
-                await db.Set<ParkedRow>().Where(r => r.Process == instance.Process && r.Key == instance.Key)
-                    .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
-            }
+            // Set-based, each delete checking the condition again: a parked event goes only while its instance is still
+            // a finished, expired row, so the event of a new instance that re-used the key (its row isn't finished, and
+            // can only exist once the old one is gone) is never taken with it.
+            await db.Set<ParkedRow>()
+                .Where(p => db.Set<InstanceRow>().Any(i => i.Process == p.Process && i.Key == p.Key && i.FinishedAt <= cutoff))
+                .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+            batch = await db.Set<InstanceRow>()
+                .Where(r => r.FinishedAt <= cutoff).OrderBy(r => r.FinishedAt).Take(batchSize)
+                .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+            removed += batch;
 
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         }
+        while (batch == batchSize);
+
+        return removed;
     }
 
     /// <summary>A transport that is down doesn't stop the worker: the outbox keeps the messages until it is back.</summary>

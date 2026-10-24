@@ -176,7 +176,8 @@ the host doesn't start without a `Retention`, whose every member is required, ea
 ## 5. Read models
 
 - A projection updates a view from events with pure functions, in the transaction that handles the event; the same
-  message is never applied twice. **Implemented.**
+  message is never applied twice: a domain event by its stream version, which never expires, and an integration event
+  from outside (it has no stream) by its message id, within the deduplication retention (4.1). **Implemented.**
 - Events of one stream (one state key) reach a projection **in the order they happened**, whatever the delivery
   order, so views don't defend against reordering by hand: each domain event carries its stream and version, and one
   that arrives early is held until the gap is filled. Processes don't wait for read models. **Implemented.**
