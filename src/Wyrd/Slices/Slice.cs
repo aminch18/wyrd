@@ -13,6 +13,7 @@ public abstract class Slice<TCommand, TState, TEvent, TError> : ISliceHandler
     /// <summary>Which state this command decides on, e.g. the order id.</summary>
     public abstract object KeyOf(TCommand command);
 
+    /// <summary>Purely decides whether a command produces a domain event or a business rejection against the current state.</summary>
     public abstract Result<TEvent, TError> Decide(TCommand command, TState state);
 
     Type ISliceHandler.Command => typeof(TCommand);
@@ -57,7 +58,11 @@ public abstract record Decision
     {
     }
 
+    /// <summary>A command accepted with the domain fact that evolves its state.</summary>
+    /// <param name="Event">The accepted domain event.</param>
     public sealed record Accepted(IDomainEvent Event) : Decision;
 
+    /// <summary>A command rejected by the business rule, without an accepted event or state change.</summary>
+    /// <param name="Error">The domain error explaining the rejection.</param>
     public sealed record Rejected(object Error) : Decision;
 }

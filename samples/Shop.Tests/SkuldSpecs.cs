@@ -25,6 +25,15 @@ public class SkuldSpecs
             : $"{stock.Available} keyboards available, expected {Received} received - {shipped} shipped - {heldBySuspended} held by suspended orders";
     });
 
+    private static readonly Invariant OnlyOutstandingReservationsRemain = new("only outstanding reservations remain", shop =>
+    {
+        var finished = shop.StateOf<StockItem>("KEYBOARD").Reservations.Keys
+            .Where(id => shop.StatusOf(Shop.Fulfillment.Processes.OrderFulfillment, id) != ProcessStatus.Suspended)
+            .Where(id => shop.StatusOf(Shop.Fulfillment.Processes.StockConsumption, id) != ProcessStatus.Suspended)
+            .ToList();
+        return finished.Count == 0 ? null : $"reservations left after settlement: {string.Join(", ", finished)}";
+    });
+
     private static readonly Invariant EveryOrderEnds = new("every order ends shipped or cancelled", shop =>
     {
         var open = shop.Views<OrderSummary>().Where(o => o.Status is not ("Shipped" or "Cancelled")).ToList();
@@ -55,7 +64,7 @@ public class SkuldSpecs
         var report = await Skuld.SimulateAsync(
             ShopModule.CreateRuntime,
             BusyAfternoon,
-            [.. Invariant.Defaults, StockIsConserved, EveryOrderEnds]);
+            [.. Invariant.Defaults, StockIsConserved, OnlyOutstandingReservationsRemain, EveryOrderEnds]);
 
         report.ThrowIfViolated();
     }
@@ -71,7 +80,7 @@ public class SkuldSpecs
         var report = await Skuld.SimulateAsync(
             ShopModule.CreateRuntime,
             BusyAfternoon,
-            [Invariant.ProcessesSettle, StockIsConserved, EveryOrderEndsOrIsFlagged],
+            [Invariant.ProcessesSettle, StockIsConserved, OnlyOutstandingReservationsRemain, EveryOrderEndsOrIsFlagged],
             new SimulationOptions { Runs = 5_000, FaultRate = 0.2, DuplicateRate = 0.2, ReorderRate = 0.5 });
 
         report.ThrowIfViolated();

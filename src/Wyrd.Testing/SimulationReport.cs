@@ -21,12 +21,16 @@ public sealed record ShrunkFuture(
 /// <summary>What Skuld found.</summary>
 public sealed class SimulationReport(int runs, SimulationOptions options, IReadOnlyList<Violation> violations)
 {
+    /// <summary>The number of seeded futures explored by this simulation.</summary>
     public int Runs { get; } = runs;
 
+    /// <summary>The fault, duplicate, reordering and budget settings used for this run.</summary>
     public SimulationOptions Options { get; } = options;
 
+    /// <summary>Every invariant failure found, including its seed and original journal.</summary>
     public IReadOnlyList<Violation> Violations { get; } = violations;
 
+    /// <summary>Whether every invariant held in every explored future.</summary>
     public bool Passed => Violations.Count == 0;
 
     /// <summary>Fails the test with the first broken future of each invariant: perturbations, journal and the seed to replay it.</summary>
@@ -38,6 +42,7 @@ public sealed class SimulationReport(int runs, SimulationOptions options, IReadO
         }
     }
 
+    /// <summary>Formats the run count and the first failing future of each invariant, including replay instructions.</summary>
     public override string ToString()
     {
         var text = new StringBuilder();
