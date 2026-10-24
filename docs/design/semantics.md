@@ -3,6 +3,9 @@
 > The source of truth for how Wyrd behaves. Code, Skuld, analyzers and docs follow this document; when they
 > disagree, this document wins until it is changed on purpose. Each rule is marked **implemented** or
 > **planned (version)**.
+>
+> How the code implements these rules, file by file, and where it currently disagrees with them:
+> [architecture.md](architecture.md) and [runtime.md](runtime.md).
 
 ## Principles
 
