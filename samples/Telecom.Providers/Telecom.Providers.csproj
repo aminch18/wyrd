@@ -1,3 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-  <ItemGroup><ProjectReference Include="../Telecom.Hosting/Telecom.Hosting.csproj" /></ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MinApiLib.Endpoints" />
+    <ProjectReference Include="../Telecom.Hosting/Telecom.Hosting.csproj" />
+  </ItemGroup>
 </Project>

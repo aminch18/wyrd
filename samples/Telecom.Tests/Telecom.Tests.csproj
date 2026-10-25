@@ -8,6 +8,7 @@
     <Using Include="Xunit" />
     <None Include="../Telecom/incidents/connectivity-timeout.history.json" Link="connectivity-timeout.history.json" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../Telecom/Telecom.csproj" />
+    <ProjectReference Include="../Telecom.Api/Telecom.Api.csproj" />
     <ProjectReference Include="../Telecom.Hosting/Telecom.Hosting.csproj" />
     <ProjectReference Include="../../src/Wyrd.Testing/Wyrd.Testing.csproj" />
   </ItemGroup>
