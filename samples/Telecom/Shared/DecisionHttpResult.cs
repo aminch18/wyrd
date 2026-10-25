@@ -8,7 +8,13 @@ internal static class DecisionHttpResult
     {
         if (decision is Decision.Rejected rejected)
         {
-            return Results.Conflict(new { Error = rejected.Error.ToString() });
+            var body = new { Error = rejected.Error.ToString() };
+            if (rejected.Error is RuleError.InvalidInput)
+            {
+                return Results.BadRequest(body);
+            }
+
+            return Results.Conflict(body);
         }
 
         return Results.Accepted();

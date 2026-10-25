@@ -1,9 +1,17 @@
 import { command, pathPart, query } from "./api.js";
 import * as render from "./render.js";
 
+function hashSelection() {
+    try {
+        return decodeURIComponent(location.hash.slice(1));
+    } catch {
+        return "";
+    }
+}
+
 const state = {
     cards: [],
-    selected: decodeURIComponent(location.hash.slice(1)),
+    selected: hashSelection(),
     workspace: null,
     changes: [],
     mode: "customer",
@@ -264,7 +272,7 @@ byId("detail").addEventListener("click", async (event) => {
 
 window.addEventListener(
     "hashchange",
-    () => void selectSubscription(decodeURIComponent(location.hash.slice(1))),
+    () => void selectSubscription(hashSelection()),
 );
 await refresh();
 setInterval(() => void refresh(), 2000);

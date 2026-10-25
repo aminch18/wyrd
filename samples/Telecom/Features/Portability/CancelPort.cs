@@ -18,7 +18,7 @@ public sealed class CancelPortIntegration(IProviderApi provider) : Integration<C
             return reply.Error.Value;
         }
 
-        return new PortCancellationReceived(offer.SubscriptionId, reply.Receipt!);
+        return new PortCancellationReceived(offer.SubscriptionId, reply.RequireReceipt());
     }
 }
 

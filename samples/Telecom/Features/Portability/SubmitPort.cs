@@ -18,7 +18,7 @@ public sealed class SubmitPortIntegration(IProviderApi provider) : Integration<S
             return reply.Error.Value;
         }
 
-        return new PortSubmissionReceived(offer.SubscriptionId, reply.Receipt!);
+        return new PortSubmissionReceived(offer.SubscriptionId, reply.RequireReceipt());
     }
 }
 

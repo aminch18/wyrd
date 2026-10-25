@@ -19,7 +19,7 @@ public sealed class ProvisionProfileIntegration(IProviderApi provider) : Integra
             return reply.Error.Value;
         }
 
-        return new ProvisionReceived(command.SubscriptionId, command.ProfileId, command.Attempt, reply.Receipt!);
+        return new ProvisionReceived(command.SubscriptionId, command.ProfileId, command.Attempt, reply.RequireReceipt());
     }
 }
 

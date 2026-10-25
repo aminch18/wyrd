@@ -388,7 +388,7 @@ input[type="search"] {
 }
 .refresh-status {
     font-size: 9px;
-    color: #819088;
+    color: #5a6a62;
     margin: 20px 7px 0;
 }
 .list-empty {
@@ -871,7 +871,7 @@ footer {
     justify-content: space-between;
     gap: 20px;
     margin: 30px 0 20px;
-    color: #8b9890;
+    color: #5a6a62;
     font-size: 9px;
 }
 dialog {

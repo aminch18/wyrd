@@ -18,7 +18,7 @@ public sealed class CapturePaymentIntegration(IProviderApi provider) : Integrati
             return reply.Error.Value;
         }
 
-        return new CaptureReceived(command.Offer.SubscriptionId, reply.Receipt!);
+        return new CaptureReceived(command.Offer.SubscriptionId, reply.RequireReceipt());
     }
     public static ProviderRequest PaymentRequest(Offer offer) => new(ProviderAction.Capture, $"capture/{offer.SubscriptionId}", offer.SubscriptionId, offer.CustomerId, offer.InitialAmount, 0);
 }

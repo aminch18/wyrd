@@ -13,6 +13,11 @@ public sealed record ConfirmPaymentEndpoint() : Post("/webhooks/payments")
         [FromServices] IWyrdRuntime runtime,
         CancellationToken cancellationToken)
     {
+        if (!Offer.ValidId(notice.SubscriptionId) || string.IsNullOrWhiteSpace(notice.Receipt))
+        {
+            return Results.BadRequest();
+        }
+
         await runtime.PublishAsync(notice, cancellationToken);
         return Results.Accepted();
     }

@@ -54,6 +54,11 @@ public sealed record VerifyConnectivityEndpoint() : Post("/webhooks/connectivity
         [FromServices] IWyrdRuntime runtime,
         CancellationToken cancellationToken)
     {
+        if (!Offer.ValidId(notice.SubscriptionId) || !Offer.ValidId(notice.ProfileId) || notice.Attempt <= 0)
+        {
+            return Results.BadRequest();
+        }
+
         await runtime.PublishAsync(notice, cancellationToken);
         return Results.Accepted();
     }

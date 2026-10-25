@@ -5,6 +5,16 @@ namespace Telecom.Tests;
 public class PureDomainSpecs
 {
     [Fact]
+    public void payment_review_at_the_integer_limit_cannot_wrap_to_a_negative_review()
+    {
+        var offer = BusinessSpecs.Offer();
+        Scenario.For(new ReconcilePaymentSlice())
+            .Given(new PaymentOpened(offer), new PaymentReconciliationRequested(offer, int.MaxValue))
+            .When(new ReconcilePayment(offer, int.MinValue))
+            .ThenRejected(RuleError.StaleAttempt);
+    }
+
+    [Fact]
     public void payment_amount_and_receipt_are_bound_to_the_original_obligation()
     {
         var o = BusinessSpecs.Offer();

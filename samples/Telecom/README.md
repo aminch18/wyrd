@@ -112,7 +112,7 @@ docker compose -f samples/Telecom/compose.yaml up -d --scale worker=3
 docker compose -f samples/Telecom/compose.yaml down
 ```
 
-`Telecom.http` has all requests. The API listens on `http://localhost:5090`; queries are eventually
+`Telecom.http` has all requests. Compose binds the API to `127.0.0.1:5090` (loopback only); queries are eventually
 consistent and can initially return 404. The smoke test allocates synthetic IDs and a number, waits
 for provisioning, completes the port, asserts billing has not started, then verifies connectivity and
 waits for billing. Providers intentionally return 503 **after** their first capture/provision commit.

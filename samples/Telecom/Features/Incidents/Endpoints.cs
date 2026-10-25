@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using MinApiLib.Endpoints;
 using Wyrd.Runtime;
 using Telecom.Shared;
+using Telecom.Features.Subscriptions;
 
 namespace Telecom.Features.Incidents;
 
@@ -30,6 +31,12 @@ public sealed record OpenIncidentEndpoint() : Post("/incidents/{id}/{kind}/{atte
 {
     public static async Task<IResult> HandleAsync(string id, string kind, int attempt, [FromServices] IWyrdRuntime runtime, CancellationToken cancellationToken)
     {
+        var offer = await SubscriptionLookup.FindOfferAsync(runtime, id, cancellationToken);
+        if (offer is null)
+        {
+            return Results.NotFound();
+        }
+
         var decision = await runtime.SendAsync(new OpenIncident(id, kind, attempt), cancellationToken);
         return DecisionHttpResult.From(decision);
     }

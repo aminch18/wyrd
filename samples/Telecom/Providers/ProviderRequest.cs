@@ -18,4 +18,15 @@ public enum ProviderAction
 
 public sealed record ProviderRequest(ProviderAction Action, string LogicalKey, string Resource, string Owner, decimal Amount, int Attempt);
 
-public sealed record ProviderReply(string? Receipt, ProviderError? Error = null);
+public sealed record ProviderReply(string? Receipt, ProviderError? Error = null)
+{
+    public string RequireReceipt()
+    {
+        if (string.IsNullOrWhiteSpace(Receipt))
+        {
+            throw new IOException("Provider returned neither a receipt nor an error.");
+        }
+
+        return Receipt;
+    }
+}

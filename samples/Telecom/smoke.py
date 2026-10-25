@@ -29,6 +29,8 @@ def until(path, condition):
         except urllib.error.HTTPError as error:
             if error.code != 404:
                 raise
+        except (urllib.error.URLError, OSError):
+            pass
         time.sleep(0.2)
     raise AssertionError("Timed out waiting for " + path)
 

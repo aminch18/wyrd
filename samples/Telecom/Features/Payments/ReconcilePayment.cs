@@ -29,7 +29,7 @@ public sealed class ReconcilePaymentSlice : Slice<ReconcilePayment, Payment, Pay
             return RuleError.WrongOwner;
         }
 
-        if (command.Review <= state.Review)
+        if (state.Review == int.MaxValue || command.Review != state.Review + 1)
         {
             return RuleError.StaleAttempt;
         }
@@ -50,7 +50,7 @@ public sealed class FindPaymentIntegration(IProviderApi provider) : Integration<
             return reply.Error.Value;
         }
 
-        return new CaptureReceived(command.Offer.SubscriptionId, reply.Receipt!);
+        return new CaptureReceived(command.Offer.SubscriptionId, reply.RequireReceipt());
     }
 }
 

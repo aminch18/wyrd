@@ -76,6 +76,74 @@ public class EndpointSpecs
         await app.StopAsync();
     }
 
+    [Theory]
+    [InlineData("/webhooks/payments", "{\"subscriptionId\":null,\"receipt\":\"r\"}")]
+    [InlineData("/webhooks/payments", "{\"subscriptionId\":\"S1\",\"receipt\":\" \"}")]
+    [InlineData("/webhooks/mnp/completed", "{\"subscriptionId\":\"S1\",\"msisdn\":null,\"epoch\":1}")]
+    [InlineData("/webhooks/mnp/completed", "{\"subscriptionId\":\"S/1\",\"msisdn\":\"+34600000001\",\"epoch\":1}")]
+    [InlineData("/webhooks/mnp/cancelled", "{\"subscriptionId\":\"S1\",\"msisdn\":\"+34600000001\",\"epoch\":0}")]
+    [InlineData("/webhooks/mnp/confirmed", "{\"subscriptionId\":\"S1\",\"msisdn\":\"34600000001\",\"epoch\":1}")]
+    [InlineData("/webhooks/mnp/confirmed", "{\"subscriptionId\":\"S1\",\"msisdn\":\"+34600000001\",\"epoch\":1,\"windowStart\":\"2026-10-26T04:00:00Z\",\"windowEnd\":\"2026-10-26T02:00:00Z\"}")]
+    [InlineData("/webhooks/connectivity", "{\"subscriptionId\":null,\"profileId\":\"P1\",\"attempt\":1}")]
+    [InlineData("/webhooks/connectivity", "{\"subscriptionId\":\"S1\",\"profileId\":\"P/1\",\"attempt\":1}")]
+    [InlineData("/webhooks/connectivity", "{\"subscriptionId\":\"S1\",\"profileId\":\"P1\",\"attempt\":0}")]
+    public async Task malformed_webhooks_are_rejected_before_starting_processes(string path, string payload)
+    {
+        using var runtime = TelecomModule.CreateRuntime();
+        await using var app = CreateApi(runtime);
+        await app.StartAsync();
+        using var http = ClientFor(app);
+        using var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+        using var response = await http.PostAsync(path, content);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Empty(runtime.Journal);
+        await app.StopAsync();
+    }
+
+    [Fact]
+    public async Task invalid_offers_return_bad_request_and_payment_reviews_cannot_skip_a_number()
+    {
+        using var runtime = TelecomModule.CreateRuntime();
+        await using var app = CreateApi(runtime);
+        await app.StartAsync();
+        using var http = ClientFor(app);
+        var offer = BusinessSpecs.Offer();
+        using var invalid = await http.PostAsJsonAsync("/subscriptions", offer with { InitialAmount = 0 });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal("InvalidInput", (await invalid.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("error").GetString());
+        using var contracted = await http.PostAsJsonAsync("/subscriptions", offer);
+        Assert.Equal(HttpStatusCode.Accepted, contracted.StatusCode);
+        using var skipped = await http.PostAsync("/subscriptions/S1/reconcile/2147483647", null);
+        Assert.Equal(HttpStatusCode.Conflict, skipped.StatusCode);
+        using var first = await http.PostAsync("/subscriptions/S1/reconcile/1", null);
+        Assert.Equal(HttpStatusCode.Accepted, first.StatusCode);
+        using var duplicate = await http.PostAsync("/subscriptions/S1/reconcile/1", null);
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        using var second = await http.PostAsync("/subscriptions/S1/reconcile/2", null);
+        Assert.Equal(HttpStatusCode.Accepted, second.StatusCode);
+        Assert.Equal(2, runtime.StateOf<Payment>("S1").Review);
+        await app.StopAsync();
+    }
+
+    [Fact]
+    public async Task operator_incidents_require_an_existing_subscription_and_support_zero_attempts()
+    {
+        using var runtime = TelecomModule.CreateRuntime();
+        await using var app = CreateApi(runtime);
+        await app.StartAsync();
+        using var http = ClientFor(app);
+        using var unknown = await http.PostAsync("/incidents/unknown/payment/0/open", null);
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        Assert.Empty(runtime.Views<IncidentItem>());
+        using var contracted = await http.PostAsJsonAsync("/subscriptions", BusinessSpecs.Offer());
+        Assert.Equal(HttpStatusCode.Accepted, contracted.StatusCode);
+        using var incident = await http.PostAsync("/incidents/S1/payment/0/open", null);
+        Assert.Equal(HttpStatusCode.Accepted, incident.StatusCode);
+        var item = Assert.Single(runtime.Views<IncidentItem>());
+        Assert.Equal(new IncidentItem("S1", "payment", 0, true), item);
+        await app.StopAsync();
+    }
+
     private static WebApplication CreateApi(IWyrdRuntime runtime)
     {
         var builder = WebApplication.CreateBuilder();

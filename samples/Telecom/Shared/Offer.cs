@@ -17,7 +17,7 @@ public sealed record Offer(
             return RuleError.InvalidInput;
         }
 
-        if (!HasCanonicalPhoneNumber())
+        if (!ValidMsisdn(Msisdn))
         {
             return RuleError.InvalidInput;
         }
@@ -49,19 +49,19 @@ public sealed record Offer(
         return true;
     }
 
-    private bool HasCanonicalPhoneNumber()
+    public static bool ValidMsisdn(string? value)
     {
-        if (Msisdn is not { Length: >= 9 and <= 16 })
+        if (value is not { Length: >= 9 and <= 16 })
         {
             return false;
         }
 
-        if (Msisdn[0] != '+' || Msisdn[1] == '0')
+        if (value[0] != '+' || value[1] == '0')
         {
             return false;
         }
 
-        foreach (var digit in Msisdn[1..])
+        foreach (var digit in value[1..])
         {
             if (!char.IsAsciiDigit(digit))
             {

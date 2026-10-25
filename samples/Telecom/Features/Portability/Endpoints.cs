@@ -13,6 +13,11 @@ public sealed record CompletePortEndpoint() : Post("/webhooks/mnp/completed")
         [FromServices] IWyrdRuntime runtime,
         CancellationToken cancellationToken)
     {
+        if (!PortNoticeInput.IsValid(notice.SubscriptionId, notice.Msisdn, notice.Epoch))
+        {
+            return Results.BadRequest();
+        }
+
         await runtime.PublishAsync(notice, cancellationToken);
         return Results.Accepted();
     }
@@ -25,6 +30,11 @@ public sealed record ConfirmCancellationEndpoint() : Post("/webhooks/mnp/cancell
         [FromServices] IWyrdRuntime runtime,
         CancellationToken cancellationToken)
     {
+        if (!PortNoticeInput.IsValid(notice.SubscriptionId, notice.Msisdn, notice.Epoch))
+        {
+            return Results.BadRequest();
+        }
+
         await runtime.PublishAsync(notice, cancellationToken);
         return Results.Accepted();
     }
@@ -37,6 +47,11 @@ public sealed record ConfirmPortEndpoint() : Post("/webhooks/mnp/confirmed")
         [FromServices] IWyrdRuntime runtime,
         CancellationToken cancellationToken)
     {
+        if (!PortNoticeInput.IsValid(notice.SubscriptionId, notice.Msisdn, notice.Epoch) || notice.WindowEnd <= notice.WindowStart)
+        {
+            return Results.BadRequest();
+        }
+
         await runtime.PublishAsync(notice, cancellationToken);
         return Results.Accepted();
     }
@@ -59,4 +74,10 @@ public sealed record RequestCancellationEndpoint() : Post("/subscriptions/{id}/c
         var decision = await runtime.SendAsync(command, cancellationToken);
         return DecisionHttpResult.From(decision);
     }
+}
+
+internal static class PortNoticeInput
+{
+    public static bool IsValid(string? subscriptionId, string? msisdn, long epoch) =>
+        Offer.ValidId(subscriptionId) && Offer.ValidMsisdn(msisdn) && epoch > 0;
 }
