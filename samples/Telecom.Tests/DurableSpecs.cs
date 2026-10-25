@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
 using Npgsql;
-using Telecom.Hosting;
+using Telecom.Infrastructure;
 using Testcontainers.PostgreSql;
 using Wyrd;
 using Wyrd.EntityFrameworkCore;

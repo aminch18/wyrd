@@ -5,7 +5,7 @@ No Wyrd core APIs were changed. These findings distinguish domain policy, sample
 
 1. **Does Wyrd make the domain easier to understand?** Yes at a decision boundary: `ClaimNumberSlice`
    names the serialized MSISDN owner, `Payment.Capture` binds the amount/receipt to the obligation,
-   and `Activation.Ready` names the conjunction required for operational service. The feature/use-case folders and named validation guards make these decisions readable without
+   and `Activation.Ready` names the conjunction required for operational service. The self-contained feature folders and named validation guards make these decisions readable without
    reconstructing nested expressions. The sample makes
    confirmation/completion and provisioning/connectivity separate facts. Wyrd does not choose these
    boundaries for us, nor make a correlated process enforce uniqueness across two aggregate keys.

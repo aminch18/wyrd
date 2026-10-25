@@ -6,8 +6,8 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using MinApiLib.Endpoints;
-using Telecom.Api.Features.Operations;
-using Telecom.Api.Features.Subscriptions;
+using Telecom.Features.Operations;
+using Telecom.Features.Subscriptions;
 using Wyrd.Runtime;
 
 namespace Telecom.Tests;

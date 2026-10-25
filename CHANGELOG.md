@@ -7,7 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
-- Advanced telecom sample: pure portability, payment, eSIM, activation and billing boundaries; declarative processes and CQRS views; PostgreSQL API/worker hosts and deterministic provider services with separate databases. Includes Skuld scenarios, a recorded Urd incident, durable recovery tests, Docker Compose and a critical architectural findings document. No core APIs changed. Organized as vertical use-case slices with MinApiLib HTTP endpoints and explicit validation guards.
+- Advanced telecom sample: pure portability, payment, eSIM, activation and billing boundaries; declarative processes and CQRS views; PostgreSQL API/worker hosts and deterministic provider services with separate databases. Includes Skuld scenarios, a recorded Urd incident, durable recovery tests, Docker Compose and a critical architectural findings document. No core APIs changed. Each feature colocates domain rules, processes, provider integrations, read models and MinApiLib HTTP endpoints in one folder, with explicit validation guards and thin API/worker hosts.
 
 ## [0.5.0-rc.1] - 2026-10-24
 

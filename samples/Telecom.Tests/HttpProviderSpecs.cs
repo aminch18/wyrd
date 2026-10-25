@@ -1,5 +1,5 @@
 using System.Net;
-using Telecom.Hosting;
+using Telecom.Infrastructure;
 
 namespace Telecom.Tests;
 

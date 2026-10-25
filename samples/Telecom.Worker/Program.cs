@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Telecom.Hosting;
+using Telecom.Infrastructure;
 using Wyrd.EntityFrameworkCore;
 
 var builder = Host.CreateApplicationBuilder(args);

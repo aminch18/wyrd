@@ -29,3 +29,10 @@ Old profiles stay quarantined: recycling needs provider-confirmed deactivation, 
 implemented as a local release. A connectivity deadline opens an incident, not a fictitious undo.
 Activation accumulates independent facts; separate billing consumes the operational contract.
 Process correlation is not a uniqueness mechanism. Resource slices and provider constraints are.
+
+Each business feature is physically self-contained under `Telecom/Features`: decisions, processes,
+provider integrations, projections, contracts and MinApiLib endpoints sit together. API and worker
+projects only bootstrap that module. The shared Wyrd database schema, HTTP provider protocol and
+composition root live under `Telecom/Infrastructure`; they do not define separate feature layers.
+The module is JIT and references its presentation/persistence frameworks. Pure domain functions do
+not call them. No separate domain/API folder trees or source-linking conventions are needed.

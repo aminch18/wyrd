@@ -11,51 +11,58 @@ Read [the boundary decisions](ARCHITECTURE.md), [architectural findings](FINDING
 [generated process diagrams](PROCESS-DIAGRAMS.md). The latter come from `Process.ToMermaid()`,
 not illustrative APIs.
 
-## Find a use case
+## Find a feature
 
-The sample is organized by feature and use case, rather than files containing all commands, handlers,
-processes or projections. For example, start here for payment collection:
+Everything owned by a business feature lives together: domain rules, application processes, provider
+integrations, read models and HTTP presentation. There is one folder per feature, with no command-level
+subfolders and no mirrored domain/API/infrastructure projects. For example:
 
 ```text
 samples/Telecom/
   Features/
     Payments/
-      Payment.cs                         shared consistency boundary
-      CollectPayment/
-        CapturePayment.cs                command and provider integration
-        Process.cs                       retries and pure step functions
-      RecordCapture/
-        RecordCapture.cs                 command, event, Decide and Validate
-      ReconcilePayment/                  explicit inquiry workflow
-    Portability/                         number ownership and provider notices
-    Profiles/                            profile ownership and provisioning
-    Activation/                          verified facts and readiness
-    Subscriptions/                       contracting and customer progress
+      Payment.cs                         state and shared receipt rules
+      OpenPayment.cs                     command, decision and opening process
+      CapturePayment.cs                  provider integration and collection process
+      RecordCapture.cs                   command, event, Decide and Validate
+      ReconcilePayment.cs                inquiry decision, process and provider integration
+      RecordProviderCapture.cs           callback decision and process
+      PaymentBillingStatus.cs            read model
+      Contracts.cs                       public payment callback contract
+      Endpoints.cs                       MinApiLib HTTP routes and handlers
+    Portability/                         number ownership through provider callbacks
+    Profiles/                            profile lease, provisioning and connectivity
+    Activation/                          verified facts and operational publication
+    Subscriptions/                       contracting, admission and customer progress
     Billing/                             operational billing
     Incidents/                           business attention queue
-  Shared/                                offer validation and domain errors
-  Providers/                             deterministic outside world
-samples/Telecom.Api/
-  Features/Payments/ReconcilePayment/Endpoint.cs
-  Features/Profiles/AssignProfile/Endpoint.cs
-  Features/Subscriptions/ContractSubscription/Endpoint.cs
-  Program.cs                             host wiring and MapEndpoints only
+    Operations/                          cross-feature operational queries
+  Infrastructure/                        shared database, HTTP protocol and DI wiring
+  Shared/                                offer, domain errors and HTTP result mapping
+  Providers/                             shared simulator protocol and deterministic fake
+samples/Telecom.Api/Program.cs            HTTP host bootstrap and endpoint discovery
+samples/Telecom.Worker/Program.cs         worker bootstrap and queue processing
 ```
 
-Each API use case is a [MinApiLib.Endpoints](https://github.com/fernandoescolar/MinApiLib/tree/main/src/MinApiLib.Endpoints)
-endpoint record with a named `HandleAsync`. Provider simulator endpoints follow the same convention.
-The library is used only in the HTTP hosts; the domain module stays free of ASP.NET dependencies.
-These EF Core HTTP hosts already run with JIT; MinApiLib's reflection-based `MapEndpoints` discovery
-is not presented as a Native AOT endpoint implementation.
+Start at a feature's `Endpoints.cs`, follow its command to the adjacent decision, then read the process
+and provider integration in the same folder. A use-case file keeps its command, decision and process
+together when they belong to that operation. Truly shared concerns stay outside features: all provider
+integrations use the same HTTP protocol, and all feature state uses the same Wyrd database schema.
+
+HTTP handlers are [MinApiLib.Endpoints](https://github.com/fernandoescolar/MinApiLib/tree/main/src/MinApiLib.Endpoints)
+endpoint records with named `HandleAsync` methods. `Telecom.Api` discovers them from the Telecom module
+assembly. The module references ASP.NET, MinApiLib and EF Core so all feature layers can live together;
+its domain decisions and process step functions remain pure. This is a JIT sample module, not a Native
+AOT endpoint example. Wyrd's own Native AOT samples and library remain separate.
 
 Decisions read in order: call `Validate`, return a rejection when present, then produce an event.
 Validation methods use explicit guards. Shared receipt rules remain on `Payment`; profile identity and
-attempt checks stay next to their use case. Projections use named event handlers where updates need
+attempt checks stay next to their operation. Projections use named event handlers where updates need
 several facts. Simple event-to-state switches and pure process step functions remain ordinary Wyrd code.
 
-The partial `Flows` class lets each `Process.cs` keep its steps next to its workflow while preserving
-existing process, step and serialized type identities. Files moved; the stored message names and the
-checked-in Urd incident did not change.
+The partial `Flows` class keeps steps next to their workflow while preserving existing process, step
+and serialized type identities. Moving files does not change stored message names or the checked-in
+Urd incident.
 
 ## Run without infrastructure
 

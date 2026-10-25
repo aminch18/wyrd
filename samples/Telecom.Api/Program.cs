@@ -1,9 +1,9 @@
 using MinApiLib.Endpoints;
-using Telecom.Hosting;
+using Telecom.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddTelecom(builder.Configuration);
 
 var app = builder.Build();
-app.MapEndpoints();
+app.MapEndpoints(typeof(Telecom.TelecomModule).Assembly);
 app.Run();
