@@ -11,6 +11,14 @@ Read [the boundary decisions](ARCHITECTURE.md), [architectural findings](FINDING
 [generated process diagrams](PROCESS-DIAGRAMS.md). The latter come from `Process.ToMermaid()`,
 not illustrative APIs.
 
+## Interactive customer and operations workspace
+
+Open `http://localhost:5090` after starting Compose. Contract a line, follow its saved milestones, switch
+to Operations, and deliver provider callbacks from the separate local simulator panel. The screen shows
+why billing is blocked, domain-owned action rules, incident recovery and actual durable process histories.
+Expand the inspector to compare persisted views, BFF composition and rich domain state as facts arrive.
+Follow [the guided walkthrough and responsibility map](WORKSPACE.md).
+
 ## Find a feature
 
 Everything owned by a business feature lives together: domain rules, application processes, provider
@@ -37,6 +45,7 @@ samples/Telecom/
     Billing/                             operational billing
     Incidents/                           business attention queue
     Operations/                          cross-feature operational queries
+    Workspace/                           BFF, UI assets and operator presentation
   Infrastructure/                        shared database, HTTP protocol and DI wiring
   Shared/                                offer, domain errors and HTTP result mapping
   Providers/                             shared simulator protocol and deterministic fake

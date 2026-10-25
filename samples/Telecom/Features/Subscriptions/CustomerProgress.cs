@@ -15,7 +15,9 @@ public sealed record CustomerProgress(
     bool Operational = false,
     bool CancellationRequested = false,
     bool Cancelled = false,
-    bool Declined = false)
+    bool Declined = false,
+    string? CustomerId = null,
+    decimal? InitialAmount = null)
 {
     public string Stage => DescribeStage();
 
@@ -75,7 +77,12 @@ public sealed class CustomerProgressProjection : Projection<CustomerProgress>
     private static CustomerProgress ApplyOpened(CustomerProgress? view, SubscriptionOpened opened)
     {
         view ??= new CustomerProgress(opened.Offer.SubscriptionId);
-        return view with { Msisdn = opened.Offer.Msisdn };
+        return view with
+        {
+            Msisdn = opened.Offer.Msisdn,
+            CustomerId = opened.Offer.CustomerId,
+            InitialAmount = opened.Offer.InitialAmount,
+        };
     }
 
     private static CustomerProgress ApplyDeclined(CustomerProgress? view, SubscriptionDeclined declined)

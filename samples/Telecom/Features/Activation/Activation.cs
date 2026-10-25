@@ -16,6 +16,43 @@ public sealed record Activation(
 
     public bool Ready => Paid && Ported && ProfileId is not null && Provisioned && Connected;
 
+    public RuleError? CheckProfileAssignment(AssignProfile command)
+    {
+        if (!HasValidIdentity(command))
+        {
+            return RuleError.InvalidInput;
+        }
+
+        if (Operational)
+        {
+            return RuleError.Irreversible;
+        }
+
+        if (command.Attempt <= Attempt || command.Attempt != Attempt + 1)
+        {
+            return RuleError.StaleAttempt;
+        }
+
+        if (ProfileId == command.ProfileId)
+        {
+            return RuleError.IllegalTransition;
+        }
+
+        if (CustomerId is not null && CustomerId != command.CustomerId)
+        {
+            return RuleError.WrongOwner;
+        }
+
+        return null;
+    }
+
+    private static bool HasValidIdentity(AssignProfile command)
+    {
+        return Offer.ValidId(command.SubscriptionId)
+            && Offer.ValidId(command.ProfileId)
+            && Offer.ValidId(command.CustomerId);
+    }
+
     public Activation Evolve(IDomainEvent domainEvent) => domainEvent switch
     {
         // Replacement invalidates both provisioning and connectivity evidence.

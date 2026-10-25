@@ -19,6 +19,32 @@ public sealed record NumberPort(Offer? Owner, PortPhase Phase, long Epoch, DateT
 {
     public static NumberPort Initial { get; } = new(null, PortPhase.Vacant, 0, default, default);
     public bool Owns(string id, long epoch) => Owner?.SubscriptionId == id && Epoch == epoch;
+
+    public RuleError? CheckCancellation(RequestPortCancellation command)
+    {
+        if (!Owns(command.SubscriptionId, command.Epoch))
+        {
+            return RuleError.WrongOwner;
+        }
+
+        if (Phase == PortPhase.Completed)
+        {
+            return RuleError.Irreversible;
+        }
+
+        if (Phase is PortPhase.Reserved or PortPhase.Admitted)
+        {
+            return RuleError.NotReady;
+        }
+
+        if (Phase == PortPhase.Cancelled)
+        {
+            return RuleError.IllegalTransition;
+        }
+
+        return null;
+    }
+
     public NumberPort Evolve(IDomainEvent domainEvent) => domainEvent switch
     {
         NumberReserved e => new(e.Offer, PortPhase.Reserved, e.Offer.Epoch, default, default),

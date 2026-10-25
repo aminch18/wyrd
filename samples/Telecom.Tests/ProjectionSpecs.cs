@@ -24,7 +24,7 @@ public class ProjectionSpecs
         IEvent[] facts = [new SubscriptionOpened(o), new PaymentCaptured(o, "r"), new NumberChanged(o, PortPhase.Completed, default, default), new ServiceOperational("S1", "P1", 1)];
         foreach (var permutation in Permutations(facts))
             Scenario.For(new CustomerProgressProjection()).Given(permutation)
-                .Then("S1", new CustomerProgress("S1", o.Msisdn, true, false, true, Operational: true));
+                .Then("S1", new CustomerProgress("S1", o.Msisdn, true, false, true, Operational: true, CustomerId: o.CustomerId, InitialAmount: o.InitialAmount));
     }
 
     // Enumerate interleavings of independent streams; do not claim same-stream order is arbitrary.
