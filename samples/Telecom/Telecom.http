@@ -1,0 +1,49 @@
+@base = http://localhost:5090
+
+### Contract. The API commits this decision; workers perform the remaining work.
+POST {{base}}/subscriptions
+Content-Type: application/json
+
+{"subscriptionId":"S1","customerId":"C1","msisdn":"+34600000001","epoch":1,"profileId":"P1","initialAmount":25}
+
+### Provider confirmation only agrees the window; it does not complete the port.
+POST {{base}}/webhooks/mnp/confirmed
+Content-Type: application/json
+
+{"subscriptionId":"S1","msisdn":"+34600000001","epoch":1,"windowStart":"2026-10-26T02:00:00Z","windowEnd":"2026-10-26T04:00:00Z"}
+
+### Provider completes the port.
+POST {{base}}/webhooks/mnp/completed
+Content-Type: application/json
+
+{"subscriptionId":"S1","msisdn":"+34600000001","epoch":1}
+
+### Independent probe confirms the current profile's connectivity.
+POST {{base}}/webhooks/connectivity
+Content-Type: application/json
+
+{"subscriptionId":"S1","profileId":"P1","attempt":1}
+
+### Customer view
+GET {{base}}/subscriptions/S1
+
+### Operational detail, payment/billing and process statuses
+GET {{base}}/operations/S1
+
+### Queue age/depth and dead letters
+GET {{base}}/health/queue
+
+### Incident queue
+GET {{base}}/incidents
+
+### A replacement attempt; only allowed before operational service
+POST {{base}}/subscriptions/S1/profiles/P2/attempts/2
+
+### Read-only payment reconciliation (does not initiate another charge)
+POST {{base}}/subscriptions/S1/reconcile/1
+
+### Cancellation request, never a fictional port rollback
+POST {{base}}/subscriptions/S1/cancel-port
+
+### Actual recorded replies for Urd, not reconstructed provider behavior
+GET {{base}}/histories/profiles/S1/P1/1

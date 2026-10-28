@@ -532,6 +532,30 @@ public abstract class EfCoreRuntimeTests(Database database)
     }
 
     [Fact]
+    public async Task a_conflict_still_there_after_the_last_retry_is_a_concurrency_conflict()
+    {
+        var contexts = await database.NewAsync<AppDbContext>(options => new(options));
+        var shop = ShopModule.Register(new EfCoreRuntime<AppDbContext>(
+            contexts, ShopJson.Default, Database.Retention, Database.Options with { MaxConflictRetries = 1 }));
+        await using var first = contexts.CreateDbContext();
+        await using var firstTransaction = await first.Database.BeginTransactionAsync();
+
+        // Both create the same new stock row: the loser hits the unique key, the provider's error, not a version check.
+        await shop.SendAsync(new Restock("KEYBOARD", 5), first);
+        var racing = shop.SendAsync(new Restock("KEYBOARD", 3));
+        await using (var observer = contexts.CreateDbContext())
+        {
+            await database.UntilBlockedAsync(observer);
+        }
+
+        await firstTransaction.CommitAsync();
+
+        var conflict = await Assert.ThrowsAsync<ConcurrencyConflictException>(() => racing);
+        Assert.NotNull(conflict.InnerException);
+        Assert.Equal(5, (await shop.StateOfAsync<StockItem>("KEYBOARD")).Available);
+    }
+
+    [Fact]
     public async Task sending_into_a_context_needs_its_transaction()
     {
         var contexts = await database.NewAsync<AppDbContext>(options => new(options));
@@ -838,6 +862,30 @@ public abstract class EfCoreRuntimeTests(Database database)
         await runtime.ForgetExpiredAsync();
 
         Assert.Equal(ProcessStatus.Suspended, await runtime.StatusOfAsync(broken, "A-1"));
+    }
+
+    [Fact]
+    public async Task a_dead_letter_is_kept_for_its_retention_and_then_forgotten()
+    {
+        var clock = Database.Clock();
+#pragma warning disable IL2026, IL3050 // reflection JSON keeps the test domain small
+        var runtime = new EfCoreRuntime<WyrdDbContext>(
+                await database.NewAsync(), Database.Retention with { DeadLetters = Keep.For(TimeSpan.FromDays(7)) },
+                Database.Options with { MaxDeliveryAttempts = 1 }, clock)
+            .AddSlice(new StartJobSlice())
+            .AddProjection(new BrokenJobs());
+#pragma warning restore IL2026, IL3050
+        await runtime.SendAsync(new StartJob("J-1"));
+        await runtime.ProcessPendingAsync(); // one attempt: the failing event goes straight to the dead letters
+        Assert.Equal((0, 1), await runtime.BacklogAsync());
+
+        clock.Advance(TimeSpan.FromDays(7) - TimeSpan.FromSeconds(1));
+        await runtime.ForgetExpiredAsync();
+        Assert.Equal((0, 1), await runtime.BacklogAsync());
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await runtime.ForgetExpiredAsync();
+        Assert.Equal((0, 0), await runtime.BacklogAsync());
     }
 
     [Fact]
