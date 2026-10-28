@@ -27,7 +27,7 @@ if (connection is null)
 
 try
 {
-    var server = new Server(new NpgsqlConnectionStringBuilder(connection) { MaxPoolSize = 100 }.ConnectionString);
+    await using var server = new Server(new NpgsqlConnectionStringBuilder(connection) { MaxPoolSize = 100 }.ConnectionString);
     Console.WriteLine($"PostgreSQL {await server.VersionAsync()}, .NET {Environment.Version}, {Environment.ProcessorCount} cores, "
         + "connection pool of 100 per process");
     Console.WriteLine();

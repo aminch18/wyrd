@@ -60,6 +60,7 @@ internal sealed partial class Profile
         clock.Stop();
         await stop.CancelAsync();
         await running;
+        await WorkerLoad.CheckAsync(shop, orders); // a message that dead-lettered also leaves the queue
         profile.Print(orders, clock.Elapsed, handled.Count, roundTrip);
     }
 

@@ -108,7 +108,7 @@ BenchmarkDotNet, `--job short` (3 warmups, 3 iterations: wide intervals, informa
 ## Concurrency on PostgreSQL
 
 `Wyrd.Benchmarks.Concurrency` runs the Shop on the durable host (`EfCoreRuntime`) against a real PostgreSQL: a
-container by default (Docker required), or the database of `--connection`. Each run gets a new database.
+container by default (Docker required), or the server of `--connection`. Each run gets a new database, dropped at the end.
 
 ```bash
 dotnet run -c Release --project benchmarks/Wyrd.Benchmarks.Concurrency
@@ -165,8 +165,9 @@ pool of 100:
 
 What the numbers say:
 
-- Different keys scale with callers until the connection pool is the limit: from 32 to 128 callers throughput stays
-  flat and latency grows, since requests wait for one of the 100 connections.
+- Different keys scale with callers up to about 32 on this machine, where the client and PostgreSQL share one host;
+  past that throughput stops growing and each call waits its turn (128 callers at 3,262 commands/s is about 39 ms each,
+  the p50 measured).
 - One key takes one write at a time. With 8 or more callers on it, half or more of the calls run out of retries:
   `SendAsync` retries a conflict at once, so the callers that lost keep colliding with each other.
 - Eight workers drain a spread backlog 3.4 times faster than one. On one hot SKU they plateau: the extra workers
@@ -189,8 +190,8 @@ its VM) and from a Linux container next to PostgreSQL on the same Docker network
 - The disk is not the cost: with `synchronous_commit=off` the commit share stays at 7% and the wall time doesn't drop.
 - Round trips are: about 9 per message (6 commands, the commit, and EF Core's automatic savepoint around each
   `SaveChanges`). Every millisecond of latency to the database costs about 9 ms per message.
-- The client's own work is the rest, about 0.8 ms per message, half of it in EF Core (query pipeline, change tracking,
-  context creation). The engine itself is not visible: in memory the same Shop handles about 10,000 orders/s.
+- The rest, about 0.8 ms per message, is not split further: the engine, EF Core, JSON, and the savepoints' round trips
+  (counted, not timed). The engine alone is small: in memory the same Shop handles about 10,000 orders/s.
 - An order of the Shop is 17 messages, so 17 times all of the above.
 
 #### Cheaper messages on the EF Core host
