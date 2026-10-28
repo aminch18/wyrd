@@ -105,8 +105,8 @@ const SCENARIOS: Scenario[] = [
                 who: 'attempt 5',
                 text: (
                     <>
-                        conflicts: that was <code>MaxConflictRetries</code> (5)
-                        attempts in all
+                        conflicts: that was <code>MaxConflictRetries</code>{' '}
+                        attempts in all (5 by default)
                     </>
                 ),
                 tone: 'stop',
@@ -178,7 +178,9 @@ const SCENARIOS: Scenario[] = [
             <>
                 One retry layer: the host never retries a process command behind
                 the process’s back. A step your code <em>rejects</em> (a
-                business decision) is compensated at once.
+                business decision) is compensated at once, and a step can opt
+                into compensating on its own when its retries run out (
+                <code>.Retry(3.Times).OrCompensate()</code>).
             </>
         ),
     },
@@ -215,8 +217,8 @@ const SCENARIOS: Scenario[] = [
                 who: 'queue',
                 text: (
                     <>
-                        after <code>MaxDeliveryAttempts</code> (10) it moves to{' '}
-                        <code>dead_letters</code>
+                        after <code>MaxDeliveryAttempts</code> (10 by default)
+                        it moves to <code>dead_letters</code>
                     </>
                 ),
                 tone: 'stop',
