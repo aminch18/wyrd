@@ -191,5 +191,6 @@ its VM) and from a Linux container next to PostgreSQL on the same Docker network
 - Round trips are: about 9 per message (6 commands, the commit, and EF Core's automatic savepoint around each
   `SaveChanges`). Every millisecond of latency to the database costs about 9 ms per message.
 - The rest, about 0.8 ms per message, is not split further: the engine, EF Core, JSON, and the savepoints' round trips
-  (counted, not timed). The engine alone is small: in memory the same Shop handles about 10,000 orders/s.
+  (counted, not timed). For scale, not as a measure of the engine's share: the in-memory host handles the same Shop at
+  about 10,000 orders/s.
 - An order of the Shop is 17 messages, so 17 times all of the above.
