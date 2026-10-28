@@ -222,142 +222,160 @@ export function OrderJourney({ source }: { source: string }) {
 
     return (
         <figure className={`${css.figure} ${css.big}`}>
-            <LiveArchitecture
-                path={beat?.path}
-                label="The architecture, lit by the order's current transaction"
-            />
-            <div className={css.journey}>
-                <ol
-                    className={css.timeline}
-                    aria-label="Transactions, in order"
-                >
-                    {BEATS.map((b, index) => {
-                        const at = index + 1
-                        const { label, Icon } = WHO[b.who]
-                        return (
-                            <li
-                                key={index}
-                                className={[
-                                    css.tx,
-                                    css[`who-${b.who}`],
-                                    at === step
-                                        ? css.txNow
-                                        : at < step
-                                          ? css.txDone
-                                          : css.txLater,
-                                ].join(' ')}
-                            >
-                                <button
-                                    type="button"
-                                    onClick={() => stepper.setStep(at)}
-                                >
-                                    <span className={css.txDot}>
-                                        <Icon size={14} aria-hidden />
-                                    </span>
-                                    <span className={css.txBody}>
-                                        <span className={css.txWho}>
-                                            {label}
-                                            {b.writes.length > 0 && (
-                                                <> · one transaction</>
-                                            )}
-                                        </span>
-                                        <span className={css.txTitle}>
-                                            {b.title}
-                                        </span>
-                                        {at === step && (
-                                            <>
-                                                <span className={css.txDetail}>
-                                                    {b.detail}
-                                                </span>
-                                                {b.writes.length > 0 && (
-                                                    <span
-                                                        className={css.txWrites}
-                                                    >
-                                                        {b.writes.map((w) => (
-                                                            <code key={w}>
-                                                                {w}
-                                                            </code>
-                                                        ))}
-                                                    </span>
-                                                )}
-                                            </>
-                                        )}
-                                    </span>
-                                </button>
-                            </li>
-                        )
-                    })}
-                </ol>
-
-                <aside className={css.journeyState} aria-live="polite">
-                    <section className={css.statePanel}>
-                        <h4>the client</h4>
-                        <p className={step >= 1 ? css.stateOk : ''}>
-                            {step === 0
-                                ? 'sends POST /orders'
-                                : '202 Accepted, with the decision'}
-                        </p>
-                        {step >= 2 && (
-                            <small>
-                                Already answered: it never waits for the rest of
-                                the process.
-                            </small>
-                        )}
-                    </section>
-                    <section className={css.statePanel}>
-                        <h4>queue</h4>
-                        {queue.length === 0 ? (
-                            <p className={css.empty}>
-                                {step === 0 ? 'nothing yet' : 'empty'}
-                            </p>
-                        ) : (
-                            <ul className={css.queueRows}>
-                                {queue.map((row) => (
+            <div className={css.withArch}>
+                <div className={css.sidePanel}>
+                    <div className={css.journey}>
+                        <ol
+                            className={css.timeline}
+                            aria-label="Transactions, in order"
+                        >
+                            {BEATS.map((b, index) => {
+                                const at = index + 1
+                                const { label, Icon } = WHO[b.who]
+                                return (
                                     <li
-                                        key={`${step}-${row.label}`}
-                                        className={`${css.row} ${row.timer ? css.timerRow : ''}`}
+                                        key={index}
+                                        className={[
+                                            css.tx,
+                                            css[`who-${b.who}`],
+                                            at === step
+                                                ? css.txNow
+                                                : at < step
+                                                  ? css.txDone
+                                                  : css.txLater,
+                                        ].join(' ')}
                                     >
-                                        {row.timer && (
-                                            <Clock size={13} aria-hidden />
-                                        )}
-                                        <span>{row.label}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => stepper.setStep(at)}
+                                        >
+                                            <span className={css.txDot}>
+                                                <Icon size={14} aria-hidden />
+                                            </span>
+                                            <span className={css.txBody}>
+                                                <span className={css.txWho}>
+                                                    {label}
+                                                    {b.writes.length > 0 && (
+                                                        <> · one transaction</>
+                                                    )}
+                                                </span>
+                                                <span className={css.txTitle}>
+                                                    {b.title}
+                                                </span>
+                                                {at === step && (
+                                                    <>
+                                                        <span
+                                                            className={
+                                                                css.txDetail
+                                                            }
+                                                        >
+                                                            {b.detail}
+                                                        </span>
+                                                        {b.writes.length >
+                                                            0 && (
+                                                            <span
+                                                                className={
+                                                                    css.txWrites
+                                                                }
+                                                            >
+                                                                {b.writes.map(
+                                                                    (w) => (
+                                                                        <code
+                                                                            key={
+                                                                                w
+                                                                            }
+                                                                        >
+                                                                            {w}
+                                                                        </code>
+                                                                    ),
+                                                                )}
+                                                            </span>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </span>
+                                        </button>
                                     </li>
-                                ))}
-                            </ul>
-                        )}
-                    </section>
-                    <section className={css.statePanel}>
-                        <h4>the fulfillment process</h4>
-                        {process ? (
-                            <p className={css[`status-${process.status}`]}>
-                                <strong>{process.status}</strong>
-                                {process.note && <> · {process.note}</>}
+                                )
+                            })}
+                        </ol>
+                    </div>
+
+                    <Controls
+                        playing={stepper.playing}
+                        atStart={step === 0}
+                        atEnd={step === LAST}
+                        onPlay={stepper.play}
+                        onPause={stepper.pause}
+                        onBack={stepper.back}
+                        onNext={stepper.next}
+                        onReset={stepper.reset}
+                    />
+                    <details className={css.textVersion}>
+                        <summary>The same, as text</summary>
+                        <CodeBlock
+                            code={source}
+                            language="text"
+                            title="the Shop’s order"
+                        />
+                    </details>
+                </div>
+                <aside className={css.archSide}>
+                    <LiveArchitecture
+                        path={beat?.path}
+                        label="The architecture, lit by the order's current transaction"
+                    />
+                    <aside className={css.journeyState} aria-live="polite">
+                        <section className={css.statePanel}>
+                            <h4>the client</h4>
+                            <p className={step >= 1 ? css.stateOk : ''}>
+                                {step === 0
+                                    ? 'sends POST /orders'
+                                    : '202 Accepted, with the decision'}
                             </p>
-                        ) : (
-                            <p className={css.empty}>not started</p>
-                        )}
-                    </section>
+                            {step >= 2 && (
+                                <small>
+                                    Already answered: it never waits for the
+                                    rest of the process.
+                                </small>
+                            )}
+                        </section>
+                        <section className={css.statePanel}>
+                            <h4>queue</h4>
+                            {queue.length === 0 ? (
+                                <p className={css.empty}>
+                                    {step === 0 ? 'nothing yet' : 'empty'}
+                                </p>
+                            ) : (
+                                <ul className={css.queueRows}>
+                                    {queue.map((row) => (
+                                        <li
+                                            key={`${step}-${row.label}`}
+                                            className={`${css.row} ${row.timer ? css.timerRow : ''}`}
+                                        >
+                                            {row.timer && (
+                                                <Clock size={13} aria-hidden />
+                                            )}
+                                            <span>{row.label}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </section>
+                        <section className={css.statePanel}>
+                            <h4>the process</h4>
+                            {process ? (
+                                <p className={css[`status-${process.status}`]}>
+                                    <strong>{process.status}</strong>
+                                    {process.note && <> · {process.note}</>}
+                                </p>
+                            ) : (
+                                <p className={css.empty}>not started</p>
+                            )}
+                        </section>
+                    </aside>
                 </aside>
             </div>
-
-            <Controls
-                playing={stepper.playing}
-                atStart={step === 0}
-                atEnd={step === LAST}
-                onPlay={stepper.play}
-                onPause={stepper.pause}
-                onBack={stepper.back}
-                onNext={stepper.next}
-                onReset={stepper.reset}
-            />
-            <details className={css.textVersion}>
-                <summary>The same, as text</summary>
-                <CodeBlock
-                    code={source}
-                    language="text"
-                    title="the Shop’s order"
-                />
-            </details>
         </figure>
     )
 }

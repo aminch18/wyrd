@@ -256,6 +256,121 @@ const NODE_ICONS: Record<string, typeof Box> = {
     systems: Workflow,
 }
 
+/**
+ * Two drawings of the same architecture. "wide" is the overview, across the page; "flow" is narrower and taller,
+ * for a column next to a playground: your process on top, the database below, what's outside on the right.
+ */
+type Layout = 'wide' | 'flow'
+
+interface Frame {
+    width: number
+    height: number
+    process: {
+        x: number
+        y: number
+        w: number
+        h: number
+        lx: number
+        ly: number
+        anchor: 'start' | 'end'
+        label: string
+    }
+    db: {
+        x: number
+        y: number
+        w: number
+        h: number
+        lx: number
+        ly: number
+        label: string
+    }
+}
+
+const FRAMES: Record<Layout, Frame> = {
+    wide: {
+        width: 1000,
+        height: 600,
+        process: {
+            x: 20,
+            y: 120,
+            w: 740,
+            h: 222,
+            lx: 748,
+            ly: 139,
+            anchor: 'end',
+            label: 'your process · one per instance',
+        },
+        db: {
+            x: 20,
+            y: 400,
+            w: 960,
+            h: 184,
+            lx: 34,
+            ly: 420,
+            label: 'your database · the wyrd schema, in your DbContext',
+        },
+    },
+    flow: {
+        width: 560,
+        height: 600,
+        process: {
+            x: 8,
+            y: 72,
+            w: 360,
+            h: 280,
+            lx: 16,
+            ly: 90,
+            anchor: 'start',
+            label: 'your process',
+        },
+        db: {
+            x: 8,
+            y: 382,
+            w: 544,
+            h: 206,
+            lx: 16,
+            ly: 400,
+            label: 'your database · wyrd schema',
+        },
+    },
+}
+
+type Rect = Pick<Node, 'x' | 'y' | 'w' | 'h'>
+const FLOW_NODES: Record<string, Rect> = {
+    clients: { x: 16, y: 12, w: 160, h: 48 },
+    endpoints: { x: 16, y: 104, w: 160, h: 56 },
+    runtime: { x: 200, y: 104, w: 160, h: 56 },
+    engine: { x: 200, y: 190, w: 160, h: 56 },
+    cleanup: { x: 16, y: 276, w: 160, h: 56 },
+    workers: { x: 200, y: 276, w: 160, h: 56 },
+    services: { x: 384, y: 104, w: 160, h: 56 },
+    systems: { x: 384, y: 276, w: 160, h: 56 },
+    states: { x: 16, y: 410, w: 168, h: 50 },
+    views: { x: 196, y: 410, w: 168, h: 50 },
+    queue: { x: 376, y: 410, w: 168, h: 50 },
+    inbox: { x: 16, y: 470, w: 168, h: 50 },
+    instances: { x: 196, y: 470, w: 168, h: 50 },
+    events: { x: 376, y: 470, w: 168, h: 50 },
+    published: { x: 196, y: 530, w: 168, h: 50 },
+    dead: { x: 376, y: 530, w: 168, h: 50 },
+}
+
+const FLOW_EDGES: Record<
+    string,
+    Pick<Edge, 'd' | 'lx' | 'ly'> & { label?: string }
+> = {
+    http: { d: 'M96 60 V104', lx: 124, ly: 86 },
+    send: { d: 'M176 132 H200', lx: 188, ly: 98 },
+    decide: { d: 'M280 160 V190', lx: 304, ly: 179 },
+    workerDecide: { d: 'M280 276 V246', lx: 304, ly: 265 },
+    tx: { d: 'M200 150 H188 V382', lx: 188, ly: 366 },
+    take: { d: 'M280 332 V382', lx: 300, ly: 376, label: 'take · commit' },
+    clean: { d: 'M96 332 V382', lx: 96, ly: 372, label: 'delete expired' },
+    relay: { d: 'M360 286 H372 V176 H464 V160', lx: 418, ly: 172 },
+    call: { d: 'M360 312 H384', lx: 372, ly: 330 },
+    receive: { d: 'M384 132 H360', lx: 372, ly: 98, label: 'ReceiveAsync' },
+}
+
 /** What a step lights up on the architecture: node and edge ids. */
 export interface Path {
     nodes: string[]
@@ -272,10 +387,10 @@ interface CanvasProps {
     /** Step numbers on edges, by edge id. */
     numbers?: Map<string, number>
     label?: string
+    layout?: Layout
 }
 
-/** The architecture of guides/how-verdandi-works.md ("The pieces"), drawn once and lit by every case on the page. */
-/** The canvas inside a playground, lit by its current step. */
+/** The canvas inside a playground, next to its steps, lit by the current one. */
 export function LiveArchitecture({
     path,
     alert,
@@ -292,12 +407,15 @@ export function LiveArchitecture({
                 current={path}
                 alert={alert}
                 label={label}
+                layout="flow"
             />
         </div>
     )
 }
 
+/** The architecture of guides/how-verdandi-works.md ("The pieces"), lit by the cases on the page. */
 export function ArchitectureCanvas({
+    layout = 'wide',
     lit,
     current,
     alert: alerted = [],
@@ -312,10 +430,20 @@ export function ArchitectureCanvas({
     const currentNodes = new Set(current?.nodes ?? [])
     const currentEdges = new Set(current?.edges ?? [])
     const alert = new Set(alerted)
+    const frame = FRAMES[layout]
+    const nodes =
+        layout === 'flow'
+            ? NODES.map((n) => ({ ...n, ...FLOW_NODES[n.id] }))
+            : NODES
+    const edges =
+        layout === 'flow'
+            ? EDGES.map((e) => ({ ...e, ...FLOW_EDGES[e.id] }))
+            : EDGES
 
     return (
         <svg
-            viewBox="0 0 1000 600"
+            className={layout === 'flow' ? css.flowSvg : undefined}
+            viewBox={`0 0 ${frame.width} ${frame.height}`}
             role="img"
             aria-label={
                 label ??
@@ -357,39 +485,47 @@ export function ArchitectureCanvas({
                     <path d="M0 0 L10 5 L0 10 Z" className={css.archArrowLit} />
                 </marker>
             </defs>
-            <rect width="1000" height="600" fill={`url(#${id}-dots)`} />
+            <rect
+                width={frame.width}
+                height={frame.height}
+                fill={`url(#${id}-dots)`}
+            />
 
             <g className={active ? css.dimmed : ''}>
                 <rect
-                    x="20"
-                    y="120"
-                    width="740"
-                    height="222"
+                    x={frame.process.x}
+                    y={frame.process.y}
+                    width={frame.process.w}
+                    height={frame.process.h}
                     rx="14"
                     className={css.groupProcess}
                 />
                 <text
-                    x="748"
-                    y="139"
-                    textAnchor="end"
+                    x={frame.process.lx}
+                    y={frame.process.ly}
+                    textAnchor={frame.process.anchor}
                     className={css.groupProcessLabel}
                 >
-                    your process · one per instance
+                    {frame.process.label}
                 </text>
                 <rect
-                    x="20"
-                    y="400"
-                    width="960"
-                    height="184"
+                    x={frame.db.x}
+                    y={frame.db.y}
+                    width={frame.db.w}
+                    height={frame.db.h}
                     rx="14"
                     className={css.groupDb}
                 />
-                <text x="34" y="420" className={css.groupDbLabel}>
-                    your database · the wyrd schema, in your DbContext
+                <text
+                    x={frame.db.lx}
+                    y={frame.db.ly}
+                    className={css.groupDbLabel}
+                >
+                    {frame.db.label}
                 </text>
             </g>
 
-            {EDGES.map((e) => {
+            {edges.map((e) => {
                 const lit = litEdges.has(e.id)
                 const now = currentEdges.has(e.id)
                 return (
@@ -420,7 +556,7 @@ export function ArchitectureCanvas({
                 )
             })}
 
-            {NODES.map((n) => {
+            {nodes.map((n) => {
                 const Icon = NODE_ICONS[n.id] ?? ICONS[n.kind]
                 const lit = litNodes.has(n.id)
                 return (
@@ -470,25 +606,33 @@ export function ArchitectureCanvas({
                 )
             })}
             {!still &&
-                EDGES.filter((e) => currentEdges.has(e.id)).map((e) => (
-                    <circle key={`packet-${e.id}`} r="6" className={css.packet}>
-                        <animateMotion
-                            dur="1.3s"
-                            repeatCount="indefinite"
-                            path={e.d}
-                        />
-                    </circle>
+                edges
+                    .filter((e) => currentEdges.has(e.id))
+                    .map((e) => (
+                        <circle
+                            key={`packet-${e.id}`}
+                            r="6"
+                            className={css.packet}
+                        >
+                            <animateMotion
+                                dur="1.3s"
+                                repeatCount="indefinite"
+                                path={e.d}
+                            />
+                        </circle>
+                    ))}
+            {edges
+                .filter((e) => numbers.has(e.id))
+                .map((e) => (
+                    <g
+                        key={`badge-${e.id}`}
+                        className={css.badge}
+                        transform={`translate(${e.lx} ${e.ly - 19})`}
+                    >
+                        <circle r="9" />
+                        <text y="3.5">{numbers.get(e.id)}</text>
+                    </g>
                 ))}
-            {EDGES.filter((e) => numbers.has(e.id)).map((e) => (
-                <g
-                    key={`badge-${e.id}`}
-                    className={css.badge}
-                    transform={`translate(${e.lx} ${e.ly - 19})`}
-                >
-                    <circle r="9" />
-                    <text y="3.5">{numbers.get(e.id)}</text>
-                </g>
-            ))}
         </svg>
     )
 }

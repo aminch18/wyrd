@@ -1380,3 +1380,64 @@
     min-width: 640px;
     height: auto;
 }
+
+/* Playground beside its architecture: the steps on the left, the flow on the right */
+.withArch {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+    gap: 26px;
+    align-items: start;
+}
+.sidePanel {
+    min-width: 0;
+}
+.archSide {
+    position: sticky;
+    top: 96px;
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+}
+.archSide .liveArch {
+    margin: 0;
+}
+.archSide .liveArch svg {
+    min-width: 0;
+}
+.withArch .journey {
+    grid-template-columns: minmax(0, 1fr);
+}
+.withArch .journeyState {
+    position: static;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.withArch .lifecycle {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.withArch .transaction {
+    grid-column: 1 / -1;
+    order: -1;
+}
+@media (max-width: 1050px) {
+    .withArch {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .archSide {
+        position: static;
+        order: -1;
+    }
+}
+@media (max-width: 560px) {
+    .withArch .journeyState {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+.flowSvg .nodeTitle {
+    font-size: 13px;
+}
+.flowSvg .kind-db .nodeTitle {
+    font-size: 11px;
+}
+.flowSvg .nodeSub {
+    font-size: 9.5px;
+}

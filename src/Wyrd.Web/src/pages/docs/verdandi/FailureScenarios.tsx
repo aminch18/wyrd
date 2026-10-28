@@ -412,70 +412,78 @@ export function FailureScenarios() {
 
     return (
         <figure className={`${css.figure} ${css.big}`}>
-            <LiveArchitecture
-                path={live?.path}
-                alert={live?.alert}
-                label="The architecture, lit by the failure's current moment"
-            />
-            <div
-                role="tablist"
-                aria-label="Failure scenarios"
-                className={css.tabs}
-                onKeyDown={onKey}
-            >
-                {SCENARIOS.map((s, index) => (
-                    <button
-                        key={s.id}
-                        id={`failure-tab-${s.id}`}
-                        type="button"
-                        role="tab"
-                        aria-selected={index === active}
-                        aria-controls="failure-panel"
-                        tabIndex={index === active ? 0 : -1}
-                        onClick={() => select(index)}
+            <div className={css.withArch}>
+                <div className={css.sidePanel}>
+                    <div
+                        role="tablist"
+                        aria-label="Failure scenarios"
+                        className={css.tabs}
+                        onKeyDown={onKey}
                     >
-                        {s.tab}
-                    </button>
-                ))}
-            </div>
-            <div
-                id="failure-panel"
-                role="tabpanel"
-                aria-labelledby={`failure-tab-${scenario.id}`}
-                className={css.panel}
-            >
-                <ol className={css.beats}>
-                    {scenario.beats.map((beat, index) => (
-                        <li
-                            key={index}
-                            className={[
-                                index < stepper.step ? css.shown : css.hidden,
-                                beat.tone && css[beat.tone],
-                            ]
-                                .filter(Boolean)
-                                .join(' ')}
+                        {SCENARIOS.map((s, index) => (
+                            <button
+                                key={s.id}
+                                id={`failure-tab-${s.id}`}
+                                type="button"
+                                role="tab"
+                                aria-selected={index === active}
+                                aria-controls="failure-panel"
+                                tabIndex={index === active ? 0 : -1}
+                                onClick={() => select(index)}
+                            >
+                                {s.tab}
+                            </button>
+                        ))}
+                    </div>
+                    <div
+                        id="failure-panel"
+                        role="tabpanel"
+                        aria-labelledby={`failure-tab-${scenario.id}`}
+                        className={css.panel}
+                    >
+                        <ol className={css.beats}>
+                            {scenario.beats.map((beat, index) => (
+                                <li
+                                    key={index}
+                                    className={[
+                                        index < stepper.step
+                                            ? css.shown
+                                            : css.hidden,
+                                        beat.tone && css[beat.tone],
+                                    ]
+                                        .filter(Boolean)
+                                        .join(' ')}
+                                >
+                                    <span className={css.who}>{beat.who}</span>
+                                    <span>{beat.text}</span>
+                                </li>
+                            ))}
+                        </ol>
+                        <p
+                            className={`${css.lesson} ${stepper.step >= last ? css.shown : css.hidden}`}
                         >
-                            <span className={css.who}>{beat.who}</span>
-                            <span>{beat.text}</span>
-                        </li>
-                    ))}
-                </ol>
-                <p
-                    className={`${css.lesson} ${stepper.step >= last ? css.shown : css.hidden}`}
-                >
-                    {scenario.lesson}
-                </p>
+                            {scenario.lesson}
+                        </p>
+                    </div>
+                    <Controls
+                        playing={stepper.playing}
+                        atStart={stepper.step === 0}
+                        atEnd={stepper.step === last}
+                        onPlay={stepper.play}
+                        onPause={stepper.pause}
+                        onBack={stepper.back}
+                        onNext={stepper.next}
+                        onReset={stepper.reset}
+                    />
+                </div>
+                <aside className={css.archSide}>
+                    <LiveArchitecture
+                        path={live?.path}
+                        alert={live?.alert}
+                        label="The architecture, lit by the failure's current moment"
+                    />
+                </aside>
             </div>
-            <Controls
-                playing={stepper.playing}
-                atStart={stepper.step === 0}
-                atEnd={stepper.step === last}
-                onPlay={stepper.play}
-                onPause={stepper.pause}
-                onBack={stepper.back}
-                onNext={stepper.next}
-                onReset={stepper.reset}
-            />
         </figure>
     )
 }
