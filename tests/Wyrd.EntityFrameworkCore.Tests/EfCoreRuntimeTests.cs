@@ -532,6 +532,30 @@ public abstract class EfCoreRuntimeTests(Database database)
     }
 
     [Fact]
+    public async Task a_conflict_still_there_after_the_last_retry_is_a_concurrency_conflict()
+    {
+        var contexts = await database.NewAsync<AppDbContext>(options => new(options));
+        var shop = ShopModule.Register(new EfCoreRuntime<AppDbContext>(
+            contexts, ShopJson.Default, Database.Retention, Database.Options with { MaxConflictRetries = 1 }));
+        await using var first = contexts.CreateDbContext();
+        await using var firstTransaction = await first.Database.BeginTransactionAsync();
+
+        // Both create the same new stock row: the loser hits the unique key, the provider's error, not a version check.
+        await shop.SendAsync(new Restock("KEYBOARD", 5), first);
+        var racing = shop.SendAsync(new Restock("KEYBOARD", 3));
+        await using (var observer = contexts.CreateDbContext())
+        {
+            await database.UntilBlockedAsync(observer);
+        }
+
+        await firstTransaction.CommitAsync();
+
+        var conflict = await Assert.ThrowsAsync<ConcurrencyConflictException>(() => racing);
+        Assert.NotNull(conflict.InnerException);
+        Assert.Equal(5, (await shop.StateOfAsync<StockItem>("KEYBOARD")).Available);
+    }
+
+    [Fact]
     public async Task sending_into_a_context_needs_its_transaction()
     {
         var contexts = await database.NewAsync<AppDbContext>(options => new(options));
