@@ -178,38 +178,47 @@ Measured with `benchmarks/Wyrd.Benchmarks.Concurrency` (the Shop on PostgreSQL i
 results, and where one message's time goes, are in `benchmarks/README.md`):
 
 Commands from an API: 2,000 `SendAsync` calls per run, N callers at once (PostgreSQL 17 in Docker, .NET 10, Apple
-M3 Pro, 2026-10-27, with a pooled context factory):
+M3 Pro, 2026-10-27). The full run, before the cheaper messages of 0.5:
 
-| Keys | Callers | Commands/s | p50 | p99 | Failed after 5 retries |
+| Keys | Callers | Commands/s | p50 | p99 | Failed after 5 attempts |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| a different order each | 1 | 714 | 1.3 ms | 2.7 ms | 0 |
-| a different order each | 8 | 2,824 | 2.7 ms | 4.8 ms | 0 |
-| the same SKU | 1 | 700 | 1.3 ms | 2.8 ms | 0 |
-| the same SKU | 8 | 596 | 15.5 ms | 32.2 ms | 994 (50%) |
-| the same SKU | 128 | 498 | 259.9 ms | 573.2 ms | 1,333 (67%) |
+| a different order each | 1 | 495 | 1.9 ms | 4.4 ms | 0 |
+| a different order each | 8 | 2,624 | 2.9 ms | 5.1 ms | 0 |
+| a different order each | 32 | 3,624 | 8.7 ms | 15.1 ms | 0 |
+| a different order each | 128 | 3,262 | 38.1 ms | 55.7 ms | 0 |
+| the same SKU | 1 | 652 | 1.5 ms | 2.4 ms | 0 |
+| the same SKU | 8 | 587 | 17.3 ms | 36.2 ms | 1,014 |
+| the same SKU | 32 | 497 | 74.6 ms | 116.4 ms | 1,271 |
+| the same SKU | 128 | 397 | 322.1 ms | 697.7 ms | 1,335 |
 
-With different keys, throughput levels off at about 2,800 to 3,600 commands/s from 32 callers on, and past 100 callers
-the requests wait for a connection of the pool; those rows vary too much between runs to quote one number.
+After them, with a pooled context factory: one caller on different keys went from 495 to 714 commands/s (p50 1.3 ms),
+32 callers measured 2,782 and 3,483 commands/s in two runs, and on the same SKU with 8 callers 994 calls failed
+instead of 1,014: a conflict is still retried at once.
 
-Workers draining a backlog of 1,000 orders placed and paid (17 messages per order, each its own transaction):
+With different keys, throughput stops growing at about 32 callers on this machine, where the client and PostgreSQL
+share one host; past that each call waits its turn.
 
-| Keys | Workers | Orders/s | Messages/s |
+Workers draining a backlog of 1,000 orders placed and paid (17 messages per order, each its own transaction), before
+and after the pooled factory and the cheaper messages of 0.5:
+
+| Keys | Workers | Messages/s before | Messages/s after |
 | --- | ---: | ---: | ---: |
-| one SKU per order | 1 | 35 | 591 |
-| one SKU per order | 8 | 138 | 2,340 |
-| the same SKU | 8 | 82 | 1,319 |
+| one SKU per order | 1 | 491 | 591 |
+| one SKU per order | 8 | 1,676 | 2,340 |
+| the same SKU | 8 | 1,001 | 1,319 |
 
 Workers never fail on a conflict: they roll back and handle the message again, so a hot key only costs them time.
 
 What it means in practice:
 
-- Different keys scale with callers until the pool and the database are saturated.
+- Different keys scale with callers until the machine is saturated.
 - One key takes one write at a time, whatever the number of callers. When many callers hit the same key at once, some
   run out of retries and get a `ConcurrencyConflictException`: retry later, or model the hot spot differently (split
   the stock of a SKU into buckets, or let a process serialize the requests).
 - More workers drain a backlog faster when its messages are for different keys; on one hot key they mostly take turns.
-- **Latency to the database is what a message costs.** PostgreSQL itself spends about 0.1 ms on one; the rest is
-  round trips (about 6 per message, the commit included) and the client's own work (about 0.6 ms: the engine, EF Core and JSON).
+- **Latency to the database is what a message costs.** A message makes about 6 round trips (5.2 commands and the
+  commit), so every millisecond between the workers and the database costs about 6 ms per message; the client's own
+  work is the rest (the engine, EF Core and JSON).
   Keep the database close to the workers, and register the context factory pooled (`AddPooledDbContextFactory`).
 
 ## Retention and cleanup
