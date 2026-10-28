@@ -188,7 +188,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         ArgumentNullException.ThrowIfNull(command);
         var envelope = Envelope(command);
         IntegrationCall? call = null;
-        await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+        await using (var db = await NewContextAsync(cancellationToken).ConfigureAwait(false))
         {
             // An integration calls the outside world once, before any transaction: a conflict records its outcome again.
             var engine = Engine(db, _time.GetUtcNow());
@@ -202,7 +202,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         {
             try
             {
-                await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+                await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
                 await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
                 var decision = (await Engine(db, _time.GetUtcNow()).HandleAsync(envelope, call, cancellationToken).ConfigureAwait(false))!;
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -260,7 +260,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     {
         ArgumentNullException.ThrowIfNull(integrationEvent);
         var (type, payload) = _application.Types.Serialize(integrationEvent, integrationEvent.GetType());
-        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
         var now = _time.GetUtcNow();
         new EfCoreStore(db, now).Enqueue(new Envelope(Guid.CreateVersion7(), MessageKind.Event, type, payload, Trace: Tracing.Capture()), now);
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -283,7 +283,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             return;
         }
 
-        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
         var now = _time.GetUtcNow();
         new EfCoreStore(db, now).Enqueue(
             new Envelope(message.MessageId, MessageKind.Event, message.Type, message.Payload, Trace: Tracing.Received(message)), now);
@@ -357,7 +357,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     private async Task<int> TryRelayBatchAsync(int size, CancellationToken cancellationToken)
     {
-        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         var dialect = DialectOf(db);
         var published = db.Model.FindEntityType(typeof(PublishedRow))!;
@@ -516,7 +516,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     private async Task<bool> ProcessOneAsync(CancellationToken cancellationToken)
     {
         var now = _time.GetUtcNow();
-        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
         var dialect = DialectOf(db);
@@ -535,7 +535,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         try
         {
             envelope = JsonSerializer.Deserialize(message.Envelope, WyrdJsonContext.Default.Envelope)!;
-            var engine = Engine(db, now);
+            var engine = Engine(db, now, taking: message.Id);
             if (engine.IsIntegrationCommand(envelope))
             {
                 // Leased, not locked: the outside call is made with no transaction open (CallLeasedAsync).
@@ -545,8 +545,13 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             }
             else
             {
+                // Taken off the queue in the same batch as the message's own writes, not in a statement of its own.
+                db.Remove(new QueueRow { Id = message.Id });
                 await engine.HandleAsync(envelope, cancellationToken).ConfigureAwait(false);
-                await db.Set<QueueRow>().Where(r => r.Id == message.Id).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+                if (db.ChangeTracker.HasChanges())
+                {
+                    await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false); // the message changed nothing else
+                }
             }
 
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -581,7 +586,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         IntegrationCall call;
         try
         {
-            await using var reader = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            await using var reader = await NewContextAsync(cancellationToken).ConfigureAwait(false);
             call = await Engine(reader, _time.GetUtcNow()).CallAsync(envelope, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
@@ -593,7 +598,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         for (var attempt = 1; ; attempt++)
         {
             var now = _time.GetUtcNow();
-            await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
             // By id only: an outcome that arrives after the lease ran out is still a fact, and recorded, or a call that
             // always outlives its lease would never be recorded. While the row is there nobody has recorded one yet;
@@ -662,7 +667,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         {
             var viewType = projection.View.FullName!;
             var batches = new List<IReadOnlyList<StoredState>>();
-            await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+            await using (var db = await NewContextAsync(cancellationToken).ConfigureAwait(false))
             {
                 var store = new EfCoreStore(db, _time.GetUtcNow());
 
@@ -706,7 +711,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     {
         try
         {
-            await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
             await step(Engine(db, _time.GetUtcNow())).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -799,7 +804,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                 return;
             }
 
-            await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
             var batch = await db.Set<TRow>().Where(expired).OrderBy(key).Take(batchSize).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
             pass.Removed += batch;
             if (batch < batchSize)
@@ -845,7 +850,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     private async Task<int?> ForgetFinishedBatchAsync(CleanupPass pass, DateTimeOffset cutoff, int size, CancellationToken cancellationToken)
     {
-        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
 
         // Set-based, each delete checking the condition again: a parked event goes only while its instance is still a
         // finished, expired row, so the event of a new instance that re-used the key (its row isn't finished, and can only
@@ -875,7 +880,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         CleanupPass pass, IHistoryArchive archive, DateTimeOffset cutoff, int size, CancellationToken cancellationToken)
     {
         List<InstanceRow> finished;
-        await using (var reader = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+        await using (var reader = await NewContextAsync(cancellationToken).ConfigureAwait(false))
         {
             finished = await reader.Set<InstanceRow>().AsNoTracking()
                 .Where(r => r.FinishedAt <= cutoff).OrderBy(r => r.FinishedAt).Take(size)
@@ -899,7 +904,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             return null;
         }
 
-        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         var removed = 0;
         foreach (var instance in finished)
@@ -953,7 +958,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         // The rollback released the row lock, so another worker may have claimed the message meanwhile. Every branch
         // first takes the row back, unchanged since this attempt, and writes the failure only when that succeeded; if
         // the other worker still holds it, the statement waits for its commit and then finds nothing.
-        await using var db = await _contexts.CreateDbContextAsync(CancellationToken.None).ConfigureAwait(false);
+        await using var db = await NewContextAsync(CancellationToken.None).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None).ConfigureAwait(false);
         QueueMetrics.Failed.Add(1, QueueTag(db));
         var unchanged = db.Set<QueueRow>().Where(r => r.Id == message.Id && r.Attempts == message.Attempts);
@@ -1024,7 +1029,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     {
         ArgumentNullException.ThrowIfNull(process);
         ArgumentNullException.ThrowIfNull(key);
-        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await operation(Engine(db, _time.GetUtcNow()), process.Name, Keys.Of(key)).ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -1054,7 +1059,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         ArgumentNullException.ThrowIfNull(process);
         ArgumentNullException.ThrowIfNull(key);
         var name = Keys.Of(key);
-        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
         var status = await db.Set<InstanceRow>().AsNoTracking()
             .Where(r => r.Process == process.Name && r.Key == name).Select(r => r.Status)
             .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
@@ -1067,7 +1072,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         ArgumentNullException.ThrowIfNull(process);
         ArgumentNullException.ThrowIfNull(key);
         var name = Keys.Of(key);
-        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
         var row = await db.Set<InstanceRow>().AsNoTracking()
             .FirstOrDefaultAsync(r => r.Process == process.Name && r.Key == name, cancellationToken).ConfigureAwait(false);
         if (row is null)
@@ -1091,7 +1096,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         ArgumentNullException.ThrowIfNull(key);
         var name = Keys.Of(key);
         var stateType = typeof(TState).FullName!;
-        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
         var row = await db.Set<StateRow>().AsNoTracking()
             .FirstOrDefaultAsync(r => r.StateType == stateType && r.Key == name, cancellationToken).ConfigureAwait(false);
         return row is null ? TState.Initial : (TState)_application.Types.Deserialize(row.Type, row.Payload);
@@ -1104,7 +1109,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         ArgumentNullException.ThrowIfNull(key);
         var name = Keys.Of(key);
         var viewType = typeof(TView).FullName!;
-        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
         var row = await db.Set<ViewRow>().AsNoTracking()
             .FirstOrDefaultAsync(r => r.ViewType == viewType && r.Key == name && r.Type != ViewRow.Deleted, cancellationToken).ConfigureAwait(false);
         return row is null ? null : (TView)_application.Types.Deserialize(row.Type, row.Payload);
@@ -1115,7 +1120,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         where TView : class
     {
         var viewType = typeof(TView).FullName!;
-        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
         var rows = await db.Set<ViewRow>().AsNoTracking()
             .Where(r => r.ViewType == viewType && r.Type != ViewRow.Deleted).OrderBy(r => r.Created).ThenBy(r => r.Key)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
@@ -1129,7 +1134,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     public async Task<QueueHealth> HealthAsync(CancellationToken cancellationToken = default)
     {
         var now = _time.GetUtcNow();
-        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
         var due = db.Set<QueueRow>().Where(r => r.AvailableAt <= now);
         var pending = db.Set<InstanceRow>().Where(r => r.PendingSince != null);
         return new QueueHealth(
@@ -1160,7 +1165,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             return known;
         }
 
-        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
         return QueueName(db);
     }
 
@@ -1181,15 +1186,26 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// <summary>Messages waiting in the queue (due now or later) and messages that gave up (dead letters).</summary>
     public async Task<(long Queued, long DeadLetters)> BacklogAsync(CancellationToken cancellationToken = default)
     {
-        await using var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
         return (await db.Set<QueueRow>().LongCountAsync(cancellationToken).ConfigureAwait(false),
             await db.Set<DeadLetterRow>().LongCountAsync(cancellationToken).ConfigureAwait(false));
     }
 
     // ── Plumbing ─────────────────────────────────────────────────────────────────────────────
 
-    private Engine Engine(DbContext db, DateTimeOffset now) =>
-        new(_application.Registry, new EfCoreStore(db, now), _application.Types, () => now, Guid.CreateVersion7, static (_, _) => false, LogStep);
+    private Engine Engine(DbContext db, DateTimeOffset now, long? taking = null) =>
+        new(_application.Registry, new EfCoreStore(db, now, taking), _application.Types, () => now, Guid.CreateVersion7, static (_, _) => false, LogStep);
+
+    /// <summary>
+    /// A context of Wyrd's own. A failure rolls its transaction back whole, so EF Core's automatic savepoints (one around
+    /// every <c>SaveChanges</c> in a transaction) would only be round trips.
+    /// </summary>
+    private async Task<TContext> NewContextAsync(CancellationToken cancellationToken)
+    {
+        var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        db.Database.AutoSavepointsEnabled = false;
+        return db;
+    }
 
     private Dialect DialectOf(DbContext db) => _dialect ??= Dialect.For(db.Database);
 
