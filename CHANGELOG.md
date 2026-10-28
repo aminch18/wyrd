@@ -11,6 +11,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - Advanced telecom sample: pure portability, payment, eSIM, activation and billing boundaries; declarative processes and CQRS views; PostgreSQL API/worker hosts and deterministic provider services with separate databases. Includes Skuld scenarios, a recorded Urd incident, durable recovery tests, Docker Compose and a critical architectural findings document. No core APIs changed. Each feature colocates domain rules, processes, provider integrations, read models and MinApiLib HTTP endpoints in one folder, with explicit validation guards and thin API/worker hosts.
 
+### Changed
+
+- Quality bar: Q2.3 is checked by the retention tests (in memory and on both EF Core databases), not by a retained-memory
+  benchmark. A host's size is the application's data plus what its retention keeps; the tests prove each kind expires
+  on time and only then. With Q1 ticked on the roadmap, every rule of the bar is ✅.
+
 ### Fixed
 
 - Telecom sample rejects malformed webhook payloads before queuing, returns HTTP 400 for invalid commands, requires sequential payment reviews, validates operator incident ownership, and retries smoke-test connection failures. Provider replies without receipts follow technical retry handling. Local Compose binds the API to loopback; workspace URL decoding and small-text contrast are corrected.
