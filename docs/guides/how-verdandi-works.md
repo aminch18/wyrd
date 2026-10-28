@@ -61,7 +61,8 @@ migrations and can commit in the same transaction as your own tables.
 | `dead_letters` | Messages that gave up after their delivery attempts | `DeadLetters` |
 
 Business data (`states`, `views`) grows with your business, like any table of yours. Everything else is delivery
-machinery: it is needed for a while, and then the retention you chose removes it.
+machinery: it is needed for a while, and then the retention you chose removes it, except suspended instances and
+fences, which never expire (*Retention and cleanup*).
 
 ## One order, end to end
 
@@ -148,16 +149,17 @@ order that exists is rejected, not placed again.
   rolls back and handles the message again against what the winner wrote. It is not a failure: nothing is counted, and
   nothing is lost.
 - **A command sent from your code** (`SendAsync`) that conflicts is tried again at once, up to `MaxConflictRetries`
-  (5) attempts in all. A conflict that outlasts them (a stale version, a unique key, a deadlock) reaches the caller as
+  attempts in all (5 by default). A conflict that outlasts them (a stale version, a unique key, a deadlock) reaches the caller as
   a `ConcurrencyConflictException`, and Wyrd wrote nothing; an integration command's outside call may have been made
   already, and sending the command again is a new message with a new idempotency key.
 - **A process step that fails** goes back to its process, which applies the step's own retry policy (`.Retry(...)`).
-  When the retries run out the instance is suspended for an operator, who resumes or compensates it; a step your
+  When the retries run out the instance is suspended for an operator, who resumes or compensates it, unless the step
+  opted into compensating on its own (`.Retry(3.Times).OrCompensate()`); a step your
   code *rejects* (a business decision) is compensated at once. The host never retries a process command behind the
   process's back: there is one retry layer.
 - **Anything else that throws** (an event handler, a reply) is tried again later, with a growing delay, without
-  blocking the messages behind it, and after `MaxDeliveryAttempts` (10) it moves to `dead_letters` for someone to
-  look at.
+  blocking the messages behind it, and after `MaxDeliveryAttempts` (10 by default) it moves to `dead_letters` for
+  someone to look at.
 - **The database is down.** Workers log it and try again; queued messages are safe in the table.
 
 ## Timers
@@ -232,12 +234,15 @@ Delivery machinery is removed when the [retention](running-durable.md) you chose
 retention, and some things never expire: a suspended instance waits for an operator, and a fence (a command given up
 on without knowing whether it ran) stays blocked forever.
 
-Cleanup deletes in batches of 1,000 rows, each its own short statement, so it never holds many locks. It runs in the
-workers: every minute, each process's workers remove a bounded amount between messages.
+Cleanup runs in the workers, between messages: every `CleanupInterval` (one minute by default), a pass removes a
+bounded amount, in batches of 1,000 rows (100 finished instances when there is a history archive), each batch short
+so it holds few locks for a short time.
 
 With a history archive (`IHistoryArchive`), a finished instance's history is handed to it before the row is removed,
 and the row is removed only once the archive returned: a failed archive keeps it for the next pass. Delivery is at least
-once, so an archive must accept the same history twice.
+once, so an archive must accept the same history twice. A failed batch is tried again, oldest first, so a history the
+archive can never store blocks the removal of the instances behind it: the archive must store it elsewhere rather than
+fail for it.
 
 ## What to watch
 
