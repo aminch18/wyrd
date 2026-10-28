@@ -178,8 +178,9 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// <summary>
     /// Executes a command coming from outside (an API call, a UI action...) in its own transaction and returns the
     /// decision. What it causes — events, process steps — is queued and handled by the workers. A concurrency conflict is
-    /// retried up to <see cref="EfCoreRuntimeOptions.MaxConflictRetries"/> times; after that it surfaces as a
-    /// <see cref="ConcurrencyConflictException"/>, and nothing was written.
+    /// tried again, up to <see cref="EfCoreRuntimeOptions.MaxConflictRetries"/> attempts in all; after that it surfaces as a
+    /// <see cref="ConcurrencyConflictException"/> and Wyrd wrote nothing. An integration command's outside call may have
+    /// been made already: sending the command again is a new message, with a new idempotency key.
     /// </summary>
     [SuppressMessage("ApiDesign", "RS0026", Justification = "The overloads ship together in the package's first release and never bind ambiguously.")]
     public async Task<Decision> SendAsync(ICommand command, CancellationToken cancellationToken = default)
@@ -212,11 +213,12 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
             {
                 LogConflictRetry(command.GetType().Name, attempt);
             }
-            catch (Exception ex) when (ex is not ConcurrencyConflictException && IsConflict(ex))
+            catch (Exception ex) when (ex is not ConcurrencyConflictException && !ReferenceEquals(ex, call?.Failure?.SourceException) && IsConflict(ex))
             {
-                // Out of retries: a deadlock or a unique key is the same conflict as a stale version, so the caller catches one type.
+                // Out of attempts: a deadlock or a unique key is the same conflict as a stale version, so the caller catches
+                // one type. An integration's own failure is its outcome, rethrown as it was.
                 throw new ConcurrencyConflictException(
-                    $"{command.GetType().Name} still conflicted after {(attempt == 1 ? "1 attempt" : $"{attempt} attempts")}: retry it later.", ex);
+                    $"{command.GetType().Name} still conflicted after {(attempt == 1 ? "1 attempt" : $"{attempt} attempts")}; Wyrd wrote nothing.", ex);
             }
         }
     }

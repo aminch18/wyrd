@@ -43,6 +43,9 @@ public sealed record EfCoreRuntimeOptions
     /// </summary>
     public TimeSpan IntegrationLease { get; init; } = TimeSpan.FromMinutes(5);
 
-    /// <summary>How many times a command sent from outside is retried on a concurrency conflict.</summary>
+    /// <summary>
+    /// How many attempts a command sent from outside gets on concurrency conflicts, the first one included (1: no retry).
+    /// After the last, <c>SendAsync</c> throws a <see cref="Wyrd.ConcurrencyConflictException"/>.
+    /// </summary>
     public int MaxConflictRetries { get; init; } = 5;
 }
