@@ -7,8 +7,10 @@ namespace Wyrd.EntityFrameworkCore;
 /// <summary>
 /// The store for one message, bound to one context and its transaction: everything the engine reads and commits happens
 /// inside it, together with taking the message off the queue. Versions give optimistic concurrency between workers.
+/// <paramref name="taking"/> is the queue row of the message being handled, when a worker handles one: the runtime
+/// removes it in the same <c>SaveChanges</c>, so a timer the message cancels is never its own row.
 /// </summary>
-internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
+internal sealed class EfCoreStore(DbContext db, DateTimeOffset now, long? taking = null) : IWyrdStore
 {
     public async ValueTask<StoredState?> LoadStateAsync(string stateType, string key, CancellationToken cancellationToken) =>
         await db.Set<StateRow>().AsNoTracking()
@@ -211,7 +213,7 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now) : IWyrdStore
 
         if (changes.CancelWritten is { Count: > 0 } cancelled)
         {
-            await db.Set<QueueRow>().Where(r => cancelled.Contains(r.MessageId))
+            await db.Set<QueueRow>().Where(r => cancelled.Contains(r.MessageId) && r.Id != taking)
                 .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
         }
 

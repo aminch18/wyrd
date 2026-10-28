@@ -11,7 +11,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   users: where every piece of data lives, one message as one transaction, workers, duplicates, failures, timers,
   concurrency limits with measured numbers, and cleanup.
 
+### Changed
+
+- **Cheaper messages on the EF Core host**: Wyrd's own transactions no longer pay for EF Core's automatic savepoints,
+  and a handled message leaves the queue in the batch of its own writes, one round trip less. With a pooled context
+  factory, which the guide and the Shop now use (`AddPooledDbContextFactory`), a message takes about 17% less time
+  (2.4 to 2.0 ms on the reference machine) and eight workers handle 40% more messages per second.
+
+
+- Quality bar: Q2.3 is checked by the retention tests (in memory and on both EF Core databases), not by a retained-memory
+  benchmark. A host's size is the application's data plus what its retention keeps; the tests prove each kind expires
+  on time and only then. With Q1 ticked on the roadmap, every rule of the bar is ✅.
+
 ### Fixed
+
+- Telecom sample rejects malformed webhook payloads before queuing, returns HTTP 400 for invalid commands, requires sequential payment reviews, validates operator incident ownership, and retries smoke-test connection failures. Provider replies without receipts follow technical retry handling. Local Compose binds the API to loopback; workspace URL decoding and small-text contrast are corrected.
+
+- `EfCoreRuntime.SendAsync` throws `ConcurrencyConflictException` when a conflict outlasts `MaxConflictRetries`, whatever
+  the database reported (a stale version, a unique key, a deadlock). Before, the last attempt let the provider's
+  exception through, so a caller catching the documented type missed it (Q4.1).
 
 - The README no longer says the runtime is in memory only and durable storage is planned.
 

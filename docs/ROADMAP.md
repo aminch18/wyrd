@@ -90,7 +90,7 @@ The [quality bar](QUALITY.md) is how good Wyrd must be: measured cost, bounded m
 explicit failures, honest tests. **0.5.0 ships only when every rule is enforced, and every later minor (0.6 to 0.9,
 then 1.0) only with the whole bar green.** Baseline and rules: [QUALITY.md](QUALITY.md).
 
-- [ ] Benchmarks, with the scaling and allocation gates in CI (Q1)
+- [x] Benchmarks, with the scaling and allocation gates in CI (Q1)
 - [x] The Shop's stock forgets shipped orders; the guides teach bounded state (Q2.1)
 - [x] A wait's timer is cancelled when the wait ends (Q2.2)
 - [x] Retention for everything a host keeps, in semantics and every host (Q2.3; includes v0.5's instance history
@@ -135,6 +135,8 @@ Work happens on `feature/verdandi` (PR #11), in this order:
       and removed only once the archive confirms; a failed archive keeps the instance for the next pass. Hot tables
       stay small, the process audit trail is kept, and an archived instance still replays as a test
       (`dotnet wyrd replay`). Optional: without an archive, expiring is deleting
+- [x] **Concurrency benchmark** on PostgreSQL (`benchmarks/Wyrd.Benchmarks.Concurrency`): concurrent callers on different
+      keys and on one hot key, and workers draining a backlog; reported, not gated
 
 ## Documentation & adoption (continuous, required before going public)
 

@@ -20,7 +20,7 @@ public static class DurableHost
     /// <summary>The shop on PostgreSQL through EF Core (Verdandi): the same module, now durable.</summary>
     public static void AddDurableShop(this IServiceCollection services, string connectionString)
     {
-        services.AddDbContextFactory<ShopDbContext>(options => options.UseNpgsql(connectionString));
+        services.AddPooledDbContextFactory<ShopDbContext>(options => options.UseNpgsql(connectionString));
         services.AddSingleton(provider => ShopModule.Register(new EfCoreRuntime<ShopDbContext>(
             provider.GetRequiredService<IDbContextFactory<ShopDbContext>>(),
             ShopJson.Default,
