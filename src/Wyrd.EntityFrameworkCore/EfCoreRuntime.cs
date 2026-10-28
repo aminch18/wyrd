@@ -209,11 +209,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                 Wake();
                 return decision;
             }
-            catch (Exception ex) when (attempt < _options.MaxConflictRetries && IsConflict(ex))
+            catch (Exception ex) when (attempt < _options.MaxConflictRetries && !IsIntegrationFailure(ex, call) && IsConflict(ex))
             {
                 LogConflictRetry(command.GetType().Name, attempt);
             }
-            catch (Exception ex) when (ex is not ConcurrencyConflictException && !ReferenceEquals(ex, call?.Failure?.SourceException) && IsConflict(ex))
+            catch (Exception ex) when (ex is not ConcurrencyConflictException && !IsIntegrationFailure(ex, call) && IsConflict(ex))
             {
                 // Out of attempts: a deadlock or a unique key is the same conflict as a stale version, so the caller catches
                 // one type. An integration's own failure is its outcome, rethrown as it was.
@@ -1192,6 +1192,10 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         new(_application.Registry, new EfCoreStore(db, now), _application.Types, () => now, Guid.CreateVersion7, static (_, _) => false, LogStep);
 
     private Dialect DialectOf(DbContext db) => _dialect ??= Dialect.For(db.Database);
+
+    /// <summary>The integration's own failure, rethrown as its outcome: never a conflict of Wyrd's transaction.</summary>
+    private static bool IsIntegrationFailure(Exception ex, IntegrationCall? call) =>
+        ReferenceEquals(ex, call?.Failure?.SourceException);
 
     private bool IsConflict(Exception ex)
     {
