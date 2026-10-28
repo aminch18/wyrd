@@ -71,7 +71,8 @@ export function HowVerdandiWorksDoc() {
                 Business data (<code>states</code>, <code>views</code>) grows
                 with your business, like any table of yours. Everything else is
                 delivery machinery: needed for a while, and then the retention
-                you chose removes it.
+                you chose removes it, except suspended instances and fences,
+                which never expire.
             </p>
 
             <h2>One message, one transaction</h2>
