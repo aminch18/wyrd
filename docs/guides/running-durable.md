@@ -3,7 +3,8 @@
 The same module that runs in memory in your tests runs durable in production. Nothing in your slices, processes or
 projections changes: you swap the host. This guide takes the Shop from `InMemoryRuntime` to the EF Core host
 (`Wyrd.EntityFrameworkCore`, PostgreSQL or SQL Server), then connects services through RabbitMQ (`Wyrd.RabbitMq`).
-The behaviour behind every step is in [How Wyrd behaves](../design/semantics.md).
+The behaviour behind every step is in [How Wyrd behaves](../design/semantics.md), and what happens underneath in
+[How Verdandi works](how-verdandi-works.md).
 
 ## One module, any host
 

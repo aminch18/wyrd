@@ -5,6 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- **How Verdandi works** (`docs/guides/how-verdandi-works.md`, on the website): the durable host underneath, for
+  users: where every piece of data lives, one message as one transaction, workers, duplicates, failures, timers,
+  concurrency limits with measured numbers, and cleanup.
+
 ### Changed
 
 - **Cheaper messages on the EF Core host**: Wyrd's own transactions no longer pay for EF Core's automatic savepoints,
@@ -12,9 +18,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   factory, which the guide and the Shop now use (`AddPooledDbContextFactory`), a message takes about 17% less time
   (2.4 to 2.0 ms on the reference machine) and eight workers handle 40% more messages per second.
 
-### Added
-
-### Changed
 
 - Quality bar: Q2.3 is checked by the retention tests (in memory and on both EF Core databases), not by a retained-memory
   benchmark. A host's size is the application's data plus what its retention keeps; the tests prove each kind expires
@@ -27,6 +30,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - `EfCoreRuntime.SendAsync` throws `ConcurrencyConflictException` when a conflict outlasts `MaxConflictRetries`, whatever
   the database reported (a stale version, a unique key, a deadlock). Before, the last attempt let the provider's
   exception through, so a caller catching the documented type missed it (Q4.1).
+
+- The README no longer says the runtime is in memory only and durable storage is planned.
 
 ## [0.5.0-rc.1] - 2026-10-24
 
