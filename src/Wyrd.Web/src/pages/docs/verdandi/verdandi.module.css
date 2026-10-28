@@ -12,7 +12,8 @@
 /* The theme lives on the app's data-theme attribute; its class names are hashed. */
 :global([data-theme='light']) .figure,
 :global([data-theme='light']) .charts,
-:global([data-theme='light']) .architecture {
+:global([data-theme='light']) .architecture,
+:global([data-theme='light']) .liveArch {
     --spread: #0b8a68;
     --hot: #c4572f;
     --k-code: #1f7fa8;
@@ -22,7 +23,8 @@
     --k-process: #a2671d;
 }
 
-.architecture {
+.architecture,
+.liveArch {
     --k-code: #5bb8e0;
     --k-wyrd: #3fc79f;
     --k-db: #a990f5;
@@ -1348,4 +1350,33 @@
     .queueRows li {
         animation: none;
     }
+}
+
+/* The architecture, live inside a playground */
+.packet {
+    fill: var(--cyan);
+    stroke: var(--surface);
+    stroke-width: 2;
+    filter: drop-shadow(0 0 6px var(--cyan));
+}
+.nodeAlert rect {
+    stroke: var(--danger);
+    stroke-width: 3;
+    fill: color-mix(in srgb, var(--danger) 18%, var(--surface));
+}
+.nodeAlert {
+    opacity: 1 !important;
+}
+.liveArch {
+    margin: 0 0 22px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--bg);
+    overflow-x: auto;
+}
+.liveArch svg {
+    display: block;
+    width: 100%;
+    min-width: 640px;
+    height: auto;
 }

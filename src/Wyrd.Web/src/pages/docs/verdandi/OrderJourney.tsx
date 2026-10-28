@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from 'react'
 import { Clock, Globe, Send, Workflow } from 'lucide-react'
 import { CodeBlock } from '../../../components/common/CodeBlock'
+import { LiveArchitecture, type Path } from './ArchitectureCanvas'
 import { Controls } from './Controls'
 import { useStepper } from './useStepper'
 import css from './verdandi.module.css'
@@ -13,6 +14,8 @@ interface Beat {
     /** The queue after this transaction commits. */
     queue: { label: string; timer?: boolean }[]
     process: { status: string; note?: string } | null
+    /** What this transaction lights up on the architecture. */
+    path: Path
 }
 
 /** guides/how-verdandi-works.md, "One order, end to end", one transaction per beat. */
@@ -36,6 +39,19 @@ const BEATS: Beat[] = [
         writes: ['inbox', 'states', 'events', 'queue'],
         queue: [{ label: 'OrderPlaced' }],
         process: null,
+        path: {
+            edges: ['http', 'send', 'decide', 'tx'],
+            nodes: [
+                'clients',
+                'endpoints',
+                'runtime',
+                'engine',
+                'inbox',
+                'states',
+                'events',
+                'queue',
+            ],
+        },
     },
     {
         who: 'worker',
@@ -53,6 +69,17 @@ const BEATS: Beat[] = [
         writes: ['handled', 'instances', 'queue', 'views'],
         queue: [{ label: 'ReserveStock' }],
         process: { status: 'Running', note: 'started: reserving stock' },
+        path: {
+            edges: ['take', 'workerDecide'],
+            nodes: [
+                'workers',
+                'engine',
+                'queue',
+                'inbox',
+                'instances',
+                'views',
+            ],
+        },
     },
     {
         who: 'worker',
@@ -70,6 +97,10 @@ const BEATS: Beat[] = [
         writes: ['inbox', 'states', 'events', 'queue'],
         queue: [{ label: 'the reply' }],
         process: { status: 'Running', note: 'reserving stock' },
+        path: {
+            edges: ['take', 'workerDecide'],
+            nodes: ['workers', 'engine', 'queue', 'inbox', 'states', 'events'],
+        },
     },
     {
         who: 'worker',
@@ -78,6 +109,10 @@ const BEATS: Beat[] = [
         writes: ['instances', 'queue'],
         queue: [{ label: 'ChargePayment' }],
         process: { status: 'Running', note: 'charging the payment' },
+        path: {
+            edges: ['take', 'workerDecide'],
+            nodes: ['workers', 'engine', 'queue', 'instances'],
+        },
     },
     {
         who: 'worker',
@@ -98,6 +133,10 @@ const BEATS: Beat[] = [
             status: 'Awaiting',
             note: 'PaymentConfirmed, 15 minutes at most',
         },
+        path: {
+            edges: ['take', 'workerDecide'],
+            nodes: ['workers', 'engine', 'queue', 'instances'],
+        },
     },
     {
         who: 'outside',
@@ -116,6 +155,10 @@ const BEATS: Beat[] = [
             status: 'Awaiting',
             note: 'PaymentConfirmed, 15 minutes at most',
         },
+        path: {
+            edges: ['receive', 'tx'],
+            nodes: ['services', 'runtime', 'queue'],
+        },
     },
     {
         who: 'worker',
@@ -133,6 +176,10 @@ const BEATS: Beat[] = [
         writes: ['handled', 'instances', 'queue'],
         queue: [{ label: 'ShipOrder' }],
         process: { status: 'Running', note: 'shipping' },
+        path: {
+            edges: ['take', 'workerDecide'],
+            nodes: ['workers', 'engine', 'queue', 'inbox', 'instances'],
+        },
     },
     {
         who: 'worker',
@@ -146,6 +193,7 @@ const BEATS: Beat[] = [
         writes: [],
         queue: [],
         process: { status: 'Completed' },
+        path: { edges: ['take'], nodes: ['workers', 'queue', 'instances'] },
     },
 ]
 
@@ -174,6 +222,10 @@ export function OrderJourney({ source }: { source: string }) {
 
     return (
         <figure className={`${css.figure} ${css.big}`}>
+            <LiveArchitecture
+                path={beat?.path}
+                label="The architecture, lit by the order's current transaction"
+            />
             <div className={css.journey}>
                 <ol
                     className={css.timeline}

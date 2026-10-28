@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Lock, RotateCcw, Zap } from 'lucide-react'
+import { LiveArchitecture, type Path } from './ArchitectureCanvas'
 import { Controls } from './Controls'
 import { useStepper } from './useStepper'
 import css from './verdandi.module.css'
@@ -43,6 +44,25 @@ const STEPS = [
     {
         code: 'COMMIT',
         say: 'All of it happens at once: the state, the event, the reply for the process, the view and the outcome.',
+    },
+]
+
+/** What each line of the transaction lights up on the architecture. */
+const PATHS: (Path | undefined)[] = [
+    undefined,
+    { edges: [], nodes: ['workers'] },
+    { edges: ['take'], nodes: ['workers', 'queue'] },
+    { edges: ['take'], nodes: ['workers', 'inbox'] },
+    { edges: ['take'], nodes: ['workers', 'states'] },
+    { edges: ['workerDecide'], nodes: ['workers', 'engine'] },
+    {
+        edges: ['take'],
+        nodes: ['workers', 'inbox', 'states', 'events', 'queue', 'views'],
+    },
+    { edges: ['take'], nodes: ['workers', 'queue'] },
+    {
+        edges: ['take'],
+        nodes: ['workers', 'inbox', 'states', 'events', 'queue', 'views'],
     },
 ]
 
@@ -110,6 +130,15 @@ export function MessageLifecycle() {
 
     return (
         <figure className={`${css.figure} ${css.big}`}>
+            <LiveArchitecture
+                path={
+                    crashed
+                        ? { edges: [], nodes: ['workers', 'queue'] }
+                        : PATHS[step]
+                }
+                alert={crashed ? ['workers'] : undefined}
+                label="The architecture, lit by the message's current step"
+            />
             <ol className={css.attempts} aria-label="Attempts">
                 <li
                     className={

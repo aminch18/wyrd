@@ -1,4 +1,5 @@
 import { useState, type KeyboardEvent, type ReactNode } from 'react'
+import { LiveArchitecture, type Path } from './ArchitectureCanvas'
 import { Controls } from './Controls'
 import { useStepper } from './useStepper'
 import css from './verdandi.module.css'
@@ -298,11 +299,102 @@ const SCENARIOS: Scenario[] = [
     },
 ]
 
+/** What each beat lights up on the architecture, and what is in trouble then. */
+const LIVE: Record<string, { path: Path; alert?: string[] }[]> = {
+    version: [
+        { path: { edges: ['take'], nodes: ['workers', 'states'] } },
+        { path: { edges: ['take'], nodes: ['workers', 'states'] } },
+        { path: { edges: ['take'], nodes: ['workers', 'states'] } },
+        {
+            path: { edges: ['take'], nodes: ['workers', 'states'] },
+            alert: ['workers'],
+        },
+        {
+            path: {
+                edges: ['take', 'workerDecide'],
+                nodes: ['workers', 'engine', 'states'],
+            },
+        },
+    ],
+    send: [
+        {
+            path: {
+                edges: ['send', 'decide', 'tx'],
+                nodes: ['endpoints', 'runtime', 'engine', 'states'],
+            },
+        },
+        {
+            path: { edges: ['tx'], nodes: ['runtime', 'states'] },
+            alert: ['states'],
+        },
+        {
+            path: { edges: ['tx'], nodes: ['runtime', 'states'] },
+            alert: ['states'],
+        },
+        {
+            path: { edges: ['tx'], nodes: ['runtime', 'states'] },
+            alert: ['runtime'],
+        },
+        {
+            path: { edges: ['send'], nodes: ['endpoints', 'runtime'] },
+            alert: ['endpoints'],
+        },
+    ],
+    step: [
+        {
+            path: { edges: ['take'], nodes: ['workers', 'queue', 'instances'] },
+            alert: ['workers'],
+        },
+        {
+            path: {
+                edges: ['take', 'workerDecide'],
+                nodes: ['workers', 'engine', 'queue', 'instances'],
+            },
+        },
+        {
+            path: { edges: ['take'], nodes: ['workers', 'instances'] },
+            alert: ['workers'],
+        },
+        { path: { edges: [], nodes: ['instances'] }, alert: ['instances'] },
+        { path: { edges: ['take'], nodes: ['workers', 'queue', 'instances'] } },
+    ],
+    handler: [
+        {
+            path: { edges: ['take'], nodes: ['workers', 'queue'] },
+            alert: ['workers'],
+        },
+        { path: { edges: ['take'], nodes: ['workers', 'queue'] } },
+        { path: { edges: ['take'], nodes: ['workers', 'queue'] } },
+        {
+            path: { edges: ['take'], nodes: ['workers', 'dead'] },
+            alert: ['dead'],
+        },
+        { path: { edges: [], nodes: ['dead'] } },
+    ],
+    integration: [
+        { path: { edges: ['take'], nodes: ['workers', 'queue'] } },
+        { path: { edges: ['call'], nodes: ['workers', 'systems'] } },
+        {
+            path: { edges: ['call'], nodes: ['workers', 'systems'] },
+            alert: ['workers'],
+        },
+        {
+            path: {
+                edges: ['take'],
+                nodes: ['workers', 'states', 'events', 'queue', 'inbox'],
+            },
+        },
+        { path: { edges: ['call'], nodes: ['systems'] } },
+    ],
+}
+
 export function FailureScenarios() {
     const [active, setActive] = useState(0)
     const scenario = SCENARIOS[active]
     const last = scenario.beats.length
     const stepper = useStepper(last, 1300)
+    const live =
+        stepper.step > 0 ? LIVE[scenario.id]?.[stepper.step - 1] : undefined
 
     const select = (index: number) => {
         setActive(index)
@@ -319,7 +411,12 @@ export function FailureScenarios() {
     }
 
     return (
-        <figure className={css.figure}>
+        <figure className={`${css.figure} ${css.big}`}>
+            <LiveArchitecture
+                path={live?.path}
+                alert={live?.alert}
+                label="The architecture, lit by the failure's current moment"
+            />
             <div
                 role="tablist"
                 aria-label="Failure scenarios"
