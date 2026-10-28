@@ -61,7 +61,8 @@ migrations and can commit in the same transaction as your own tables.
 | `dead_letters` | Messages that gave up after their delivery attempts | `DeadLetters` |
 
 Business data (`states`, `views`) grows with your business, like any table of yours. Everything else is delivery
-machinery: it is needed for a while, and then the retention you chose removes it.
+machinery: it is needed for a while, and then the retention you chose removes it, except suspended instances and
+fences, which never expire (*Retention and cleanup*).
 
 ## One order, end to end
 
@@ -147,15 +148,16 @@ order that exists is rejected, not placed again.
   rolls back and handles the message again against what the winner wrote. It is not a failure: nothing is counted, and
   nothing is lost.
 - **A command sent from your code** (`SendAsync`) that conflicts is tried again at once, up to `MaxConflictRetries`
-  (5) attempts in all. A conflict that outlasts them (a stale version, a unique key, a deadlock) reaches the caller as
+  attempts in all (5 by default). A conflict that outlasts them (a stale version, a unique key, a deadlock) reaches the caller as
   a `ConcurrencyConflictException`, and Wyrd wrote nothing; an integration command's outside call may have been made
   already, and sending the command again is a new message with a new idempotency key.
 - **A process step that fails** goes back to its process, which applies the step's own retry policy (`.Retry(...)`).
-  When the retries run out the instance is suspended for an operator, who resumes or compensates it; a step your
+  When the retries run out the instance is suspended for an operator, who resumes or compensates it, unless the step
+  opted into compensating on its own (`.Retry(3.Times).OrCompensate()`); a step your
   code *rejects* (a business decision) is compensated at once. The host never retries a process command behind the
   process's back: there is one retry layer.
 - **Anything else that throws** (an event handler, a reply) is tried again later, with a growing delay, and after
-  `MaxDeliveryAttempts` (10) it moves to `dead_letters` for someone to look at.
+  `MaxDeliveryAttempts` (10 by default) it moves to `dead_letters` for someone to look at.
 - **The database is down.** Workers log it and try again; queued messages are safe in the table.
 
 ## Timers
