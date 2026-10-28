@@ -230,12 +230,15 @@ Delivery machinery is removed when the [retention](running-durable.md) you chose
 retention, and some things never expire: a suspended instance waits for an operator, and a fence (a command given up
 on without knowing whether it ran) stays blocked forever.
 
-Cleanup deletes in batches of 1,000 rows, each its own short statement, so it never holds many locks. It runs in the
-workers: every minute, each process's workers remove a bounded amount between messages.
+Cleanup runs in the workers, between messages: every `CleanupInterval` (one minute by default), a pass removes a
+bounded amount, in batches of 1,000 rows (100 finished instances when there is a history archive), each batch short
+so it holds few locks for a short time.
 
 With a history archive (`IHistoryArchive`), a finished instance's history is handed to it before the row is removed,
 and the row is removed only once the archive returned: a failed archive keeps it for the next pass. Delivery is at least
-once, so an archive must accept the same history twice.
+once, so an archive must accept the same history twice. A failed batch is tried again, oldest first, so a history the
+archive can never store blocks the removal of the instances behind it: the archive must store it elsewhere rather than
+fail for it.
 
 ## What to watch
 
