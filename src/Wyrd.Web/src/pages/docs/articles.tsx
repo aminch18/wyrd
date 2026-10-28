@@ -3,6 +3,7 @@ import { QuickStartDoc } from './QuickStartDoc'
 import { OverviewDoc } from './OverviewDoc'
 import { ReadModelsDoc } from './ReadModelsDoc'
 import { RunningDurableDoc } from './RunningDurableDoc'
+import { HowVerdandiWorksDoc } from './HowVerdandiWorksDoc'
 import { ApiReferenceDoc } from './ApiReferenceDoc'
 import { FromDddDoc } from './FromDddDoc'
 import { MessagesDoc } from './MessagesDoc'
@@ -23,6 +24,7 @@ export const DOC_COMPONENTS: Record<string, ComponentType> = {
     'from-ddd': FromDddDoc,
     'read-models': ReadModelsDoc,
     'running-durable': RunningDurableDoc,
+    'how-verdandi-works': HowVerdandiWorksDoc,
     'api-reference': ApiReferenceDoc,
     messages: MessagesDoc,
     processes: ProcessesDoc,

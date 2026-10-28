@@ -5,6 +5,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- **How Verdandi works** (`docs/guides/how-verdandi-works.md`, on the website): the durable host underneath, for
+  users: where every piece of data lives, one message as one transaction, workers, duplicates, failures, timers,
+  concurrency limits with measured numbers, and cleanup.
+
+### Fixed
+
+- The README no longer says the runtime is in memory only and durable storage is planned.
+
 ## [0.5.0-rc.1] - 2026-10-24
 
 Verdandi: the durable runtime. A release candidate: the whole quality bar is green except Q2.3's retained-memory

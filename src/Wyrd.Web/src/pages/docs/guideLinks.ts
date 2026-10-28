@@ -6,6 +6,7 @@ const GUIDE_ROUTES: Record<string, string> = {
     'from-ddd-to-wyrd.md': routePath('docs', 'from-ddd'),
     'read-models.md': routePath('docs', 'read-models'),
     'running-durable.md': routePath('docs', 'running-durable'),
+    'how-verdandi-works.md': routePath('docs', 'how-verdandi-works'),
 }
 
 /** Resolve links against the Markdown file, rather than the deployed site URL. */
