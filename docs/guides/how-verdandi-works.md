@@ -97,7 +97,9 @@ the rest of the process.
 
 ## One message, one transaction
 
-Every message is handled in one transaction that also takes it off the queue:
+Every message is handled in one transaction that also takes it off the queue. Integrations are the exception: a queued
+call to another system is made with no transaction open ([Duplicates](#duplicates)), and an integration command sent
+with `SendAsync(command, context)` calls the other system inside your transaction.
 
 ```text
 BEGIN
@@ -126,14 +128,18 @@ its next look.
 ## Duplicates
 
 Messages are delivered at least once: a worker can crash after doing the work and before committing, a broker can
-deliver twice, a caller can retry. Effects happen once:
+deliver twice. Effects happen once, for as long as the `Deduplication` retention remembers a message id:
 
 - **Commands**: the `inbox` keeps each command's outcome by message id. A duplicate gets the stored answer and changes
   nothing. Two workers racing on the same command both try to insert the inbox row: one wins, the other rolls back.
 - **Events**: the `handled` table remembers each event's id; a duplicate is ignored.
 - **Calls to other systems** (integrations): the call is made with no transaction open, under a lease, and its outcome
-  recorded in a second transaction. The other system gets an idempotency key, the same on every attempt, so a second
-  call never repeats the charge.
+  recorded in a second transaction. The integration gets an idempotency key, the same on every attempt: pass it to
+  the other system, and if that system honours it, a second call never repeats the charge.
+
+A caller retrying is not a duplicate: every `SendAsync` is a new message with a new id. If your client may send the
+same command twice (a lost HTTP response, a retry), make the command idempotent in your domain: a `PlaceOrder` for an
+order that exists is rejected, not placed again.
 
 ## When things fail
 
@@ -203,7 +209,7 @@ What it means in practice:
   the stock of a SKU into buckets, or let a process serialize the requests).
 - More workers drain a backlog faster when its messages are for different keys; on one hot key they mostly take turns.
 - **Latency to the database is what a message costs.** PostgreSQL itself spends about 0.1 ms on one; the rest is
-  round trips (about 6 per message, the commit included) and the client's own work (about 0.6 ms, mostly EF Core).
+  round trips (about 6 per message, the commit included) and the client's own work (about 0.6 ms: the engine, EF Core and JSON).
   Keep the database close to the workers, and register the context factory pooled (`AddPooledDbContextFactory`).
 
 ## Retention and cleanup
@@ -222,7 +228,10 @@ of two places:
   (`RunCleanupAsync`, or `ForgetExpiredAsync` from a scheduled job) removes what expired. With many instances of an
   API, they don't all clean the same tables at once.
 
-With a history archive (`IHistoryArchive`), a finished instance's history is handed to it before the row is removed.
+With a history archive (`IHistoryArchive`), a finished instance's history is handed to it before the row is removed,
+and the row is removed only once the archive returned: a failed archive keeps it for the next pass. Delivery is at least
+once, so an archive must accept the same history twice. It goes on the runtime that cleans: with a separate cleaner,
+register it there.
 
 ## What to watch
 
