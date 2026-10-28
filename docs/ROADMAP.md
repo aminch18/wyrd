@@ -135,6 +135,8 @@ Work happens on `feature/verdandi` (PR #11), in this order:
       and removed only once the archive confirms; a failed archive keeps the instance for the next pass. Hot tables
       stay small, the process audit trail is kept, and an archived instance still replays as a test
       (`dotnet wyrd replay`). Optional: without an archive, expiring is deleting
+- [x] **Concurrency benchmark** on PostgreSQL (`benchmarks/Wyrd.Benchmarks.Concurrency`): concurrent callers on different
+      keys and on one hot key, and workers draining a backlog; reported, not gated
 
 ## Documentation & adoption (continuous, required before going public)
 

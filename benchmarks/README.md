@@ -104,3 +104,91 @@ BenchmarkDotNet, `--job short` (3 warmups, 3 iterations: wide intervals, informa
 | SkuPerOrder | 79.85 us | 150.18 us | 71.76 KB | 79.23 KB |
 | Compensated | 97.14 us | 113.11 us | 60.08 KB | 65.33 KB |
 | Timers | 115.09 us | 125.18 us | 75.72 KB | 83.00 KB |
+
+## Concurrency on PostgreSQL
+
+`Wyrd.Benchmarks.Concurrency` runs the Shop on the durable host (`EfCoreRuntime`) against a real PostgreSQL: a
+container by default (Docker required), or the database of `--connection`. Each run gets a new database.
+
+```bash
+dotnet run -c Release --project benchmarks/Wyrd.Benchmarks.Concurrency
+dotnet run -c Release --project benchmarks/Wyrd.Benchmarks.Concurrency -- --connection "Host=...;Database=..." --commands 2000 --orders 1000
+```
+
+- **Commands** is what an API sees: N callers at once, each sending the next `SendAsync` as soon as its last one
+  returned, on the one runtime of the process. *Spread*: every command is a `PlaceOrder` for a different order.
+  *Hot*: every command is a `Restock` of the same SKU, so every transaction writes the same row. Latency is per call,
+  conflict retries included. *Failed* is a call that still conflicted after `MaxConflictRetries` (5); *typed* means the
+  caller got a `ConcurrencyConflictException`, *untyped* a provider exception (there should be none).
+- **Workers** is a backlog: every order is placed and paid first, then N workers, each in a runtime of its own (as N
+  instances of a service would), handle everything until every order is shipped, which is checked. *Messages* comes from
+  the runtime's own `wyrd.messages.handled` counter; *conflicts retried* from its log.
+
+`--profile` shows where a worker's time goes instead: one worker handles a backlog of `--orders` orders, and every
+command, commit and EF Core savepoint it runs is counted and timed on the client (a command's time includes its round
+trip), next to the cheapest round trip to the server (`SELECT 1`). `--synchronous-commit off` starts the container
+with commits that don't wait for the disk, to see what that wait costs (never in production).
+
+Throughput and latency depend on the machine and the database: they are reported, never gated (Q1.4). Run on a quiet
+machine; a container on a laptop is not a production database, so compare runs, don't quote them as capacity.
+
+### 0.5 (Verdandi)
+
+PostgreSQL 17.11 in Docker Desktop (8.7 GB), .NET 10.0.5, Apple M3 Pro (11 cores), Release, 2026-10-27, connection
+pool of 100:
+
+#### Commands: 2,000 SendAsync calls per run, from N concurrent callers
+
+| Keys | Callers | Commands/s | p50 ms | p95 ms | p99 ms | Conflicts retried | Failed: typed | Failed: untyped |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| spread | 1 | 495 | 1.9 | 2.7 | 4.4 | 0 | 0 | 0 |
+| spread | 8 | 2624 | 2.9 | 4.4 | 5.1 | 0 | 0 | 0 |
+| spread | 32 | 3624 | 8.7 | 12.2 | 15.1 | 0 | 0 | 0 |
+| spread | 128 | 3262 | 38.1 | 49.0 | 55.7 | 0 | 0 | 0 |
+| hot (one SKU) | 1 | 652 | 1.5 | 2.0 | 2.4 | 0 | 0 | 0 |
+| hot (one SKU) | 8 | 587 | 17.3 | 24.1 | 36.2 | 4,798 | 1,014 | 0 |
+| hot (one SKU) | 32 | 497 | 74.6 | 101.9 | 116.4 | 6,344 | 1,271 | 0 |
+| hot (one SKU) | 128 | 397 | 322.1 | 584.6 | 697.7 | 6,541 | 1,335 | 0 |
+
+#### Workers: 1,000 orders placed and paid, then handled to the end by N workers
+
+| Keys | Workers | Orders/s | Messages/s | Messages | Conflicts retried |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| spread | 1 | 29 | 491 | 17,000 | 0 |
+| spread | 2 | 51 | 875 | 17,000 | 0 |
+| spread | 4 | 74 | 1252 | 17,000 | 0 |
+| spread | 8 | 99 | 1676 | 17,000 | 0 |
+| hot (one SKU) | 1 | 29 | 466 | 16,001 | 0 |
+| hot (one SKU) | 2 | 50 | 794 | 16,001 | 1,994 |
+| hot (one SKU) | 4 | 59 | 951 | 16,001 | 5,983 |
+| hot (one SKU) | 8 | 63 | 1001 | 16,001 | 13,151 |
+
+What the numbers say:
+
+- Different keys scale with callers until the connection pool is the limit: from 32 to 128 callers throughput stays
+  flat and latency grows, since requests wait for one of the 100 connections.
+- One key takes one write at a time. With 8 or more callers on it, half or more of the calls run out of retries:
+  `SendAsync` retries a conflict at once, so the callers that lost keep colliding with each other.
+- Eight workers drain a spread backlog 3.4 times faster than one. On one hot SKU they plateau: the extra workers
+  mostly roll back and take turns. Workers never fail on a conflict, they handle the message again.
+
+#### Profile: where one message's time goes
+
+300 orders, one worker, 2026-10-27. The same profile from the macOS host (Docker Desktop forwards every round trip into
+its VM) and from a Linux container next to PostgreSQL on the same Docker network:
+
+| | macOS host | Linux container |
+| --- | ---: | ---: |
+| Cheapest round trip (`SELECT 1`) | 0.152 ms | 0.062 ms |
+| Wall time per message | 2.42 ms | 1.69 ms |
+| Commands per message | 6.1 (57% of the time) | 6.1 (39%) |
+| Commits per message | 1.0 (7%) | 1.0 (15%) |
+| EF Core savepoints per message | 1.8 | 1.8 |
+| Everything else per message (engine, EF Core, JSON, savepoints) | 0.87 ms | 0.78 ms |
+
+- The disk is not the cost: with `synchronous_commit=off` the commit share stays at 7% and the wall time doesn't drop.
+- Round trips are: about 9 per message (6 commands, the commit, and EF Core's automatic savepoint around each
+  `SaveChanges`). Every millisecond of latency to the database costs about 9 ms per message.
+- The client's own work is the rest, about 0.8 ms per message, half of it in EF Core (query pipeline, change tracking,
+  context creation). The engine itself is not visible: in memory the same Shop handles about 10,000 orders/s.
+- An order of the Shop is 17 messages, so 17 times all of the above.

@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- **Concurrency benchmark on PostgreSQL** (`benchmarks/Wyrd.Benchmarks.Concurrency`): the Shop on the durable host,
+  with N concurrent `SendAsync` callers (different keys, and one hot key) and N workers draining a backlog. Results
+  in `benchmarks/README.md`: different keys reach about 3,600 commands/s at 32 callers; one hot key takes one write at
+  a time, and with 8 or more callers half or more of the calls run out of conflict retries.
+
 ## [0.5.0-rc.1] - 2026-10-24
 
 Verdandi: the durable runtime. A release candidate: the whole quality bar is green except Q2.3's retained-memory
