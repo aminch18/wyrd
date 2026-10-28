@@ -1143,3 +1143,209 @@
         animation: none;
     }
 }
+
+/* One order, end to end */
+.journey {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+.timeline {
+    position: relative;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.timeline::before {
+    position: absolute;
+    top: 14px;
+    bottom: 14px;
+    left: 15px;
+    width: 2px;
+    background: var(--line);
+    content: '';
+}
+.tx button {
+    position: relative;
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 14px;
+    width: 100%;
+    margin: 0 0 6px;
+    padding: 8px 12px 8px 0;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--copy);
+    text-align: left;
+    cursor: pointer;
+    transition:
+        opacity 250ms ease,
+        background-color 250ms ease;
+}
+.tx button:focus-visible {
+    outline: 2px solid var(--cyan);
+}
+.txDot {
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: 2px solid var(--line);
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--muted);
+    transition:
+        border-color 250ms ease,
+        background-color 250ms ease;
+}
+.who-api {
+    --who: var(--k-code, #5bb8e0);
+}
+.who-worker {
+    --who: var(--cyan);
+}
+.who-outside {
+    --who: var(--gold);
+}
+.txBody {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding-top: 4px;
+}
+.txWho {
+    color: var(--muted);
+    font:
+        600 11px/1.4 'JetBrains Mono',
+        monospace;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.txTitle {
+    color: var(--heading);
+    font-size: 15px;
+    line-height: 1.45;
+}
+.txDetail {
+    margin-top: 4px;
+    color: var(--copy);
+    font-size: 15px;
+    line-height: 1.6;
+}
+.txWrites {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+.txWrites code {
+    padding: 2px 8px;
+    border: 1px solid color-mix(in srgb, var(--cyan) 50%, transparent);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--cyan) 10%, transparent);
+    color: var(--heading);
+    font-size: 12px;
+}
+.txLater button {
+    opacity: 0.45;
+}
+.txDone .txDot,
+.txNow .txDot {
+    border-color: var(--who);
+    color: var(--who);
+}
+.txNow button {
+    padding-top: 12px;
+    padding-bottom: 14px;
+    background: color-mix(in srgb, var(--who) 8%, transparent);
+}
+.txNow .txDot {
+    background: color-mix(in srgb, var(--who) 22%, var(--surface));
+}
+.journeyState {
+    position: sticky;
+    top: 100px;
+    display: grid;
+    gap: 12px;
+}
+.statePanel {
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg);
+}
+.statePanel p {
+    margin: 0;
+    color: var(--copy);
+    font:
+        500 14px/1.5 'JetBrains Mono',
+        monospace;
+}
+.statePanel small {
+    display: block;
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+.stateOk {
+    color: var(--cyan) !important;
+}
+.empty {
+    color: var(--muted) !important;
+}
+.queueRows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.queueRows li {
+    animation: arrive 450ms ease;
+}
+.queueRows li:last-child {
+    margin-bottom: 0;
+}
+@keyframes arrive {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+}
+.timerRow {
+    border-style: dashed !important;
+    border-color: var(--gold) !important;
+    color: var(--gold) !important;
+}
+.status-Running strong {
+    color: var(--cyan);
+}
+.status-Awaiting strong {
+    color: var(--gold);
+}
+.status-Completed strong {
+    color: var(--cyan);
+}
+.textVersion {
+    margin-top: 18px;
+}
+.textVersion summary {
+    color: var(--muted);
+    font-size: 14px;
+    cursor: pointer;
+}
+@media (max-width: 760px) {
+    .journey {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .journeyState {
+        position: static;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .queueRows li {
+        animation: none;
+    }
+}

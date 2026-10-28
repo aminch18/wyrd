@@ -1,5 +1,4 @@
 import source from '../../../../../docs/guides/how-verdandi-works.md?raw'
-import { CodeBlock } from '../../components/common/CodeBlock'
 import { DocArticle } from './DocArticle'
 import { guideLink } from './guideLinks'
 import { ArchitectureDiagram } from './verdandi/ArchitectureDiagram'
@@ -8,6 +7,7 @@ import { CleanupTopology } from './verdandi/CleanupTopology'
 import { DataMap } from './verdandi/DataMap'
 import { FailureScenarios } from './verdandi/FailureScenarios'
 import { MessageLifecycle } from './verdandi/MessageLifecycle'
+import { OrderJourney } from './verdandi/OrderJourney'
 import { SkipLocked } from './verdandi/SkipLocked'
 import css from './verdandi/verdandi.module.css'
 
@@ -80,7 +80,7 @@ export function HowVerdandiWorksDoc() {
                 same transaction and handled by workers right after, so the
                 request never waits for the rest of the process:
             </p>
-            <CodeBlock code={ORDER} language="text" title="the Shop’s order" />
+            <OrderJourney source={ORDER} />
 
             <h2>Many workers, many instances</h2>
             <p>
