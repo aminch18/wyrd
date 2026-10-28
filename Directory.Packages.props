@@ -16,6 +16,9 @@
     <PackageVersion Include="Microsoft.VisualStudio.Threading.Analyzers" Version="18.7.23" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
 
+    <!-- Telecom API vertical endpoints -->
+    <PackageVersion Include="MinApiLib.Endpoints" Version="10.0.1" />
+
     <!-- Shop.Api diagnostic export -->
     <PackageVersion Include="OpenTelemetry.Exporter.Console" Version="1.20.1" />
 

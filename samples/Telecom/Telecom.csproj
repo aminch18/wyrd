@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="MinApiLib.Endpoints" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <ProjectReference Include="../../src/Wyrd/Wyrd.csproj" />
+    <ProjectReference Include="../../src/Wyrd.EntityFrameworkCore/Wyrd.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="../../src/Wyrd.Analyzers/Wyrd.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Features/Workspace/Ui/*" />
+  </ItemGroup>
+  <Import Project="../../src/Wyrd/build/Wyrd.props" />
+</Project>
