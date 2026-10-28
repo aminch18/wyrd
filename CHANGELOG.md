@@ -21,6 +21,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - Telecom sample rejects malformed webhook payloads before queuing, returns HTTP 400 for invalid commands, requires sequential payment reviews, validates operator incident ownership, and retries smoke-test connection failures. Provider replies without receipts follow technical retry handling. Local Compose binds the API to loopback; workspace URL decoding and small-text contrast are corrected.
 
+- `EfCoreRuntime.SendAsync` throws `ConcurrencyConflictException` when a conflict outlasts `MaxConflictRetries`, whatever
+  the database reported (a stale version, a unique key, a deadlock). Before, the last attempt let the provider's
+  exception through, so a caller catching the documented type missed it (Q4.1).
+
 ## [0.5.0-rc.1] - 2026-10-24
 
 Verdandi: the durable runtime. A release candidate: the whole quality bar is green except Q2.3's retained-memory

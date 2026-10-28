@@ -177,7 +177,10 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     /// <summary>
     /// Executes a command coming from outside (an API call, a UI action...) in its own transaction and returns the
-    /// decision. What it causes — events, process steps — is queued and handled by the workers.
+    /// decision. What it causes — events, process steps — is queued and handled by the workers. A concurrency conflict is
+    /// tried again, up to <see cref="EfCoreRuntimeOptions.MaxConflictRetries"/> attempts in all; after that it surfaces as a
+    /// <see cref="ConcurrencyConflictException"/> and Wyrd wrote nothing. An integration command's outside call may have
+    /// been made already: sending the command again is a new message, with a new idempotency key.
     /// </summary>
     [SuppressMessage("ApiDesign", "RS0026", Justification = "The overloads ship together in the package's first release and never bind ambiguously.")]
     public async Task<Decision> SendAsync(ICommand command, CancellationToken cancellationToken = default)
@@ -206,9 +209,16 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                 Wake();
                 return decision;
             }
-            catch (Exception ex) when (attempt < _options.MaxConflictRetries && IsConflict(ex))
+            catch (Exception ex) when (attempt < _options.MaxConflictRetries && !IsIntegrationFailure(ex, call) && IsConflict(ex))
             {
                 LogConflictRetry(command.GetType().Name, attempt);
+            }
+            catch (Exception ex) when (ex is not ConcurrencyConflictException && !IsIntegrationFailure(ex, call) && IsConflict(ex))
+            {
+                // Out of attempts: a deadlock or a unique key is the same conflict as a stale version, so the caller catches
+                // one type. An integration's own failure is its outcome, rethrown as it was.
+                throw new ConcurrencyConflictException(
+                    $"{command.GetType().Name} still conflicted after {(attempt == 1 ? "1 attempt" : $"{attempt} attempts")}; Wyrd wrote nothing.", ex);
             }
         }
     }
@@ -1182,6 +1192,10 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         new(_application.Registry, new EfCoreStore(db, now), _application.Types, () => now, Guid.CreateVersion7, static (_, _) => false, LogStep);
 
     private Dialect DialectOf(DbContext db) => _dialect ??= Dialect.For(db.Database);
+
+    /// <summary>The integration's own failure, rethrown as its outcome: never a conflict of Wyrd's transaction.</summary>
+    private static bool IsIntegrationFailure(Exception ex, IntegrationCall? call) =>
+        ReferenceEquals(ex, call?.Failure?.SourceException);
 
     private bool IsConflict(Exception ex)
     {
