@@ -14,6 +14,19 @@ using Wyrd.Runtime;
 using Shop.Api.Durable;
 #endif
 
+#if WYRD_EFCORE
+// `Shop.Api cleanup` is the same build as a separate service that only removes what the retention no longer keeps; the
+// API then runs with Wyrd__Cleanup=Separate, and its workers only handle messages.
+if (args is ["cleanup", ..])
+{
+    var cleaner = Host.CreateApplicationBuilder(args[1..]);
+    cleaner.Services.AddShopCleaner(cleaner.Configuration.GetConnectionString("Wyrd")
+        ?? throw new InvalidOperationException("The cleaner needs the Wyrd connection string (ConnectionStrings__Wyrd)."));
+    await cleaner.Build().RunAsync();
+    return;
+}
+
+#endif
 // Export is opt-in; Wyrd itself only depends on the BCL ActivitySource APIs.
 using var traces = Environment.GetEnvironmentVariable("OTEL_EXPORTER") == "console"
     ? Sdk.CreateTracerProviderBuilder()
@@ -54,7 +67,9 @@ if (connectionString is null)
 else
 {
 #if WYRD_EFCORE
-    builder.Services.AddDurableShop(connectionString);
+    // Who removes what expired: the workers (the default), or the separate cleaner above.
+    var cleanup = Enum.Parse<Wyrd.EntityFrameworkCore.CleanupMode>(builder.Configuration["Wyrd:Cleanup"] ?? "Workers", ignoreCase: true);
+    builder.Services.AddDurableShop(connectionString, cleanup);
 #else
     throw new InvalidOperationException(
         "A Wyrd connection string is configured, but this build is the in-memory shop: build with -p:WyrdHost=EfCore for the durable one.");

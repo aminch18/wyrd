@@ -814,6 +814,74 @@ public abstract class EfCoreRuntimeTests(Database database)
         Assert.Equal(1, (await shop.ViewAsync<OrderSummary>("A-1")) is null ? 0 : 1); // read models are the application's
     }
 
+    [Theory]
+    [InlineData(CleanupMode.Workers)]
+    [InlineData(CleanupMode.Separate)]
+    public async Task cleanup_runs_in_the_workers_or_in_a_separate_service(CleanupMode mode)
+    {
+        var clock = Database.Clock();
+        var contexts = await database.NewAsync();
+        var week = new Retention
+        {
+            Deduplication = Keep.For(TimeSpan.FromDays(7)),
+            FinishedInstances = Keep.For(TimeSpan.FromDays(7)),
+            RelayedMessages = Keep.For(TimeSpan.FromDays(7)),
+            Events = Keep.Forever("the record of what happened"),
+            DeadLetters = Keep.For(TimeSpan.FromDays(7)),
+        };
+        using var shop = ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(
+            contexts, ShopJson.Default, week, Database.Options with { Cleanup = mode }, clock));
+        await ShipAsync(shop, "A-1");
+        clock.Advance(TimeSpan.FromDays(7));
+
+        using var stop = new CancellationTokenSource();
+        var worker = shop.RunAsync(stop.Token);
+        try
+        {
+            var started = Stopwatch.StartNew();
+            while (shop.IdleWaits == 0) // one whole loop: messages, relay, cleanup when it is the workers' job, health
+            {
+                Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), "the worker never went idle");
+                await Task.Delay(TimeSpan.FromMilliseconds(10));
+            }
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await worker;
+        }
+
+        var afterWorker = await CountAsync(contexts);
+        if (mode == CleanupMode.Workers)
+        {
+            Assert.Equal((0, 0, 0), (afterWorker.Inbox, afterWorker.Handled, afterWorker.Published));
+            return;
+        }
+
+        Assert.All([afterWorker.Inbox, afterWorker.Handled, afterWorker.Published], count => Assert.NotEqual(0, count));
+        Assert.Equal(2, (await shop.HealthAsync()).ExpiredKept); // nothing cleans yet, and the health says so
+
+        using var stopCleaner = new CancellationTokenSource();
+        var cleaner = shop.RunCleanupAsync(stopCleaner.Token);
+        try
+        {
+            var started = Stopwatch.StartNew();
+            while (await CountAsync(contexts) is not (0, 0, 0, _))
+            {
+                Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), "the cleaner removed nothing");
+                await Task.Delay(TimeSpan.FromMilliseconds(20));
+            }
+        }
+        finally
+        {
+            await stopCleaner.CancelAsync();
+            await cleaner;
+        }
+
+        Assert.Null(await shop.StatusOfAsync(Fulfillment, "A-1"));
+        Assert.Equal(0, (await shop.HealthAsync()).ExpiredKept);
+    }
+
     [Fact]
     public async Task a_suspended_instance_never_expires()
     {
