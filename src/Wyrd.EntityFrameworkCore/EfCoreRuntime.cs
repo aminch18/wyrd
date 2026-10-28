@@ -158,7 +158,8 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     /// <summary>
     /// Hands the histories of finished instances to <paramref name="archive"/> before retention removes them, outside any
-    /// transaction; an instance is removed only once its history is archived.
+    /// transaction; an instance is removed only once its history is archived. Only the runtime that cleans uses it: with
+    /// <see cref="CleanupMode.Separate"/>, register it on the cleaner's runtime.
     /// </summary>
     public EfCoreRuntime<TContext> UseHistoryArchive(IHistoryArchive archive)
     {
@@ -456,8 +457,9 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// A cleaner: removes what the retention no longer keeps, one bounded pass every
     /// <see cref="EfCoreRuntimeOptions.CleanupInterval"/> (the next one at once while more expired), until cancelled. Run it
     /// in a service of its own, with <see cref="CleanupMode.Separate"/> on the runtimes that run workers. One cleaner is
-    /// enough; two are safe (a row already removed is not removed again, and an archive accepts a history twice). A
-    /// failed pass is logged and tried again after the interval.
+    /// enough; two are safe (a row already removed is not removed again, and an archive accepts a history twice). The
+    /// cleaner archives histories, so register <see cref="UseHistoryArchive"/> on its runtime: without one, it deletes them.
+    /// A failed pass is logged and tried again after the interval.
     /// </summary>
     public async Task RunCleanupAsync(CancellationToken cancellationToken)
     {

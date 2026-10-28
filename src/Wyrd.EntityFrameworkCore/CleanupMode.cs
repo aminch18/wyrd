@@ -17,7 +17,8 @@ public enum CleanupMode
     /// Workers never remove anything: a separate service does, with <see cref="EfCoreRuntime{TContext}.RunCleanupAsync"/>
     /// (a long-running cleaner) or <see cref="EfCoreRuntime{TContext}.ForgetExpiredAsync(int, CancellationToken)"/> (a scheduled job). Cleanup
     /// never takes a worker's time, and many instances of an API don't all clean the same tables at once. Nothing
-    /// expires until that service runs: alert on <see cref="QueueHealth.ExpiredKept"/>.
+    /// expires until that service runs: alert on <see cref="QueueHealth.ExpiredKept"/>. A history archive goes on that
+    /// service's runtime (<see cref="EfCoreRuntime{TContext}.UseHistoryArchive"/>).
     /// </summary>
     Separate,
 }
