@@ -192,3 +192,36 @@ its VM) and from a Linux container next to PostgreSQL on the same Docker network
 - The client's own work is the rest, about 0.8 ms per message, half of it in EF Core (query pipeline, change tracking,
   context creation). The engine itself is not visible: in memory the same Shop handles about 10,000 orders/s.
 - An order of the Shop is 17 messages, so 17 times all of the above.
+
+#### Cheaper messages on the EF Core host
+
+Three changes, each measured with `--profile` (300 orders, one worker, macOS host; two or three runs each, which differ by
+about ±3%):
+
+| Change | Time per message | Commands per message |
+| --- | ---: | ---: |
+| Before | 2.37–2.43 ms | 6.1, and 1.8 savepoints |
+| No automatic savepoints in Wyrd's own transactions | 2.18–2.23 ms | 6.1 |
+| The handled message leaves the queue in the batch of its own writes | 2.05–2.18 ms | 5.2 |
+| The benchmark's contexts pooled (`PooledDbContextFactory`, what the guide now recommends) | 1.97–2.02 ms | 5.2 |
+
+Compiled queries (`EF.CompileAsyncQuery`) for the hot reads were tried too and changed nothing measurable, so they
+were left out.
+
+The full run after them, same machine and day:
+
+| Workers draining 1,000 orders | Before: messages/s | After: messages/s | Change |
+| --- | ---: | ---: | ---: |
+| spread, 1 worker | 491 | 591 | +20% |
+| spread, 8 workers | 1,676 | 2,340 | +40% |
+| hot (one SKU), 8 workers | 1,001 | 1,319 | +32% |
+
+| Commands (`SendAsync`) | Before | After |
+| --- | ---: | ---: |
+| spread, 1 caller: commands/s, p50 | 495, 1.9 ms | 714, 1.3 ms |
+| spread, 32 callers: commands/s | 3,624 | 2,782 and 3,483 (two runs) |
+| hot, 8 callers: failed after 5 retries | 1,014 | 994 |
+
+Past the connection pool (128 callers) throughput varies between runs (1,882 to 3,262 before; 2,748 to 2,775 after), so
+those rows are not compared. Hot keys are unchanged: a conflict is still retried at once.
+

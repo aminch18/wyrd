@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+
+- **Cheaper messages on the EF Core host**: Wyrd's own transactions no longer pay for EF Core's automatic savepoints,
+  and a handled message leaves the queue in the batch of its own writes, one round trip less. With a pooled context
+  factory, which the guide and the Shop now use (`AddPooledDbContextFactory`), a message takes about 17% less time
+  (2.4 to 2.0 ms on the reference machine) and eight workers handle 40% more messages per second.
+
 ### Added
 
 - **Concurrency benchmark on PostgreSQL** (`benchmarks/Wyrd.Benchmarks.Concurrency`): the Shop on the durable host,
