@@ -135,8 +135,9 @@ deliver twice. Effects happen once, for as long as the `Deduplication` retention
   nothing. Two workers racing on the same command both try to insert the inbox row: one wins, the other rolls back.
 - **Events**: the `handled` table remembers each event's id; a duplicate is ignored.
 - **Calls to other systems** (integrations): the call is made with no transaction open, under a lease, and its outcome
-  recorded in a second transaction. The integration gets an idempotency key, the same on every attempt: pass it to
-  the other system, and if that system honours it, a second call never repeats the charge.
+  recorded in a second transaction. A worker that stops mid-call leaves it to another one once the lease runs out
+  (`IntegrationLease`), which calls again. The integration gets an idempotency key, the same on every attempt: pass
+  it to the other system, and if that system honours it, a second call never repeats the charge.
 
 A caller retrying is not a duplicate: every `SendAsync` is a new message with a new id. If your client may send the
 same command twice (a lost HTTP response, a retry), make the command idempotent in your domain: a `PlaceOrder` for an
@@ -156,8 +157,9 @@ order that exists is rejected, not placed again.
   opted into compensating on its own (`.Retry(3.Times).OrCompensate()`); a step your
   code *rejects* (a business decision) is compensated at once. The host never retries a process command behind the
   process's back: there is one retry layer.
-- **Anything else that throws** (an event handler, a reply) is tried again later, with a growing delay, and after
-  `MaxDeliveryAttempts` (10 by default) it moves to `dead_letters` for someone to look at.
+- **Anything else that throws** (an event handler, a reply) is tried again later, with a growing delay, without
+  blocking the messages behind it, and after `MaxDeliveryAttempts` (10 by default) it moves to `dead_letters` for
+  someone to look at.
 - **The database is down.** Workers log it and try again; queued messages are safe in the table.
 
 ## Timers

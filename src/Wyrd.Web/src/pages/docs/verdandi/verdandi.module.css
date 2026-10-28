@@ -1,0 +1,1472 @@
+/* The "How Verdandi works" page: the site's tokens, plus two series colours validated for
+   each theme (dataviz validator: lightness band, chroma, CVD and normal-vision separation). */
+
+.figure,
+.charts {
+    --spread: #2aa886;
+    --hot: #d8724c;
+    --ok: var(--cyan);
+    --warn: var(--gold);
+    --stop: var(--danger);
+}
+/* The theme lives on the app's data-theme attribute; its class names are hashed. */
+:global([data-theme='light']) .figure,
+:global([data-theme='light']) .charts,
+:global([data-theme='light']) .architecture,
+:global([data-theme='light']) .liveArch {
+    --spread: #0b8a68;
+    --hot: #c4572f;
+    --k-code: #1f7fa8;
+    --k-wyrd: #0b8a68;
+    --k-db: #6a4fc4;
+    --k-ext: #5f6f6b;
+    --k-process: #a2671d;
+}
+
+.architecture,
+.liveArch {
+    --k-code: #5bb8e0;
+    --k-wyrd: #3fc79f;
+    --k-db: #a990f5;
+    --k-ext: #93a39f;
+    --k-process: #e0a458;
+}
+
+/* This page only: the article takes the outline's column too, so the figures can be large;
+   prose keeps its reading width. */
+@media (min-width: 1051px) {
+    :global([class*='docs-shell']):has(.pageMarker) {
+        grid-template-columns: 220px minmax(0, 1fr);
+    }
+    :global([class*='docs-shell']):has(.pageMarker)
+        > :global([class*='docs-outline']) {
+        display: none;
+    }
+    :global([class*='doc-article']):has(> .pageMarker) > :is(p, ul, ol, h2) {
+        max-width: 760px;
+    }
+}
+.pageMarker {
+    display: none;
+}
+
+.figure {
+    margin: 30px 0 40px;
+    padding: 28px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface);
+}
+.figure h4,
+.chart h4 {
+    margin: 0 0 12px;
+    color: var(--subtle-heading);
+    font:
+        600 11px/1.5 'JetBrains Mono',
+        monospace;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+.figure code {
+    font-size: 0.92em;
+}
+
+.caption {
+    min-height: 3.2em;
+    margin: 20px 0 0;
+    color: var(--copy);
+    font-size: 16px;
+    line-height: 1.6;
+}
+.caption strong {
+    color: var(--heading);
+}
+
+/* Controls */
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+}
+.controls button,
+.linkButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--copy);
+    font-size: 14px;
+    cursor: pointer;
+    transition:
+        border-color 160ms ease,
+        color 160ms ease;
+}
+.controls button:hover:not(:disabled),
+.linkButton:hover {
+    border-color: var(--cyan);
+    color: var(--heading);
+}
+.controls button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.controls button:focus-visible,
+.linkButton:focus-visible,
+.tableCard:focus-visible,
+.tabs button:focus-visible,
+.hit:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 2px;
+}
+.controls .primary {
+    border-color: color-mix(in srgb, var(--cyan) 55%, transparent);
+    color: var(--heading);
+}
+.controls .danger {
+    margin-left: auto;
+    border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+    color: var(--danger);
+}
+
+/* Queue rows, shared by the lifecycle and SKIP LOCKED */
+.row {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin: 0 0 8px;
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface-2);
+    color: var(--copy);
+    font:
+        500 13px/1.4 'JetBrains Mono',
+        monospace;
+    transition:
+        opacity 300ms ease,
+        border-color 300ms ease,
+        background-color 300ms ease,
+        transform 300ms ease;
+}
+.row.later {
+    opacity: 0.55;
+}
+.row.locked {
+    border-color: var(--gold);
+    background: color-mix(in srgb, var(--gold) 12%, var(--surface-2));
+}
+.row.taken {
+    transform: translateX(6px);
+}
+.row.deleting {
+    text-decoration: line-through;
+    opacity: 0.6;
+}
+.row.gone {
+    opacity: 0.18;
+    text-decoration: line-through;
+}
+
+/* One message, one transaction */
+.lifecycle {
+    display: grid;
+    grid-template-columns: 1fr 1.35fr 1fr;
+    gap: 18px;
+}
+.column {
+    min-width: 0;
+}
+.transaction {
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg);
+    transition: border-color 300ms ease;
+}
+.transaction.rolledBack {
+    border-color: var(--danger);
+}
+.code {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font:
+        500 13px/1.45 'JetBrains Mono',
+        monospace;
+}
+.code li {
+    margin: 0 0 6px;
+    padding: 5px 8px;
+    border-left: 2px solid transparent;
+    border-radius: 4px;
+    color: var(--muted);
+    transition:
+        color 250ms ease,
+        background-color 250ms ease,
+        border-color 250ms ease;
+}
+.code li code {
+    color: inherit;
+}
+.code li small {
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+    opacity: 0.75;
+}
+.code li.done {
+    color: var(--copy);
+}
+.code li.current {
+    border-left-color: var(--cyan);
+    background: color-mix(in srgb, var(--cyan) 12%, transparent);
+    color: var(--heading);
+}
+.code li.skipped {
+    opacity: 0.35;
+    text-decoration: line-through;
+}
+.crash {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    margin-top: 10px;
+    padding: 9px 11px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+    color: var(--danger);
+    font-size: 13px;
+    line-height: 1.5;
+}
+.chip {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0 0 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    transition:
+        opacity 300ms ease,
+        border-color 300ms ease,
+        background-color 300ms ease;
+}
+.chip code {
+    color: var(--subtle-heading);
+    font-size: 12px;
+}
+.chip span {
+    color: var(--copy);
+    font-size: 13px;
+}
+.phase-none {
+    opacity: 0.35;
+}
+.row.phase-none {
+    visibility: hidden;
+}
+.phase-idle {
+    opacity: 0.75;
+}
+.phase-read {
+    border-color: color-mix(in srgb, var(--cyan) 45%, transparent);
+}
+.phase-pending {
+    border-style: dashed;
+    border-color: var(--gold);
+    background: color-mix(in srgb, var(--gold) 8%, transparent);
+}
+.phase-committed {
+    border-color: var(--cyan);
+    background: color-mix(in srgb, var(--cyan) 12%, transparent);
+}
+
+/* SKIP LOCKED */
+.skipLayout {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 18px;
+    align-items: start;
+}
+.workers,
+.queueTable {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.workers li {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: 0 0 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg);
+    transition: border-color 250ms ease;
+}
+.workers li strong {
+    color: var(--heading);
+    font-size: 14px;
+}
+.workers li span {
+    color: var(--muted);
+    font:
+        500 12px/1.4 'JetBrains Mono',
+        monospace;
+}
+.workers li.busy {
+    border-color: var(--gold);
+}
+.workers li.busy span {
+    color: var(--copy);
+}
+.holder {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    color: var(--gold);
+    font-size: 11px;
+}
+.skippedBy {
+    width: 100%;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+/* Data map */
+.mapLayout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    gap: 20px;
+}
+.map {
+    display: grid;
+    gap: 16px;
+}
+.group p {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+.tables {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.tableCard {
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface-2);
+    color: var(--copy);
+    cursor: pointer;
+    transition:
+        border-color 160ms ease,
+        background-color 160ms ease;
+}
+.tableCard.selected,
+.tableCard:hover {
+    border-color: var(--cyan);
+    background: color-mix(in srgb, var(--cyan) 12%, var(--surface-2));
+    color: var(--heading);
+}
+.detail {
+    align-self: start;
+    position: sticky;
+    top: 90px;
+    padding: 16px 18px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg);
+}
+.detailName {
+    color: var(--cyan);
+    font-size: 15px;
+}
+.detail p {
+    margin: 10px 0 14px;
+    line-height: 1.6;
+}
+.detail dl {
+    margin: 0;
+}
+.detail dt {
+    color: var(--subtle-heading);
+    font:
+        600 11px/1.5 'JetBrains Mono',
+        monospace;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+.detail dd {
+    margin: 4px 0 0;
+    color: var(--heading);
+    line-height: 1.55;
+}
+
+/* Failure scenarios */
+.tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+}
+.tabs button {
+    padding: 7px 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+}
+.tabs button[aria-selected='true'] {
+    border-color: var(--cyan);
+    background: color-mix(in srgb, var(--cyan) 12%, transparent);
+    color: var(--heading);
+}
+.panel {
+    min-height: 250px;
+}
+.beats {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: beat;
+}
+.beats li {
+    display: grid;
+    grid-template-columns: 112px 1fr;
+    gap: 12px;
+    margin: 0 0 8px;
+    padding: 9px 12px;
+    border-left: 3px solid var(--line);
+    border-radius: 6px;
+    background: var(--bg);
+    line-height: 1.5;
+    transition:
+        opacity 300ms ease,
+        transform 300ms ease;
+}
+.beats li.ok {
+    border-left-color: var(--ok);
+}
+.beats li.retry {
+    border-left-color: var(--warn);
+}
+.beats li.stop {
+    border-left-color: var(--stop);
+}
+.who {
+    color: var(--subtle-heading);
+    font:
+        600 12px/1.6 'JetBrains Mono',
+        monospace;
+}
+.shown {
+    opacity: 1;
+}
+.hidden {
+    opacity: 0.25;
+}
+.beats li.hidden {
+    transform: translateX(-4px);
+}
+.lesson {
+    margin: 14px 0 0;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--cyan) 9%, transparent);
+    color: var(--heading);
+    line-height: 1.6;
+    transition: opacity 300ms ease;
+}
+
+/* Charts */
+.charts {
+    margin: 26px 0 34px;
+}
+.chart {
+    margin: 0 0 12px;
+    padding: 20px 22px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface);
+}
+.chartHead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 18px;
+    margin-bottom: 8px;
+}
+.chartHead h4 {
+    width: 100%;
+    margin: 0;
+}
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin: 0;
+    padding: 0;
+    color: var(--copy);
+    font-size: 13px;
+    list-style: none;
+}
+.legend li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.swatch {
+    width: 16px;
+    height: 3px;
+    border-radius: 2px;
+    background: currentColor;
+}
+.swatch.series-spread {
+    color: var(--spread);
+}
+.swatch.series-hot {
+    color: var(--hot);
+}
+.legendMark {
+    fill: var(--muted);
+}
+.linkButton {
+    margin-left: auto;
+    font-size: 13px;
+}
+.plot {
+    position: relative;
+}
+.plot svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+}
+.grid {
+    stroke: var(--line);
+    stroke-width: 1;
+}
+.tickY,
+.tickX,
+.axisLabel {
+    fill: var(--muted);
+    font:
+        500 11px 'JetBrains Mono',
+        monospace;
+}
+.tickY {
+    text-anchor: end;
+    dominant-baseline: middle;
+}
+.tickX,
+.axisLabel {
+    text-anchor: middle;
+}
+.series-spread {
+    --series: var(--spread);
+}
+.series-hot {
+    --series: var(--hot);
+}
+.seriesLine {
+    fill: none;
+    stroke: var(--series);
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+.marker {
+    fill: var(--series);
+    stroke: var(--surface);
+    stroke-width: 2;
+}
+.markerAfter {
+    fill: var(--series);
+    stroke: var(--surface);
+    stroke-width: 2;
+}
+.directLabel {
+    fill: var(--copy);
+    dominant-baseline: middle;
+    font-size: 12px;
+}
+.hit {
+    fill: transparent;
+    cursor: pointer;
+}
+.tooltip {
+    position: absolute;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 160px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    color: var(--copy);
+    font-size: 12px;
+    pointer-events: none;
+    transform: translate(-50%, calc(-100% - 14px));
+}
+.tooltip strong {
+    color: var(--heading);
+    font-size: 15px;
+}
+.dataTable {
+    overflow-x: auto;
+}
+.dataTable table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+.dataTable th,
+.dataTable td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+}
+.dataTable td:nth-child(n + 2),
+.dataTable th:nth-child(n + 2) {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.chartNote {
+    margin: 0 0 22px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+/* Cleanup topology */
+.topology {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px;
+}
+.topology h4 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    text-transform: none;
+    letter-spacing: 0;
+}
+.topology svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+.topology p {
+    margin: 10px 0 0;
+    color: var(--copy);
+    font-size: 14px;
+    line-height: 1.6;
+}
+.groupLabel {
+    fill: var(--muted);
+    text-anchor: middle;
+    font:
+        600 10px 'JetBrains Mono',
+        monospace;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.pod,
+.podDashed {
+    fill: var(--surface-2);
+    stroke: var(--line);
+    stroke-width: 1.5;
+}
+.podDashed {
+    stroke: var(--gold);
+    stroke-dasharray: 5 4;
+}
+.db {
+    fill: color-mix(in srgb, var(--cyan) 14%, var(--surface-2));
+    stroke: var(--cyan);
+    stroke-width: 1.5;
+}
+.podTitle {
+    fill: var(--heading);
+    text-anchor: middle;
+    font-size: 12px;
+    font-weight: 600;
+}
+.podSub {
+    fill: var(--muted);
+    text-anchor: middle;
+    font:
+        500 10px 'JetBrains Mono',
+        monospace;
+}
+.arrow {
+    stroke: var(--muted);
+    stroke-width: 1.5;
+}
+.arrowHead {
+    fill: var(--muted);
+}
+
+@media (max-width: 760px) {
+    .figure {
+        padding: 16px;
+    }
+    .lifecycle,
+    .skipLayout,
+    .mapLayout,
+    .topology {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .detail {
+        position: static;
+    }
+    .controls .danger {
+        margin-left: 0;
+    }
+    .beats li {
+        grid-template-columns: 1fr;
+        gap: 2px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .row,
+    .chip,
+    .code li,
+    .beats li,
+    .lesson,
+    .transaction {
+        transition: none;
+    }
+    .row.taken,
+    .beats li.hidden {
+        transform: none;
+    }
+}
+
+/* Larger playground: the message lifecycle */
+.big .row {
+    padding: 12px 14px;
+    font-size: 14px;
+}
+.big .code {
+    font-size: 14px;
+}
+.big .code li {
+    padding: 7px 10px;
+}
+.big .chip {
+    padding: 11px 14px;
+}
+.big .chip span {
+    font-size: 14px;
+}
+.row.returned {
+    border-color: var(--cyan);
+    background: color-mix(in srgb, var(--cyan) 12%, var(--surface-2));
+    animation: returned 700ms ease;
+}
+@keyframes returned {
+    from {
+        transform: translateX(28px);
+        opacity: 0.2;
+    }
+}
+.attempts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 18px;
+    padding: 0;
+    list-style: none;
+}
+.attempts li {
+    padding: 6px 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--muted);
+    font:
+        500 12px/1.5 'JetBrains Mono',
+        monospace;
+}
+.attempts strong {
+    color: var(--heading);
+}
+.attempts .attemptNow {
+    border-color: var(--gold);
+    color: var(--copy);
+}
+.attempts .attemptFailed {
+    border-color: color-mix(in srgb, var(--danger) 60%, transparent);
+    color: var(--danger);
+}
+.attempts .attemptOk {
+    border-color: var(--cyan);
+    color: var(--cyan);
+}
+
+/* Architecture */
+.architecture {
+    margin: 30px 0 40px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--surface);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
+    overflow: hidden;
+}
+.archCanvas {
+    padding: 18px 18px 0;
+    overflow-x: auto;
+}
+.archCanvas svg {
+    display: block;
+    width: 100%;
+    min-width: 720px;
+    height: auto;
+}
+.dot {
+    fill: var(--line);
+}
+.groupProcess {
+    fill: color-mix(in srgb, var(--k-process) 5%, transparent);
+    stroke: var(--k-process);
+    stroke-width: 1.5;
+    stroke-dasharray: 7 5;
+}
+.groupProcessLabel {
+    fill: var(--k-process);
+    font:
+        600 11px 'JetBrains Mono',
+        monospace;
+}
+.groupDb {
+    fill: color-mix(in srgb, var(--k-db) 5%, transparent);
+    stroke: var(--k-db);
+    stroke-width: 1.5;
+    stroke-dasharray: 7 5;
+}
+.groupDbLabel {
+    fill: var(--k-db);
+    font:
+        600 11px 'JetBrains Mono',
+        monospace;
+}
+.dimmed {
+    opacity: 0.5;
+    transition: opacity 250ms ease;
+}
+.node rect {
+    fill: color-mix(in srgb, var(--k) 13%, var(--surface));
+    stroke: var(--k);
+    stroke-width: 1.8;
+    transition:
+        stroke-width 200ms ease,
+        fill 200ms ease;
+}
+.node {
+    transition: opacity 250ms ease;
+}
+.kind-code {
+    --k: var(--k-code);
+}
+.kind-wyrd {
+    --k: var(--k-wyrd);
+}
+.kind-db {
+    --k: var(--k-db);
+}
+.kind-external {
+    --k: var(--k-ext);
+}
+.nodeIcon {
+    color: var(--k);
+}
+.nodeTitle {
+    fill: var(--heading);
+    text-anchor: middle;
+    font:
+        650 15px 'JetBrains Mono',
+        monospace;
+}
+.kind-db .nodeTitle {
+    font-size: 12px;
+}
+.nodeSub {
+    fill: var(--muted);
+    text-anchor: middle;
+    font:
+        500 11px 'JetBrains Mono',
+        monospace;
+}
+.nodeNow rect {
+    stroke-width: 3;
+    fill: color-mix(in srgb, var(--k) 24%, var(--surface));
+}
+.faded {
+    opacity: 0.18;
+}
+.edge path {
+    fill: none;
+    stroke: var(--muted);
+    stroke-width: 1.6;
+    transition: stroke 200ms ease;
+}
+.edge .edgeDashed {
+    stroke-dasharray: 6 5;
+}
+.edgeLabel {
+    fill: var(--muted);
+    text-anchor: middle;
+    paint-order: stroke;
+    stroke: var(--surface);
+    stroke-width: 4px;
+    font:
+        500 10px 'JetBrains Mono',
+        monospace;
+}
+.archArrowHead {
+    fill: var(--muted);
+}
+.archArrowLit {
+    fill: var(--cyan);
+}
+.edgeLit path {
+    stroke: var(--cyan);
+    stroke-width: 2.2;
+}
+.edgeLit .edgeLabel {
+    fill: var(--heading);
+}
+.edgeNow path {
+    stroke-width: 3;
+    stroke-dasharray: 8 6;
+    animation: flow 900ms linear infinite;
+}
+@keyframes flow {
+    to {
+        stroke-dashoffset: -28;
+    }
+}
+.badge circle {
+    fill: var(--cyan);
+}
+.badge text {
+    fill: var(--bg);
+    text-anchor: middle;
+    font:
+        700 11px 'JetBrains Mono',
+        monospace;
+}
+.archLegend {
+    padding: 8px 28px 24px;
+}
+.kinds {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    margin-bottom: 18px;
+}
+.kindChip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--copy);
+    font:
+        500 13px 'JetBrains Mono',
+        monospace;
+}
+.kindChip i,
+.card h4 i {
+    width: 18px;
+    height: 12px;
+    border: 1.8px solid var(--k);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--k) 15%, transparent);
+}
+.kindChip b {
+    min-width: 18px;
+    padding: 0 5px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+    text-align: center;
+}
+.legendHint {
+    margin: 0 0 10px;
+    color: var(--subtle-heading);
+    font:
+        600 11px/1.5 'JetBrains Mono',
+        monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+.scenarioChips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.scenarioChips button {
+    padding: 8px 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--copy);
+    font-size: 14px;
+    cursor: pointer;
+    transition:
+        border-color 160ms ease,
+        background-color 160ms ease;
+}
+.scenarioChips button:hover,
+.scenarioChips button:focus-visible {
+    border-color: var(--cyan);
+    outline: none;
+}
+.scenarioChips button[aria-pressed='true'] {
+    border-color: var(--cyan);
+    background: color-mix(in srgb, var(--cyan) 16%, var(--surface-2));
+    color: var(--heading);
+}
+.scenarioSteps {
+    margin-top: 18px;
+}
+.scenarioSteps ol {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.scenarioSteps li button {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg);
+    color: var(--copy);
+    font-size: 15px;
+    line-height: 1.55;
+    text-align: left;
+    cursor: pointer;
+}
+.stepNumber {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--surface-2);
+    color: var(--muted);
+    font:
+        700 12px 'JetBrains Mono',
+        monospace;
+}
+.stepNow button {
+    border-color: var(--cyan) !important;
+}
+.stepNow .stepNumber,
+.stepDone .stepNumber {
+    background: var(--cyan);
+    color: var(--bg);
+}
+.stepLater button {
+    opacity: 0.45;
+}
+.cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--line);
+}
+.card {
+    padding: 20px 24px 22px;
+}
+.card + .card {
+    border-left: 1px solid var(--line);
+}
+.card h4 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 10px;
+    color: var(--heading);
+    font-size: 15px;
+}
+.card ul {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--copy);
+    font-size: 14px;
+    line-height: 1.7;
+}
+.card li::marker {
+    color: var(--k);
+}
+
+@media (max-width: 760px) {
+    .cards {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .card + .card {
+        border-left: 0;
+        border-top: 1px solid var(--line);
+    }
+    .archLegend {
+        padding: 8px 16px 20px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .edgeNow path,
+    .row.returned {
+        animation: none;
+    }
+}
+
+/* One order, end to end */
+.journey {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+.timeline {
+    position: relative;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.timeline::before {
+    position: absolute;
+    top: 14px;
+    bottom: 14px;
+    left: 15px;
+    width: 2px;
+    background: var(--line);
+    content: '';
+}
+.tx button {
+    position: relative;
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 14px;
+    width: 100%;
+    margin: 0 0 6px;
+    padding: 8px 12px 8px 0;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--copy);
+    text-align: left;
+    cursor: pointer;
+    transition:
+        opacity 250ms ease,
+        background-color 250ms ease;
+}
+.tx button:focus-visible {
+    outline: 2px solid var(--cyan);
+}
+.txDot {
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: 2px solid var(--line);
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--muted);
+    transition:
+        border-color 250ms ease,
+        background-color 250ms ease;
+}
+.who-api {
+    --who: var(--k-code, #5bb8e0);
+}
+.who-worker {
+    --who: var(--cyan);
+}
+.who-outside {
+    --who: var(--gold);
+}
+.txBody {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding-top: 4px;
+}
+.txWho {
+    color: var(--muted);
+    font:
+        600 11px/1.4 'JetBrains Mono',
+        monospace;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.txTitle {
+    color: var(--heading);
+    font-size: 15px;
+    line-height: 1.45;
+}
+.txDetail {
+    margin-top: 4px;
+    color: var(--copy);
+    font-size: 15px;
+    line-height: 1.6;
+}
+.txWrites {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+.txWrites code {
+    padding: 2px 8px;
+    border: 1px solid color-mix(in srgb, var(--cyan) 50%, transparent);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--cyan) 10%, transparent);
+    color: var(--heading);
+    font-size: 12px;
+}
+.txLater button {
+    opacity: 0.45;
+}
+.txDone .txDot,
+.txNow .txDot {
+    border-color: var(--who);
+    color: var(--who);
+}
+.txNow button {
+    padding-top: 12px;
+    padding-bottom: 14px;
+    background: color-mix(in srgb, var(--who) 8%, transparent);
+}
+.txNow .txDot {
+    background: color-mix(in srgb, var(--who) 22%, var(--surface));
+}
+.journeyState {
+    position: sticky;
+    top: 100px;
+    display: grid;
+    gap: 12px;
+}
+.statePanel {
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg);
+}
+.statePanel p {
+    margin: 0;
+    color: var(--copy);
+    font:
+        500 14px/1.5 'JetBrains Mono',
+        monospace;
+}
+.statePanel small {
+    display: block;
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+.stateOk {
+    color: var(--cyan) !important;
+}
+.empty {
+    color: var(--muted) !important;
+}
+.queueRows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.queueRows li {
+    animation: arrive 450ms ease;
+}
+.queueRows li:last-child {
+    margin-bottom: 0;
+}
+@keyframes arrive {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+}
+.timerRow {
+    border-style: dashed !important;
+    border-color: var(--gold) !important;
+    color: var(--gold) !important;
+}
+.status-Running strong {
+    color: var(--cyan);
+}
+.status-Awaiting strong {
+    color: var(--gold);
+}
+.status-Completed strong {
+    color: var(--cyan);
+}
+.textVersion {
+    margin-top: 18px;
+}
+.textVersion summary {
+    color: var(--muted);
+    font-size: 14px;
+    cursor: pointer;
+}
+@media (max-width: 760px) {
+    .journey {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .journeyState {
+        position: static;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .queueRows li {
+        animation: none;
+    }
+}
+
+/* The architecture, live inside a playground */
+.packet {
+    fill: var(--cyan);
+    stroke: var(--surface);
+    stroke-width: 2;
+    filter: drop-shadow(0 0 6px var(--cyan));
+}
+.nodeAlert rect {
+    stroke: var(--danger);
+    stroke-width: 3;
+    fill: color-mix(in srgb, var(--danger) 18%, var(--surface));
+}
+.nodeAlert {
+    opacity: 1 !important;
+}
+.liveArch {
+    margin: 0 0 22px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--bg);
+    overflow-x: auto;
+}
+.liveArch svg {
+    display: block;
+    width: 100%;
+    min-width: 640px;
+    height: auto;
+}
+
+/* Playground beside its architecture: the steps on the left, the flow on the right */
+.withArch {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+    gap: 26px;
+    align-items: start;
+}
+.sidePanel {
+    min-width: 0;
+}
+.archSide {
+    position: sticky;
+    top: 96px;
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+}
+.archSide .liveArch {
+    margin: 0;
+}
+.archSide .liveArch svg {
+    min-width: 0;
+}
+.withArch .journey {
+    grid-template-columns: minmax(0, 1fr);
+}
+.withArch .journeyState {
+    position: static;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+/* The client and the process side by side; the queue across, under them. */
+.withArch .journeyState > .statePanel:nth-child(2) {
+    grid-column: 1 / -1;
+    order: 3;
+}
+.withArch .statePanel {
+    min-width: 0;
+    padding: 12px 14px;
+}
+.withArch .statePanel p {
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+.withArch .statePanel small {
+    font-size: 12px;
+}
+.withArch .queueRows {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.withArch .queueRows li {
+    margin: 0;
+    padding: 7px 11px;
+    font-size: 13px;
+}
+.withArch .lifecycle {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.withArch .transaction {
+    grid-column: 1 / -1;
+    order: -1;
+}
+@media (max-width: 1050px) {
+    .withArch {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .archSide {
+        position: static;
+        order: -1;
+    }
+}
+@media (max-width: 560px) {
+    .withArch .journeyState {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .withArch .journeyState > .statePanel:nth-child(2) {
+        order: 0;
+    }
+}
+.flowSvg .nodeTitle {
+    font-size: 13px;
+}
+.flowSvg .kind-db .nodeTitle {
+    font-size: 11px;
+}
+.flowSvg .nodeSub {
+    font-size: 9.5px;
+}
