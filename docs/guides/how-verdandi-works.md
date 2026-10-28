@@ -11,20 +11,20 @@ where the limits are. How to set it up is in [Running durable](running-durable.m
 ```text
             your process (one per instance of your API or worker service)
  ┌──────────────────────────────────────────────────────────────────────────┐
- │  endpoints, jobs ──► IWyrdRuntime (one EfCoreRuntime, a singleton)        │
- │                         │  SendAsync / PublishAsync / ReceiveAsync        │
- │                         ▼                                                 │
- │                      Engine: your pure deciders, processes, projections   │
- │                         ▲                                                 │
- │  workers (RunAsync) ────┘  take queued messages, one transaction each      │
- │  cleaner (optional)        removes what the retention no longer keeps      │
+ │  endpoints, jobs ──► IWyrdRuntime (one EfCoreRuntime, a singleton)       │
+ │                         │  SendAsync / PublishAsync / ReceiveAsync       │
+ │                         ▼                                                │
+ │                      Engine: your pure deciders, processes, projections  │
+ │                         ▲                                                │
+ │  workers (RunAsync) ────┘  take queued messages, one transaction each    │
+ │  cleanup (workers)         removes what the retention no longer keeps    │
  └───────────────────────────────┬──────────────────────────────────────────┘
                                  │ EF Core, one short transaction per message
  ┌───────────────────────────────▼──────────────────────────────────────────┐
- │  your database                                                            │
- │   business data:   states · views                                         │
- │   delivery:        queue · inbox · handled · instances · parked · events   │
- │   to other services: published (the outbox)    failures: dead_letters      │
+ │  your database                                                           │
+ │   business data:   states · views                                        │
+ │   delivery:        queue · inbox · handled · instances · parked · events │
+ │   to other services: published (the outbox)    failures: dead_letters    │
  └───────────────────────────────┬──────────────────────────────────────────┘
                                  │ relay (optional): IWyrdTransport, e.g. RabbitMQ
                                  ▼
@@ -40,7 +40,7 @@ where the limits are. How to set it up is in [Running durable](running-durable.m
   is written as rows, in the same transaction as the state it changed.
 - **Workers** are loops (`RunAsync`) that take the next due message from the `queue` table and handle it. Run as many
   as you like, in one process or in many.
-- **The cleaner** removes what expired, in the workers or as a service of its own (see *Retention and cleanup*).
+- **Cleanup** removes what expired, in the workers between messages (see *Retention and cleanup*).
 
 ## Where the data lives
 
@@ -219,22 +219,15 @@ Delivery machinery is removed when the [retention](running-durable.md) you chose
 retention, and some things never expire: a suspended instance waits for an operator, and a fence (a command given up
 on without knowing whether it ran) stays blocked forever.
 
-Cleanup deletes in batches of 1,000 rows, each its own short statement, so it never holds many locks. It runs in one
-of two places:
-
-- **In the workers** (the default, `CleanupMode.Workers`): every minute, each process's workers remove a bounded
-  amount between messages. Simple, and right for one instance or a few.
-- **In a service of its own** (`CleanupMode.Separate`): workers only handle messages, and one cleaner
-  (`RunCleanupAsync`, or `ForgetExpiredAsync` from a scheduled job) removes what expired. With many instances of an
-  API, they don't all clean the same tables at once.
+Cleanup deletes in batches of 1,000 rows, each its own short statement, so it never holds many locks. It runs in the
+workers: every minute, each process's workers remove a bounded amount between messages.
 
 With a history archive (`IHistoryArchive`), a finished instance's history is handed to it before the row is removed,
 and the row is removed only once the archive returned: a failed archive keeps it for the next pass. Delivery is at least
-once, so an archive must accept the same history twice. It goes on the runtime that cleans: with a separate cleaner,
-register it there.
+once, so an archive must accept the same history twice.
 
 ## What to watch
 
 Workers publish the queue's health on the `Wyrd` meter: the queue's lag, steps waiting for a slow third party,
 instances that need an operator, dead letters, finished instances kept past their retention, and counters of handled,
-failed and dead-lettered messages and of rows removed by cleanup. The instruments and what to alert on are in [Running durable](running-durable.md#health).
+failed and dead-lettered messages. The instruments and what to alert on are in [Running durable](running-durable.md#health).
