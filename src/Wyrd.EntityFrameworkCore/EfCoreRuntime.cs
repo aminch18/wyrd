@@ -457,8 +457,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// A cleaner: removes what the retention no longer keeps, one bounded pass every
     /// <see cref="EfCoreRuntimeOptions.CleanupInterval"/> (the next one at once while more expired), until cancelled. Run it
     /// in a service of its own, with <see cref="CleanupMode.Separate"/> on the runtimes that run workers. One cleaner is
-    /// enough; two are safe (a row already removed is not removed again, and an archive accepts a history twice). The
-    /// cleaner archives histories, so register <see cref="UseHistoryArchive"/> on its runtime: without one, it deletes them.
+    /// enough; two are safe (a row already removed is not removed again, and an archive accepts a history twice). Configure
+    /// the cleaner's runtime like the workers': the same retention, transport (<see cref="UseTransport"/>) and history
+    /// archive (<see cref="UseHistoryArchive"/>). What it removes depends on them: without the transport it counts an
+    /// integration event's retention from when it was recorded, relayed or not, and without the archive it deletes
+    /// histories.
     /// A failed pass is logged and tried again after the interval.
     /// </summary>
     public async Task RunCleanupAsync(CancellationToken cancellationToken)

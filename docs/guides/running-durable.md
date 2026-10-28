@@ -109,8 +109,9 @@ public sealed class WyrdCleaner(EfCoreRuntime<ShopDbContext> wyrd) : BackgroundS
 ```
 
 A scheduled job (a Kubernetes `CronJob`, say) can call `ForgetExpiredAsync()` instead: it removes everything that
-expired, and returns. One cleaner is enough; two are safe. The history archive goes where the cleanup runs: register `UseHistoryArchive` on
-the cleaner's runtime, or it deletes the histories it would have archived. Nothing expires while no cleaner runs, so alert on
+expired, and returns. One cleaner is enough; two are safe. Configure the cleaner's runtime like the workers': the same retention,
+transport and history archive. Without the transport it would count an integration event's retention from when it was
+recorded, relayed or not; without the archive it deletes the histories it would have archived. Nothing expires while no cleaner runs, so alert on
 `wyrd.process.expired_kept`. The Shop runs both ways from one build: `Wyrd__Cleanup=Separate` for the API, and
 `Shop.Api cleanup` for the cleaner (`samples/Shop.Api/compose.yaml`).
 

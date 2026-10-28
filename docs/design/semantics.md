@@ -187,7 +187,8 @@ the host doesn't start without a `Retention`, whose every member is required, ea
   an instance can stay suspended longer than the owner's inbox remembers.
 - Durable hosts remove what expired in batches, every `CleanupInterval` (one minute by default), never on a message's
   path: in the workers, or in a separate service when cleanup is `Separate` (then nothing expires until that service
-  runs). The history archive is used by whoever removes: with a separate service, that service registers it. The in-memory host removes it when its clock moves (`AdvanceAsync`).
+  runs). What is removed depends on the runtime that removes: with a separate service, it has the workers' retention,
+  transport and history archive. The in-memory host removes it when its clock moves (`AdvanceAsync`).
 - In memory there is a default, `Retention.InMemory`, that keeps everything (nothing outlives the process), and the
   journal keeps the most recent `JournalLimit` entries (10,000 by default).
 - Business data is not delivery machinery: states and read models have no retention, they live as long as the
