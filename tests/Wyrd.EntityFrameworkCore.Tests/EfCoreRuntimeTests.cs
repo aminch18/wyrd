@@ -865,6 +865,30 @@ public abstract class EfCoreRuntimeTests(Database database)
     }
 
     [Fact]
+    public async Task a_dead_letter_is_kept_for_its_retention_and_then_forgotten()
+    {
+        var clock = Database.Clock();
+#pragma warning disable IL2026, IL3050 // reflection JSON keeps the test domain small
+        var runtime = new EfCoreRuntime<WyrdDbContext>(
+                await database.NewAsync(), Database.Retention with { DeadLetters = Keep.For(TimeSpan.FromDays(7)) },
+                Database.Options with { MaxDeliveryAttempts = 1 }, clock)
+            .AddSlice(new StartJobSlice())
+            .AddProjection(new BrokenJobs());
+#pragma warning restore IL2026, IL3050
+        await runtime.SendAsync(new StartJob("J-1"));
+        await runtime.ProcessPendingAsync(); // one attempt: the failing event goes straight to the dead letters
+        Assert.Equal((0, 1), await runtime.BacklogAsync());
+
+        clock.Advance(TimeSpan.FromDays(7) - TimeSpan.FromSeconds(1));
+        await runtime.ForgetExpiredAsync();
+        Assert.Equal((0, 1), await runtime.BacklogAsync());
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await runtime.ForgetExpiredAsync();
+        Assert.Equal((0, 0), await runtime.BacklogAsync());
+    }
+
+    [Fact]
     public async Task a_fence_outlives_the_deduplication_window()
     {
         var clock = Database.Clock();

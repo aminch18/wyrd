@@ -90,7 +90,7 @@ The [quality bar](QUALITY.md) is how good Wyrd must be: measured cost, bounded m
 explicit failures, honest tests. **0.5.0 ships only when every rule is enforced, and every later minor (0.6 to 0.9,
 then 1.0) only with the whole bar green.** Baseline and rules: [QUALITY.md](QUALITY.md).
 
-- [ ] Benchmarks, with the scaling and allocation gates in CI (Q1)
+- [x] Benchmarks, with the scaling and allocation gates in CI (Q1)
 - [x] The Shop's stock forgets shipped orders; the guides teach bounded state (Q2.1)
 - [x] A wait's timer is cancelled when the wait ends (Q2.2)
 - [x] Retention for everything a host keeps, in semantics and every host (Q2.3; includes v0.5's instance history
