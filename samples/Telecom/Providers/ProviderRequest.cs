@@ -20,6 +20,7 @@ public sealed record ProviderRequest(ProviderAction Action, string LogicalKey, s
 
 public sealed record ProviderReply(string? Receipt, ProviderError? Error = null)
 {
+    /// <summary>The provider's receipt; throws <see cref="IOException"/> when the reply has none.</summary>
     public string RequireReceipt()
     {
         if (string.IsNullOrWhiteSpace(Receipt))

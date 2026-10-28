@@ -49,6 +49,7 @@ public sealed record Offer(
         return true;
     }
 
+    /// <summary>An international number: '+', a non-zero first digit, 8 to 15 digits in all (E.164).</summary>
     public static bool ValidMsisdn(string? value)
     {
         if (value is not { Length: >= 9 and <= 16 })
