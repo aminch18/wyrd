@@ -1409,7 +1409,33 @@
 }
 .withArch .journeyState {
     position: static;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+/* The client and the process side by side; the queue across, under them. */
+.withArch .journeyState > .statePanel:nth-child(2) {
+    grid-column: 1 / -1;
+    order: 3;
+}
+.withArch .statePanel {
+    min-width: 0;
+    padding: 12px 14px;
+}
+.withArch .statePanel p {
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+.withArch .statePanel small {
+    font-size: 12px;
+}
+.withArch .queueRows {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.withArch .queueRows li {
+    margin: 0;
+    padding: 7px 11px;
+    font-size: 13px;
 }
 .withArch .lifecycle {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1430,6 +1456,9 @@
 @media (max-width: 560px) {
     .withArch .journeyState {
         grid-template-columns: minmax(0, 1fr);
+    }
+    .withArch .journeyState > .statePanel:nth-child(2) {
+        order: 0;
     }
 }
 .flowSvg .nodeTitle {
