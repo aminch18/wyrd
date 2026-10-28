@@ -8,10 +8,14 @@ using Wyrd.Runtime;
 
 namespace Wyrd.Benchmarks.Concurrency;
 
-/// <summary>The PostgreSQL server: every run gets a new, empty database with Wyrd's tables.</summary>
-internal sealed class Server(string connectionString)
+/// <summary>
+/// The PostgreSQL server: every run gets a new, empty database with Wyrd's tables, named for this process so a server
+/// reused with <c>--connection</c> never hands a run an old one; disposing the server drops them.
+/// </summary>
+internal sealed class Server(string connectionString) : IAsyncDisposable
 {
-    private int _databases;
+    private readonly string _prefix = "wyrd_bench_" + Guid.NewGuid().ToString("N")[..8] + "_";
+    private readonly List<string> _created = [];
 
     private static readonly Retention KeepEverything = new()
     {
@@ -29,6 +33,20 @@ internal sealed class Server(string connectionString)
         return connection.PostgreSqlVersion.ToString();
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        // Every runtime on these databases is disposed by now; their pooled connections are closed first.
+        NpgsqlConnection.ClearAllPools();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        foreach (var name in _created)
+        {
+            await using var drop = connection.CreateCommand();
+            drop.CommandText = $"DROP DATABASE IF EXISTS \"{name}\" WITH (FORCE)";
+            await drop.ExecuteNonQueryAsync();
+        }
+    }
+
     /// <summary>A new database, and a factory of contexts on it.</summary>
     public async Task<IDbContextFactory<WyrdDbContext>> NewDatabaseAsync() => (await NewDatabaseAsync(null)).Plain;
 
@@ -40,7 +58,8 @@ internal sealed class Server(string connectionString)
     {
         // Each database has a pool of its own: the last run's idle connections are closed, not left to fill the server.
         NpgsqlConnection.ClearAllPools();
-        var database = new NpgsqlConnectionStringBuilder(connectionString) { Database = $"run{Interlocked.Increment(ref _databases)}" };
+        var database = new NpgsqlConnectionStringBuilder(connectionString) { Database = _prefix + (_created.Count + 1) };
+        _created.Add(database.Database!);
         // Pooled, as an application should register it (AddPooledDbContextFactory): a context per message is cheap.
         var plain = new PooledDbContextFactory<WyrdDbContext>(new DbContextOptionsBuilder<WyrdDbContext>().UseNpgsql(database.ConnectionString).Options);
         var profiled = profile is null

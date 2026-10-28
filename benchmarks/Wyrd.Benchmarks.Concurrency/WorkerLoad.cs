@@ -76,7 +76,7 @@ internal static class WorkerLoad
     }
 
     /// <summary>A broken run must not report cheap orders: every one reached the end.</summary>
-    private static async Task CheckAsync(EfCoreRuntime<WyrdDbContext> shop, int orders)
+    internal static async Task CheckAsync(EfCoreRuntime<WyrdDbContext> shop, int orders)
     {
         for (var index = 0; index < orders; index++)
         {
