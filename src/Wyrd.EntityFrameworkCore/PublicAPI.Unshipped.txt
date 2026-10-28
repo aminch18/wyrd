@@ -1,4 +1,7 @@
 #nullable enable
+Wyrd.EntityFrameworkCore.CleanupMode
+Wyrd.EntityFrameworkCore.CleanupMode.Separate = 1 -> Wyrd.EntityFrameworkCore.CleanupMode
+Wyrd.EntityFrameworkCore.CleanupMode.Workers = 0 -> Wyrd.EntityFrameworkCore.CleanupMode
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.AddIntegration<TCommand, TEvent, TError>(Wyrd.Integration<TCommand, TEvent, TError>! integration) -> Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext!>!
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.AddProcess(Wyrd.Processes.Process! process) -> Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext!>!
@@ -21,6 +24,7 @@ Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.ReceiveAsync(Wyrd.Runtime.Trans
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.RelayPendingAsync(int max = 1000, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.ResumeAsync(Wyrd.Processes.Process! process, object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.RunAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.RunCleanupAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.SendAsync(Wyrd.ICommand! command, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Wyrd.Decision!>!
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.SendAsync(Wyrd.ICommand! command, TContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Wyrd.Decision!>!
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.StateOfAsync<TState>(object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<TState>!
@@ -32,6 +36,8 @@ Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.ViewAsync<TView>(object! key, S
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.ViewsAsync<TView>(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<TView!>!>!
 Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions
 Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.<Clone>$() -> Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions!
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.Cleanup.get -> Wyrd.EntityFrameworkCore.CleanupMode
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.Cleanup.init -> void
 Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.CleanupInterval.get -> System.TimeSpan
 Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.CleanupInterval.init -> void
 Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.EfCoreRuntimeOptions() -> void

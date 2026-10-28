@@ -87,7 +87,9 @@ them on start; production applies them as a deployment step.
 
 The constructor takes a `Retention` with every member required ([semantics](semantics.md) 4.1): how long duplicates
 are recognised, finished instances and their histories kept, relayed messages, domain events and dead letters. Workers
-remove what expired every `CleanupInterval`, in batches (`Take(n)` with `ExecuteDelete`, translated by both
+remove what expired every `CleanupInterval`, or, with `Cleanup = CleanupMode.Separate`, a service of its own does
+(`RunCleanupAsync`, or `ForgetExpiredAsync` from a scheduled job): with many API instances, their workers then don't all
+clean the same tables at once, and cleanup never takes a worker's time. Either way it goes in batches (`Take(n)` with `ExecuteDelete`, translated by both
 providers), each in its own short transaction, so cleanup never holds many locks or slows a message. Dates are
 indexed (`finished_at` only for finished instances, a filtered index; `failed_at` for dead letters). Inbox rows that are fences (`fence`) are never
 removed. With a history archive, each batch of expired instances, 100 at most whatever the cleanup's batch size (whole

@@ -1,6 +1,9 @@
 # PostgreSQL for the durable shop:
 #   docker compose -f samples/Shop.Api/compose.yaml up -d
 #   ConnectionStrings__Wyrd="Host=localhost;Port=5433;Username=wyrd;Password=wyrd;Database=shop" dotnet run --project samples/Shop.Api -p:WyrdHost=EfCore
+# With the cleanup as a separate service, the API's workers only handle messages:
+#   Wyrd__Cleanup=Separate ConnectionStrings__Wyrd="..." dotnet run --project samples/Shop.Api -p:WyrdHost=EfCore
+#   ConnectionStrings__Wyrd="..." dotnet run --project samples/Shop.Api -p:WyrdHost=EfCore -- cleanup
 services:
   postgres:
     image: postgres:17-alpine

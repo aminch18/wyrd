@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- **Cleanup as a separate service** (`Wyrd.EntityFrameworkCore`): `EfCoreRuntimeOptions.Cleanup = CleanupMode.Separate`
+  keeps workers to messages, and `RunCleanupAsync` runs the cleanup in a service of its own (or `ForgetExpiredAsync`
+  from a scheduled job). With many API instances, they no longer all clean the same tables. The default,
+  `CleanupMode.Workers`, is unchanged. The `wyrd.retention.removed` counter shows what cleanup removes. The Shop runs
+  its cleaner from the same build: `Shop.Api cleanup`.
+
 ## [0.5.0-rc.1] - 2026-10-24
 
 Verdandi: the durable runtime. A release candidate: the whole quality bar is green except Q2.3's retained-memory

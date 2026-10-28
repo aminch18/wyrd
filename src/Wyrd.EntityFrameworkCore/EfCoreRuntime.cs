@@ -80,6 +80,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxPollInterval, _options.PollInterval, "options.MaxPollInterval");
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_options.HealthInterval, TimeSpan.Zero, "options.HealthInterval");
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_options.CleanupInterval, TimeSpan.Zero, "options.CleanupInterval");
+        if (!Enum.IsDefined(_options.Cleanup))
+        {
+            throw new ArgumentOutOfRangeException("options.Cleanup", _options.Cleanup, "Unknown cleanup mode.");
+        }
+
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxDeliveryAttempts, 1, "options.MaxDeliveryAttempts");
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.RelayBatchSize, 1, "options.RelayBatchSize");
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxConflictRetries, 1, "options.MaxConflictRetries");
@@ -410,7 +415,8 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                     }
                 }
 
-                if (ClaimTurn(ref _lastCleanup, _options.CleanupInterval)
+                if (_options.Cleanup == CleanupMode.Workers
+                    && ClaimTurn(ref _lastCleanup, _options.CleanupInterval)
                     && (await ForgetExpiredAsync(BatchSize, CleanupBatchesPerPass, cancellationToken).ConfigureAwait(false)).More)
                 {
                     // A pass removes a bounded amount, so the worker gets back to messages: the next loop continues.
@@ -442,6 +448,51 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
                 // transactional, so queued messages are safe and nothing is half done.
                 LogWorkerFailed(ex);
                 await Task.Delay(_options.PollInterval, _time, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A cleaner: removes what the retention no longer keeps, one bounded pass every
+    /// <see cref="EfCoreRuntimeOptions.CleanupInterval"/> (the next one at once while more expired), until cancelled. Run it
+    /// in a service of its own, with <see cref="CleanupMode.Separate"/> on the runtimes that run workers. One cleaner is
+    /// enough; two are safe (a row already removed is not removed again, and an archive accepts a history twice). A
+    /// failed pass is logged and tried again after the interval.
+    /// </summary>
+    public async Task RunCleanupAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var wait = _options.CleanupInterval;
+            try
+            {
+                var pass = await ForgetExpiredAsync(BatchSize, CleanupBatchesPerPass, cancellationToken).ConfigureAwait(false);
+                LogCleanupPass(pass.Removed, pass.More);
+                if (pass.More)
+                {
+                    wait = TimeSpan.Zero;
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                // Nothing is half removed: each batch is its own statement or transaction.
+                LogCleanupFailed(ex);
+            }
+
+            if (wait > TimeSpan.Zero)
+            {
+                try
+                {
+                    await Task.Delay(wait, _time, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
             }
         }
     }
@@ -717,7 +768,8 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// <summary>
     /// Removes what the retention no longer keeps (Q2.3), in batches of <paramref name="batchSize"/> so no transaction
     /// holds many locks; returns how many rows went. Suspended and running instances stay; a removed instance takes its
-    /// parked events with it. Workers call it every <see cref="EfCoreRuntimeOptions.CleanupInterval"/>.
+    /// parked events with it. Workers call it every <see cref="EfCoreRuntimeOptions.CleanupInterval"/>, unless cleanup is
+    /// <see cref="CleanupMode.Separate"/>: then a scheduled job can call it, and it removes everything that expired.
     /// </summary>
     public async Task<int> ForgetExpiredAsync(int batchSize = BatchSize, CancellationToken cancellationToken = default)
     {
@@ -772,6 +824,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         if (_retention.DeadLetters.Cutoff(now) is { } dead)
         {
             await ForgetAsync<DeadLetterRow, long>(pass, r => r.FailedAt <= dead, r => r.Id, batchSize, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (pass.Removed > 0)
+        {
+            QueueMetrics.Removed.Add(pass.Removed, new KeyValuePair<string, object?>(QueueMetrics.QueueTagName, await QueueNameAsync(cancellationToken).ConfigureAwait(false)));
         }
 
         return pass;
@@ -1227,6 +1284,12 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Worker failed (database unavailable?); queued messages are safe, retrying")]
     private partial void LogWorkerFailed(Exception error);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cleanup removed {Removed} rows (more expired: {More})")]
+    private partial void LogCleanupPass(int removed, bool more);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cleanup failed (database unavailable?); expired rows stay until the next pass")]
+    private partial void LogCleanupFailed(Exception error);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "History archive failed: {Count} finished instances kept for the next cleanup")]
     private partial void LogArchiveFailed(int count, Exception error);

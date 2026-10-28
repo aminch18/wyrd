@@ -34,6 +34,8 @@ internal static class QueueMetrics
 
     public static readonly Counter<long> Failed = Meter.CreateCounter<long>("wyrd.messages.failed", "{message}", "Deliveries that failed and were rolled back");
 
+    public static readonly Counter<long> Removed = Meter.CreateCounter<long>("wyrd.retention.removed", "{row}", "Rows removed because their retention passed");
+
     public static readonly Counter<long> DeadLettered = Meter.CreateCounter<long>("wyrd.messages.dead_lettered", "{message}", "Messages moved to the dead letters");
 
     static QueueMetrics()

@@ -92,6 +92,27 @@ public sealed class WyrdWorker(EfCoreRuntime<ShopDbContext> wyrd) : BackgroundSe
 
 Workers also remove what expired, a bounded amount per pass, and measure the queue's health.
 
+### Cleanup as a separate service
+
+With many instances of an API, every one of them would clean the same tables. Make cleanup a service of its own: the
+workers only handle messages, and one cleaner removes what expired.
+
+```csharp
+// The API: its workers never clean.
+new EfCoreRuntime<ShopDbContext>(contexts, ShopJson.Default, Retention, new EfCoreRuntimeOptions { Cleanup = CleanupMode.Separate });
+
+// The cleaner, a service of its own (one replica): a pass every CleanupInterval, at once again while more expired.
+public sealed class WyrdCleaner(EfCoreRuntime<ShopDbContext> wyrd) : BackgroundService
+{
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) => wyrd.RunCleanupAsync(stoppingToken);
+}
+```
+
+A scheduled job (a Kubernetes `CronJob`, say) can call `ForgetExpiredAsync()` instead: it removes everything that
+expired, and returns. One cleaner is enough; two are safe. Nothing expires while no cleaner runs, so alert on
+`wyrd.process.expired_kept`. The Shop runs both ways from one build: `Wyrd__Cleanup=Separate` for the API, and
+`Shop.Api cleanup` for the cleaner (`samples/Shop.Api/compose.yaml`).
+
 ## Your transaction, or Wyrd's
 
 `SendAsync(command)` runs in a transaction of its own. To commit your own changes together with Wyrd's, begin the
@@ -155,7 +176,8 @@ Slowness is observed, never turned into failures. `HealthAsync()` measures the q
 | `wyrd.process.pending_steps`, `wyrd.process.oldest_pending_step.age` | A third party that is slow to answer |
 | `wyrd.process.suspended` | Instances that need an operator |
 | `wyrd.dead_letters` | Messages that gave up |
-| `wyrd.process.expired_kept` | Cleanup is behind, or the history archive keeps failing |
+| `wyrd.process.expired_kept` | Cleanup is behind (or no cleaner runs), or the history archive keeps failing |
+| `wyrd.retention.removed` | What cleanup removes, from the workers or the cleaner |
 | `wyrd.messages.handled`, `wyrd.messages.failed`, `wyrd.messages.dead_lettered` | Throughput and failures |
 
 ## A read model added later
