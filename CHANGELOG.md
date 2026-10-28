@@ -5,6 +5,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- Interactive telecom customer/operations workspace with BFF projection composition, live progress, provider simulation controls, incidents, durable histories and shared domain policies for cancellation and eSIM replacement.
+
+- Advanced telecom sample: pure portability, payment, eSIM, activation and billing boundaries; declarative processes and CQRS views; PostgreSQL API/worker hosts and deterministic provider services with separate databases. Includes Skuld scenarios, a recorded Urd incident, durable recovery tests, Docker Compose and a critical architectural findings document. No core APIs changed. Each feature colocates domain rules, processes, provider integrations, read models and MinApiLib HTTP endpoints in one folder, with explicit validation guards and thin API/worker hosts.
+
+### Fixed
+
+- Telecom sample rejects malformed webhook payloads before queuing, returns HTTP 400 for invalid commands, requires sequential payment reviews, validates operator incident ownership, and retries smoke-test connection failures. Provider replies without receipts follow technical retry handling. Local Compose binds the API to loopback; workspace URL decoding and small-text contrast are corrected.
+
 ## [0.5.0-rc.1] - 2026-10-24
 
 Verdandi: the durable runtime. A release candidate: the whole quality bar is green except Q2.3's retained-memory

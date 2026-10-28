@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Telecom/Telecom.csproj" />
+    <ProjectReference Include="../../src/Wyrd.Testing/Wyrd.Testing.csproj" />
+  </ItemGroup>
+</Project>
