@@ -852,7 +852,7 @@ public abstract class EfCoreRuntimeTests(Database database)
             .AddProjection(new BrokenJobs());
 #pragma warning restore IL2026, IL3050
         await runtime.SendAsync(new StartJob("J-1"));
-        await DrainAsync(runtime, settle: TimeSpan.FromSeconds(1));
+        await runtime.ProcessPendingAsync(); // one attempt: the failing event goes straight to the dead letters
         Assert.Equal((0, 1), await runtime.BacklogAsync());
 
         clock.Advance(TimeSpan.FromDays(7) - TimeSpan.FromSeconds(1));
