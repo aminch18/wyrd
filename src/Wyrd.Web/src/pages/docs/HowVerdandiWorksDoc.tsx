@@ -2,20 +2,22 @@ import source from '../../../../../docs/guides/how-verdandi-works.md?raw'
 import { CodeBlock } from '../../components/common/CodeBlock'
 import { DocArticle } from './DocArticle'
 import { guideLink } from './guideLinks'
+import { ArchitectureDiagram } from './verdandi/ArchitectureDiagram'
 import { BenchmarkCharts } from './verdandi/BenchmarkCharts'
 import { CleanupTopology } from './verdandi/CleanupTopology'
 import { DataMap } from './verdandi/DataMap'
 import { FailureScenarios } from './verdandi/FailureScenarios'
 import { MessageLifecycle } from './verdandi/MessageLifecycle'
 import { SkipLocked } from './verdandi/SkipLocked'
+import css from './verdandi/verdandi.module.css'
 
 /**
  * docs/guides/how-verdandi-works.md stays the source of truth (GitHub, NuGet). This page tells the same
- * story with pictures; its two text diagrams are read from the guide itself, so they can't drift.
+ * story with pictures; the order's walk-through is read from the guide itself, so it can't drift.
  */
-const [PIECES, ORDER] = [...source.matchAll(/```text\n([\s\S]*?)```/g)].map(
+const ORDER = [...source.matchAll(/```text\n([\s\S]*?)```/g)].map(
     (m) => m[1],
-)
+)[1]
 
 export function HowVerdandiWorksDoc() {
     return (
@@ -24,6 +26,7 @@ export function HowVerdandiWorksDoc() {
             title="How Verdandi works"
             lead="Verdandi is Wyrd’s durable host: EfCoreRuntime on PostgreSQL or SQL Server. What happens underneath, so you can run it in production without reading its code."
         >
+            <div className={css.pageMarker} />
             <p>
                 Where every piece of data lives, what one message does to the
                 database, how many workers and API instances share the work,
@@ -38,32 +41,12 @@ export function HowVerdandiWorksDoc() {
             </p>
 
             <h2>The pieces</h2>
-            <CodeBlock code={PIECES} language="text" title="one service" />
-            <ul>
-                <li>
-                    <strong>The engine</strong> decides; it never touches
-                    storage or the network. Given one message it calls your pure
-                    code and returns everything that message changed.
-                </li>
-                <li>
-                    <strong>The runtime</strong> is one object per process (a
-                    singleton) with no state of its own between calls: every
-                    call opens its own <code>DbContext</code> and its own
-                    transaction.
-                </li>
-                <li>
-                    <strong>The database is the queue and the outbox.</strong>{' '}
-                    There is no broker inside a service: everything the engine
-                    produces is written as rows, in the same transaction as the
-                    state it changed.
-                </li>
-                <li>
-                    <strong>Workers</strong> are loops (<code>RunAsync</code>)
-                    that take the next due message from the <code>queue</code>{' '}
-                    table. Run as many as you like, in one process or in many.
-                    Between messages they also remove what expired.
-                </li>
-            </ul>
+            <p>
+                Your code decides, the runtime runs it, and the database holds
+                everything: the state, the queue and the outbox. Pick a case
+                below the diagram to follow it.
+            </p>
+            <ArchitectureDiagram />
 
             <h2>Where the data lives</h2>
             <DataMap />

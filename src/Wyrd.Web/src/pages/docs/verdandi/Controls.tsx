@@ -4,6 +4,8 @@ import css from './verdandi.module.css'
 
 interface ControlsProps {
     playing: boolean
+    /** Replaces Play / Replay, e.g. after a crash. */
+    playLabel?: string
     atStart: boolean
     atEnd: boolean
     onPlay: () => void
@@ -17,6 +19,7 @@ interface ControlsProps {
 /** Play, step and reset: every animation on the page can be read one step at a time. */
 export function Controls({
     playing,
+    playLabel,
     atStart,
     atEnd,
     onPlay,
@@ -34,7 +37,8 @@ export function Controls({
                 </button>
             ) : (
                 <button type="button" className={css.primary} onClick={onPlay}>
-                    <Play size={15} /> {atEnd ? 'Replay' : 'Play'}
+                    <Play size={15} />{' '}
+                    {playLabel ?? (atEnd ? 'Replay' : 'Play')}
                 </button>
             )}
             <button

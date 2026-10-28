@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Lock, Zap } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Lock, RotateCcw, Zap } from 'lucide-react'
 import { Controls } from './Controls'
 import { useStepper } from './useStepper'
 import css from './verdandi.module.css'
@@ -49,14 +49,32 @@ const STEPS = [
 const LAST = STEPS.length - 1
 const WRITE = 6
 const DELETE = 7
+/** How long the rollback stays on screen before another worker takes the row. */
+const RETRY_AFTER = 2600
 
 type Phase = 'none' | 'pending' | 'committed'
 
 export function MessageLifecycle() {
-    const stepper = useStepper(LAST, 1700)
+    const stepper = useStepper(LAST, 1500)
+    const [attempt, setAttempt] = useState(1)
     const [crashedAt, setCrashedAt] = useState<number | null>(null)
     const step = stepper.step
     const crashed = crashedAt !== null
+    const worker = `worker ${attempt}`
+
+    const retry = () => {
+        setCrashedAt(null)
+        setAttempt(2)
+        stepper.setStep(1)
+        stepper.play()
+    }
+
+    // After a crash, the row is back in the queue: another worker takes it on its own.
+    useEffect(() => {
+        if (!crashed) return
+        const timer = window.setTimeout(retry, RETRY_AFTER)
+        return () => window.clearTimeout(timer)
+    }, [crashed])
 
     const writes: Phase = crashed
         ? 'none'
@@ -68,7 +86,7 @@ export function MessageLifecycle() {
     const rowLocked = !crashed && step >= 2 && step < LAST
     const rowDeleting = !crashed && step >= DELETE && step < LAST
     const rowGone = !crashed && step >= LAST
-    const crashable = !crashed && step >= 1 && step < LAST
+    const crashable = attempt === 1 && !crashed && step >= 1 && step < LAST
 
     const crash = () => {
         stepper.pause()
@@ -76,11 +94,56 @@ export function MessageLifecycle() {
     }
     const reset = () => {
         setCrashedAt(null)
+        setAttempt(1)
         stepper.reset()
     }
+    const replay = () => {
+        setAttempt(1)
+        stepper.play()
+    }
+    const read = (from: number) =>
+        step >= from && !crashed
+            ? writes === 'none'
+                ? 'read'
+                : writes
+            : 'none'
 
     return (
-        <figure className={css.figure}>
+        <figure className={`${css.figure} ${css.big}`}>
+            <ol className={css.attempts} aria-label="Attempts">
+                <li
+                    className={
+                        attempt === 1 && !crashed
+                            ? css.attemptNow
+                            : attempt === 2 || crashed
+                              ? css.attemptFailed
+                              : ''
+                    }
+                >
+                    <strong>attempt 1</strong> · worker 1
+                    {(crashed || attempt === 2) && (
+                        <span> · crashed, rolled back</span>
+                    )}
+                </li>
+                {(crashed || attempt === 2) && (
+                    <li
+                        className={
+                            attempt === 2
+                                ? step === LAST
+                                    ? css.attemptOk
+                                    : css.attemptNow
+                                : ''
+                        }
+                    >
+                        <strong>attempt 2</strong> · worker 2
+                        {attempt === 2 && step === LAST && (
+                            <span> · committed</span>
+                        )}
+                        {crashed && <span> · takes the row in a moment</span>}
+                    </li>
+                )}
+            </ol>
+
             <div className={css.lifecycle}>
                 <section className={css.column} aria-label="The queue table">
                     <h4>queue</h4>
@@ -90,12 +153,23 @@ export function MessageLifecycle() {
                             rowLocked && css.locked,
                             rowDeleting && css.deleting,
                             rowGone && css.gone,
+                            crashed && css.returned,
                         ]
                             .filter(Boolean)
                             .join(' ')}
                     >
                         <span>ReserveStock · KEYBOARD</span>
-                        {rowLocked && <Lock size={13} aria-label="locked" />}
+                        {rowLocked && (
+                            <span className={css.holder}>
+                                <Lock size={12} aria-hidden /> {worker}
+                            </span>
+                        )}
+                        {crashed && (
+                            <span className={css.holder}>
+                                <RotateCcw size={12} aria-hidden /> back,
+                                unlocked
+                            </span>
+                        )}
                     </div>
                     <div className={css.row}>
                         <span>OrderPlaced · A-2</span>
@@ -112,7 +186,7 @@ export function MessageLifecycle() {
                     className={`${css.column} ${css.transaction} ${crashed ? css.rolledBack : ''}`}
                     aria-label="The worker's transaction"
                 >
-                    <h4>worker</h4>
+                    <h4>{worker}</h4>
                     <ol className={css.code}>
                         {STEPS.slice(1).map((s, index) => {
                             const at = index + 1
@@ -134,8 +208,8 @@ export function MessageLifecycle() {
                     </ol>
                     {crashed && (
                         <div className={css.crash} role="status">
-                            <Zap size={15} /> The process died before{' '}
-                            <code>COMMIT</code>: the database rolls everything
+                            <Zap size={15} /> Worker 1 died before{' '}
+                            <code>COMMIT</code>: the database rolls all of it
                             back.
                         </div>
                     )}
@@ -148,13 +222,7 @@ export function MessageLifecycle() {
                     <h4>tables</h4>
                     <Chip
                         name="inbox"
-                        phase={
-                            step >= 3 && !crashed
-                                ? writes === 'none'
-                                    ? 'read'
-                                    : writes
-                                : 'none'
-                        }
+                        phase={read(3)}
                         label={
                             writes === 'none' ? 'not seen yet' : 'the outcome'
                         }
@@ -184,10 +252,18 @@ export function MessageLifecycle() {
             <figcaption className={css.caption} aria-live="polite">
                 {crashed ? (
                     <>
-                        <strong>Rolled back.</strong> The row is back in the
-                        queue, unlocked, and another worker handles it. No state
-                        saved without its event, no event without its state:
-                        nothing is left half done.
+                        <strong>Rolled back.</strong> No state without its
+                        event, no event without its state: nothing is left half
+                        done. The row is back in the queue, unlocked, and the
+                        next worker takes it. A crash is not a decision of your
+                        code, so there is nothing to compensate: the message is
+                        simply handled again.
+                    </>
+                ) : attempt === 2 && step === LAST ? (
+                    <>
+                        <strong>Handled once.</strong> Worker 1’s attempt left
+                        nothing behind, so worker 2 started from the same state
+                        (version 7) and committed everything together.
                     </>
                 ) : (
                     <>
@@ -201,9 +277,10 @@ export function MessageLifecycle() {
 
             <Controls
                 playing={stepper.playing}
-                atStart={step === 0 && !crashed}
+                atStart={step === 0 && !crashed && attempt === 1}
                 atEnd={step === LAST || crashed}
-                onPlay={crashed ? reset : stepper.play}
+                playLabel={crashed ? 'Retry now' : undefined}
+                onPlay={crashed ? retry : step === LAST ? replay : stepper.play}
                 onPause={stepper.pause}
                 onBack={stepper.back}
                 onNext={stepper.next}
