@@ -5,6 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+
+- Quality bar: Q2.3 is checked by the retention tests (in memory and on both EF Core databases), not by a retained-memory
+  benchmark. A host's size is the application's data plus what its retention keeps; the tests prove each kind expires
+  on time and only then. With Q1 ticked on the roadmap, every rule of the bar is ✅.
+
 ## [0.5.0-rc.1] - 2026-10-24
 
 Verdandi: the durable runtime. A release candidate: the whole quality bar is green except Q2.3's retained-memory
