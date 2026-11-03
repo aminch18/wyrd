@@ -409,6 +409,94 @@ public abstract class EfCoreRuntimeTests(Database database)
         Assert.Single(history.Entries, e => e.Kind == HistoryKind.Replied);
     }
 
+    [Fact]
+    public async Task a_slow_outside_call_does_not_hold_the_worker()
+    {
+        var contexts = await database.NewAsync();
+        var answer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gateway = new JobGateway((_, _) => answer.Task); // every call waits until the test answers
+        using var runtime = JobRuntime(contexts, gateway);
+        using var stop = new CancellationTokenSource();
+        var worker = runtime.RunAsync(stop.Token); // one worker loop
+
+        await runtime.SendAsync(new StartJob("J-1"));
+        await runtime.SendAsync(new StartJob("J-2"));
+
+        // Both calls are in flight at once: the first one's wait didn't stop the worker taking the second.
+        await UntilAsync(() => gateway.Keys.Count == 2);
+        answer.SetResult();
+        await UntilAsync(async () => await runtime.StatusOfAsync(Jobs.Process, "J-1") == ProcessStatus.Completed
+            && await runtime.StatusOfAsync(Jobs.Process, "J-2") == ProcessStatus.Completed);
+        await stop.CancelAsync();
+        await worker;
+    }
+
+    [Fact]
+    public async Task a_worker_waits_for_a_free_slot_when_every_call_is_taken()
+    {
+        var contexts = await database.NewAsync();
+        var answer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gateway = new JobGateway((_, _) => answer.Task);
+#pragma warning disable IL2026, IL3050 // reflection JSON keeps the test domain small
+        using var runtime = new EfCoreRuntime<WyrdDbContext>(contexts, Database.Retention, Database.Options with { MaxConcurrentCalls = 1 })
+            .AddSlice(new StartJobSlice())
+            .AddIntegration(gateway)
+            .AddProcess(Jobs.Process);
+#pragma warning restore IL2026, IL3050
+        using var stop = new CancellationTokenSource();
+        var worker = runtime.RunAsync(stop.Token);
+
+        await runtime.SendAsync(new StartJob("J-1"));
+        await runtime.SendAsync(new StartJob("J-2"));
+        await UntilAsync(() => gateway.Keys.Count == 1);
+        await Task.Delay(300); // time enough for a second call, if the bound let it through
+        Assert.Single(gateway.Keys);
+
+        answer.SetResult();
+        await UntilAsync(async () => await runtime.StatusOfAsync(Jobs.Process, "J-2") == ProcessStatus.Completed);
+        Assert.Equal(2, gateway.Keys.Count);
+        await stop.CancelAsync();
+        await worker;
+    }
+
+    [Fact]
+    public async Task a_worker_stopping_waits_for_the_calls_it_started()
+    {
+        var contexts = await database.NewAsync();
+        var called = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gateway = new JobGateway((_, _) =>
+        {
+            called.TrySetResult();
+            return answer.Task;
+        });
+        var runtime = JobRuntime(contexts, gateway);
+        using var stop = new CancellationTokenSource();
+        var worker = runtime.RunAsync(stop.Token);
+        await runtime.SendAsync(new StartJob("J-1"));
+        await called.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        await stop.CancelAsync();
+        await Task.Delay(300);
+        Assert.False(worker.IsCompleted); // the call it started is still running
+
+        answer.SetResult();
+        await worker.WaitAsync(TimeSpan.FromSeconds(10));
+        runtime.Dispose(); // nothing it started is left running
+    }
+
+    private static Task UntilAsync(Func<bool> done) => UntilAsync(() => Task.FromResult(done()));
+
+    private static async Task UntilAsync(Func<Task<bool>> done)
+    {
+        var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (!await done())
+        {
+            Assert.True(DateTime.UtcNow < timeout, "Timed out.");
+            await Task.Delay(20);
+        }
+    }
+
     private static EfCoreRuntime<WyrdDbContext> JobRuntime(IDbContextFactory<WyrdDbContext> contexts, JobGateway gateway)
     {
 #pragma warning disable IL2026, IL3050 // reflection JSON keeps the test domain small

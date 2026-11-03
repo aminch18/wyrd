@@ -13,6 +13,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
+- **A slow outside call no longer holds a worker** (`Wyrd.EntityFrameworkCore`): `RunAsync` leases an integration
+  command, hands the call to a dispatcher and goes back to the queue. `EfCoreRuntimeOptions.MaxConcurrentCalls` (64)
+  bounds the calls in flight per runtime; with every slot taken, the worker waits for one, with no transaction open.
+  Before, a worker awaited every call, so N workers and a provider taking L seconds made at most N/L calls a second,
+  and every other message waited behind them. `ProcessPendingAsync` still awaits each call.
+
 - **Cheaper messages on the EF Core host**: Wyrd's own transactions no longer pay for EF Core's automatic savepoints,
   and a handled message leaves the queue in the batch of its own writes, one round trip less. With a pooled context
   factory, which the guide and the Shop now use (`AddPooledDbContextFactory`), a message takes about 17% less time

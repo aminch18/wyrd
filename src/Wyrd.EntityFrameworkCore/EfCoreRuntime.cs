@@ -38,6 +38,8 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     private int _idleWaits;
     private int _catchingUp;
     private readonly SemaphoreSlim _work = new(0, 1);
+    // Outside calls in flight for this runtime's workers (MaxConcurrentCalls).
+    private readonly SemaphoreSlim _calls;
 
     /// <summary>
     /// Source-generated JSON from your <c>[WyrdJsonContext]</c>. <paramref name="retention"/> says how long each kind of
@@ -85,6 +87,8 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxConflictRetries, 1, "options.MaxConflictRetries");
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.RedeliveryDelay, TimeSpan.Zero, "options.RedeliveryDelay");
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_options.IntegrationLease, TimeSpan.Zero, "options.IntegrationLease");
+        ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxConcurrentCalls, 1, "options.MaxConcurrentCalls");
+        _calls = new SemaphoreSlim(_options.MaxConcurrentCalls, _options.MaxConcurrentCalls);
         _time = time ?? TimeProvider.System;
         _logger = logger ?? NullLogger.Instance;
     }
@@ -299,11 +303,18 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     // ── Workers ──────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Handles queued messages that are due until none is left (or <paramref name="max"/>), and returns how many.</summary>
-    public async Task<int> ProcessPendingAsync(int max = 1_000, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Handles queued messages that are due until none is left (or <paramref name="max"/>), and returns how many. An
+    /// integration command's outside call is awaited here, so its outcome is recorded when this returns (unlike
+    /// <see cref="RunAsync"/>, where calls run beside the worker).
+    /// </summary>
+    public Task<int> ProcessPendingAsync(int max = 1_000, CancellationToken cancellationToken = default) =>
+        ProcessPendingAsync(max, calls: null, cancellationToken);
+
+    private async Task<int> ProcessPendingAsync(int max, List<Task>? calls, CancellationToken cancellationToken)
     {
         var handled = 0;
-        while (handled < max && await ProcessOneAsync(cancellationToken).ConfigureAwait(false))
+        while (handled < max && await ProcessOneAsync(calls, cancellationToken).ConfigureAwait(false))
         {
             handled++;
         }
@@ -393,16 +404,31 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
     /// <summary>
     /// A worker: handles messages as they become due and relays what was published, until cancelled. Run as many as you
-    /// like.
+    /// like. An integration command's outside call runs beside the worker, up to
+    /// <see cref="EfCoreRuntimeOptions.MaxConcurrentCalls"/> at once for this runtime, so a slow third party doesn't hold
+    /// the queue; when cancelled, it waits for the calls it started.
     /// </summary>
     public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        var calls = new List<Task>();
+        try
+        {
+            await WorkAsync(calls, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await Task.WhenAll(calls).ConfigureAwait(false);
+        }
+    }
+
+    private async Task WorkAsync(List<Task> calls, CancellationToken cancellationToken)
     {
         var idle = _options.PollInterval;
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                var handled = await ProcessPendingAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                var handled = await ProcessPendingAsync(1_000, calls, cancellationToken).ConfigureAwait(false);
                 var relayed = await RelayOrWaitAsync(cancellationToken).ConfigureAwait(false);
 
                 // One loop of this runtime catches up at a time, a bounded batch per pass, between messages. Seeding is
@@ -513,7 +539,8 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// Takes the next due message and handles it in the same transaction that removes it from the queue. Returns false
     /// when nothing is due. A failure rolls everything back and schedules a redelivery.
     /// </summary>
-    private async Task<bool> ProcessOneAsync(CancellationToken cancellationToken)
+    // With calls, an integration's outside call is handed to the dispatcher and the worker moves on; without, it is awaited.
+    private async Task<bool> ProcessOneAsync(List<Task>? calls, CancellationToken cancellationToken)
     {
         var now = _time.GetUtcNow();
         await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
@@ -569,10 +596,44 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
         if (leasedUntil is { } until)
         {
-            await CallLeasedAsync(message, envelope, until, cancellationToken).ConfigureAwait(false);
+            if (calls is null)
+            {
+                await CallLeasedAsync(message, envelope, until, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                // Back-pressure: with every slot taken the worker waits here, with no transaction open, as it did for the
+                // call itself before. The lease runs meanwhile.
+                await _calls.WaitAsync(cancellationToken).ConfigureAwait(false);
+                calls.RemoveAll(call => call.IsCompleted);
+                calls.Add(CallBesideAsync(message, envelope, until, cancellationToken));
+            }
         }
 
         return true;
+    }
+
+    // A dispatched call: it holds one of MaxConcurrentCalls slots until its outcome is recorded.
+    private async Task CallBesideAsync(QueueRow message, Envelope envelope, DateTimeOffset leasedUntil, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Yield(); // the worker goes back to the queue now, not after the call's first await
+            await CallLeasedAsync(message, envelope, leasedUntil, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
+        {
+            // Stopping: the lease runs out and another worker calls again, with the same idempotency key.
+        }
+        catch (Exception ex)
+        {
+            // Recording the outcome failed (the database is unreachable): the lease runs out, and the call is made again.
+            LogWorkerFailed(ex);
+        }
+        finally
+        {
+            _calls.Release();
+        }
     }
 
     /// <summary>
@@ -1049,6 +1110,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         }
 
         _work.Dispose();
+        _calls.Dispose();
     }
 
     // ── Queries ──────────────────────────────────────────────────────────────────────────────

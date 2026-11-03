@@ -136,6 +136,10 @@ Three things follow from talking to the outside world:
 - A timeout of yours (`HttpClient`'s, for example) is a failure the step's retry policy handles, like any exception.
 - A call slower than `EfCoreRuntimeOptions.IntegrationLease` (five minutes) may be made again by another worker,
   with the same key. Set the lease longer than your slowest call.
+- Workers don't wait for calls: a worker leases the command, hands the call over and goes back to the queue. Each
+  runtime makes up to `EfCoreRuntimeOptions.MaxConcurrentCalls` (64) at once; with all of them taken, a worker that
+  leased another call waits for a free slot, and that call's lease runs meanwhile. A worker that stops waits for the
+  calls it started. `ProcessPendingAsync` still waits for each call, so the outcome is there when it returns.
 - A call that never answered may have acted. On compensation, its undo runs anyway, so an integration's undo treats
   "nothing to undo" (a refund of a charge that never happened) as done.
 

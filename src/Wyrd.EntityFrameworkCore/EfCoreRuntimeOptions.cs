@@ -44,6 +44,13 @@ public sealed record EfCoreRuntimeOptions
     public TimeSpan IntegrationLease { get; init; } = TimeSpan.FromMinutes(5);
 
     /// <summary>
+    /// How many outside calls (integration commands) this runtime's workers make at once. A worker leases the command,
+    /// hands the call over and goes back to the queue, so a slow third party doesn't hold the other messages. With every
+    /// slot taken, a worker that leased another call waits for a free one, and that call's lease runs meanwhile.
+    /// </summary>
+    public int MaxConcurrentCalls { get; init; } = 64;
+
+    /// <summary>
     /// How many attempts a command sent from outside gets on concurrency conflicts, the first one included (1: no retry).
     /// After the last, <c>SendAsync</c> throws a <see cref="Wyrd.ConcurrencyConflictException"/>.
     /// </summary>

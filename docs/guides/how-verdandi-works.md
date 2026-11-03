@@ -135,7 +135,8 @@ deliver twice. Effects happen once, for as long as the `Deduplication` retention
   nothing. Two workers racing on the same command both try to insert the inbox row: one wins, the other rolls back.
 - **Events**: the `handled` table remembers each event's id; a duplicate is ignored.
 - **Calls to other systems** (integrations): the call is made with no transaction open, under a lease, and its outcome
-  recorded in a second transaction. The integration gets an idempotency key, the same on every attempt: pass it to
+  recorded in a second transaction. The worker doesn't wait for it: up to `MaxConcurrentCalls` (64) calls run beside
+  the workers of a runtime, so a slow third party doesn't hold the rest of the queue. The integration gets an idempotency key, the same on every attempt: pass it to
   the other system, and if that system honours it, a second call never repeats the charge.
 
 A caller retrying is not a duplicate: every `SendAsync` is a new message with a new id. If your client may send the
