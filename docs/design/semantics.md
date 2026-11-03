@@ -182,13 +182,19 @@ the host doesn't start without a `Retention`, whose every member is required, ea
   is kept past its retention (`ExpiredKept`). An archived history still replays with Urd. Without an archive,
   expiring deletes.
   **Implemented** in memory and on the EF Core host.
+- **On a durable host that decision is written down.** What cleaning removes depends on the cleaning runtime's transport
+  and archive, and cleaning may run apart from the workers. So while `RelayedMessages` expire it declares
+  `UseTransport` or `NoTransport("why")`, and while `FinishedInstances` expire it declares `UseHistoryArchive` or
+  `NoHistoryArchive("why")`; otherwise it refuses to clean. **Implemented** on the EF Core host.
 - **Fences never expire**: a fenced command is blocked forever (3.4). There is one per step given up on without knowing
   whether it ran, so they grow with failures, not with traffic.
 - **What an instance learned doesn't depend on deduplication.** A reply that arrives while the deployed definition is
   not the one the instance started with is kept on the instance, and the operator's resume or compensation takes it:
   an instance can stay suspended longer than the owner's inbox remembers.
-- Durable hosts remove what expired in batches, in the workers, every `CleanupInterval` (one minute by default), never
-  on a message's path. The in-memory host removes it when its clock moves (`AdvanceAsync`).
+- Durable hosts remove what expired in batches, every `CleanupInterval` (one minute by default), never on a message's
+  path: in the workers, or in a separate service when cleanup is `Separate` (then nothing expires until that service
+  runs). What is removed depends on the runtime that removes: with a separate service, it has the workers' retention,
+  transport and history archive. The in-memory host removes it when its clock moves (`AdvanceAsync`).
 - In memory there is a default, `Retention.InMemory`, that keeps everything (nothing outlives the process), and the
   journal keeps the most recent `JournalLimit` entries (10,000 by default).
 - Business data is not delivery machinery: states and read models have no retention, they live as long as the

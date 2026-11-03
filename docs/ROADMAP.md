@@ -137,6 +137,8 @@ Work happens on `feature/verdandi` (PR #11), in this order:
       (`dotnet wyrd replay`). Optional: without an archive, expiring is deleting
 - [x] **Concurrency benchmark** on PostgreSQL (`benchmarks/Wyrd.Benchmarks.Concurrency`): concurrent callers on different
       keys and on one hot key, and workers draining a backlog; reported, not gated
+- [x] **Cleanup as a separate service** (`CleanupMode.Separate`, `RunCleanupAsync`): workers only handle messages, and one
+      cleaner (a service, or a scheduled job) removes what the retention no longer keeps
 
 ## Documentation & adoption (continuous, required before going public)
 

@@ -68,7 +68,9 @@ services.AddSingleton(provider => ShopModule.Register(new EfCoreRuntime<ShopDbCo
     provider.GetRequiredService<IDbContextFactory<ShopDbContext>>(),
     ShopJson.Default,
     Retention,
-    logger: provider.GetRequiredService<ILogger<EfCoreRuntime<ShopDbContext>>>())));
+    logger: provider.GetRequiredService<ILogger<EfCoreRuntime<ShopDbContext>>>()))
+    .NoTransport("the shop is one service: what it publishes stays in its outbox")
+    .NoHistoryArchive("a month in the tables is enough for a sample"));
 services.AddSingleton<IWyrdRuntime>(provider => provider.GetRequiredService<EfCoreRuntime<ShopDbContext>>());
 services.AddHostedService<WyrdWorker>();
 ```
@@ -81,6 +83,12 @@ Suspended instances never expire: they wait for an operator. Fences never expire
 without knowing whether it ran stays blocked forever. To keep finished histories after they leave the hot tables,
 give the host an `IHistoryArchive`: each batch is archived first, with no transaction open, and removed only once
 the archive returned.
+
+Cleaning depends on two more decisions, and a runtime that cleans must write them down, like the retention. While
+`RelayedMessages` expire it needs `UseTransport(...)` or `NoTransport("why")`; while `FinishedInstances` expire it needs
+`UseHistoryArchive(...)` or `NoHistoryArchive("why")`. Without them `RunAsync`, `RunCleanupAsync` and
+`ForgetExpiredAsync` throw an `InvalidOperationException` before removing anything: a forgotten transport would delete
+messages not relayed yet, and a forgotten archive would delete histories for good.
 
 ## Workers
 
@@ -96,6 +104,30 @@ public sealed class WyrdWorker(EfCoreRuntime<ShopDbContext> wyrd) : BackgroundSe
 ```
 
 Workers also remove what expired, a bounded amount per pass, and measure the queue's health.
+
+### Cleanup as a separate service
+
+With many instances of an API, every one of them would clean the same tables. Make cleanup a service of its own: the
+workers only handle messages, and one cleaner removes what expired.
+
+```csharp
+// The API: its workers never clean.
+new EfCoreRuntime<ShopDbContext>(contexts, ShopJson.Default, Retention, new EfCoreRuntimeOptions { Cleanup = CleanupMode.Separate });
+
+// The cleaner, a service of its own (one replica): a pass every CleanupInterval, at once again while more expired.
+public sealed class WyrdCleaner(EfCoreRuntime<ShopDbContext> wyrd) : BackgroundService
+{
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) => wyrd.RunCleanupAsync(stoppingToken);
+}
+```
+
+A scheduled job (a Kubernetes `CronJob`, say) can call `ForgetExpiredAsync()` instead: it removes everything that
+expired, except histories whose archive failed (kept for the next run), and returns. One cleaner is enough; two are safe. Configure the cleaner's runtime like the workers': the same retention,
+transport and history archive, or it won't start. A cleaner only reads the transport's presence: it relays nothing,
+but it must know messages leave this service. Build both from the same code, so they can't disagree: `NoTransport`
+on a cleaner whose workers do have a transport would delete messages not relayed yet. Nothing expires while no cleaner runs. `wyrd.process.expired_kept` shows it only
+for finished instances, so also alert when the cleaner stops running. The Shop runs both ways from one build: `Wyrd__Cleanup=Separate` for the API, and
+`Shop.Api cleanup` for the cleaner (`samples/Shop.Api/compose.yaml`).
 
 ## Your transaction, or Wyrd's
 
@@ -160,7 +192,8 @@ Slowness is observed, never turned into failures. `HealthAsync()` measures the q
 | `wyrd.process.pending_steps`, `wyrd.process.oldest_pending_step.age` | A third party that is slow to answer |
 | `wyrd.process.suspended` | Instances that need an operator |
 | `wyrd.dead_letters` | Messages that gave up |
-| `wyrd.process.expired_kept` | Cleanup is behind, or the history archive keeps failing |
+| `wyrd.process.expired_kept` | Cleanup is behind (or no cleaner runs), or the history archive keeps failing |
+| `wyrd.retention.removed` | What cleanup removes, from the workers or the cleaner |
 | `wyrd.messages.handled`, `wyrd.messages.failed`, `wyrd.messages.dead_lettered` | Throughput and failures |
 
 ## A read model added later

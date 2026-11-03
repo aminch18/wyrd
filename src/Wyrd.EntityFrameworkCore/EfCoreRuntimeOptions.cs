@@ -28,8 +28,14 @@ public sealed record EfCoreRuntimeOptions
     public TimeSpan RedeliveryDelay { get; init; } = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// How often a worker removes what the retention no longer keeps. A pass removes a bounded amount (ten batches of
-    /// each kind); when more expired, the next loop goes on, between messages. Must be positive.
+    /// Who removes what the retention no longer keeps: the workers (the default), or a separate service
+    /// (<see cref="CleanupMode.Separate"/>).
+    /// </summary>
+    public CleanupMode Cleanup { get; init; } = CleanupMode.Workers;
+
+    /// <summary>
+    /// How often workers, or a separate cleaner, remove what the retention no longer keeps. A pass removes a bounded
+    /// amount (ten batches of each kind); when more expired, the next pass follows at once. Must be positive.
     /// </summary>
     public TimeSpan CleanupInterval { get; init; } = TimeSpan.FromMinutes(1);
 

@@ -820,7 +820,7 @@ public abstract class EfCoreRuntimeTests(Database database)
             RelayedMessages = Keep.For(TimeSpan.FromDays(7)),
             Events = Keep.Forever("the record of what happened"),
             DeadLetters = Keep.For(TimeSpan.FromDays(7)),
-        });
+        }).NoTransport("tests").NoHistoryArchive("tests");
         await ShipAsync(shop, "A-1");
         var before = await CountAsync(contexts);
         Assert.All([before.Inbox, before.Handled, before.Published, before.Events], count => Assert.NotEqual(0, count));
@@ -838,6 +838,75 @@ public abstract class EfCoreRuntimeTests(Database database)
         Assert.Equal(1, (await shop.ViewAsync<OrderSummary>("A-1")) is null ? 0 : 1); // read models are the application's
     }
 
+    [Theory]
+    [InlineData(CleanupMode.Workers)]
+    [InlineData(CleanupMode.Separate)]
+    public async Task cleanup_runs_in_the_workers_or_in_a_separate_service(CleanupMode mode)
+    {
+        var clock = Database.Clock();
+        var contexts = await database.NewAsync();
+        var week = new Retention
+        {
+            Deduplication = Keep.For(TimeSpan.FromDays(7)),
+            FinishedInstances = Keep.For(TimeSpan.FromDays(7)),
+            RelayedMessages = Keep.For(TimeSpan.FromDays(7)),
+            Events = Keep.Forever("the record of what happened"),
+            DeadLetters = Keep.For(TimeSpan.FromDays(7)),
+        };
+        using var shop = ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(
+            contexts, ShopJson.Default, week, Database.Options with { Cleanup = mode }, clock))
+            .NoTransport("tests").NoHistoryArchive("tests");
+        await ShipAsync(shop, "A-1");
+        clock.Advance(TimeSpan.FromDays(7));
+
+        using var stop = new CancellationTokenSource();
+        var worker = shop.RunAsync(stop.Token);
+        try
+        {
+            var started = Stopwatch.StartNew();
+            while (shop.IdleWaits == 0) // one whole loop: messages, relay, cleanup when it is the workers' job, health
+            {
+                Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), "the worker never went idle");
+                await Task.Delay(TimeSpan.FromMilliseconds(10));
+            }
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await worker;
+        }
+
+        var afterWorker = await CountAsync(contexts);
+        if (mode == CleanupMode.Workers)
+        {
+            Assert.Equal((0, 0, 0), (afterWorker.Inbox, afterWorker.Handled, afterWorker.Published));
+            return;
+        }
+
+        Assert.All([afterWorker.Inbox, afterWorker.Handled, afterWorker.Published], count => Assert.NotEqual(0, count));
+        Assert.Equal(2, (await shop.HealthAsync()).ExpiredKept); // nothing cleans yet, and the health says so
+
+        using var stopCleaner = new CancellationTokenSource();
+        var cleaner = shop.RunCleanupAsync(stopCleaner.Token);
+        try
+        {
+            var started = Stopwatch.StartNew();
+            while (await CountAsync(contexts) is not (0, 0, 0, _))
+            {
+                Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), "the cleaner removed nothing");
+                await Task.Delay(TimeSpan.FromMilliseconds(20));
+            }
+        }
+        finally
+        {
+            await stopCleaner.CancelAsync();
+            await cleaner;
+        }
+
+        Assert.Null(await shop.StatusOfAsync(Fulfillment, "A-1"));
+        Assert.Equal(0, (await shop.HealthAsync()).ExpiredKept);
+    }
+
     [Fact]
     public async Task a_suspended_instance_never_expires()
     {
@@ -852,6 +921,7 @@ public abstract class EfCoreRuntimeTests(Database database)
             DeadLetters = Keep.For(TimeSpan.FromDays(1)),
         };
         var runtime = new EfCoreRuntime<WyrdDbContext>(await database.NewAsync(), ShopJson.Default, expiring, Database.Options, clock)
+            .NoTransport("tests").NoHistoryArchive("tests")
             .AddSlice(new PlaceOrderSlice())
             .AddProcess(broken);
         await runtime.SendAsync(new PlaceOrder("A-1", "KEYBOARD", 1, 89m));
@@ -862,6 +932,120 @@ public abstract class EfCoreRuntimeTests(Database database)
         await runtime.ForgetExpiredAsync();
 
         Assert.Equal(ProcessStatus.Suspended, await runtime.StatusOfAsync(broken, "A-1"));
+    }
+
+    [Theory]
+    [InlineData(nameof(EfCoreRuntime<WyrdDbContext>.RunAsync))]
+    [InlineData(nameof(EfCoreRuntime<WyrdDbContext>.RunCleanupAsync))]
+    [InlineData(nameof(EfCoreRuntime<WyrdDbContext>.ForgetExpiredAsync))]
+    public async Task a_runtime_that_cleans_without_a_declared_transport_removes_nothing(string entry)
+    {
+        var clock = Database.Clock();
+        var contexts = await database.NewAsync();
+        var relayedExpire = Database.Retention with { RelayedMessages = Keep.For(TimeSpan.FromDays(7)) };
+        await ShipAsync(Database.Shop(contexts, clock), "A-1");
+        var before = await CountAsync(contexts);
+        Assert.NotEqual(0, before.Published);
+        clock.Advance(TimeSpan.FromDays(30));
+        var forgetful = Database.Shop(contexts, clock, relayedExpire);
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => CleanAsync(forgetful, entry));
+
+        Assert.Contains("NoTransport", refused.Message);
+        Assert.Equal(before.Published, (await CountAsync(contexts)).Published);
+    }
+
+    [Theory]
+    [InlineData(nameof(EfCoreRuntime<WyrdDbContext>.RunAsync))]
+    [InlineData(nameof(EfCoreRuntime<WyrdDbContext>.RunCleanupAsync))]
+    [InlineData(nameof(EfCoreRuntime<WyrdDbContext>.ForgetExpiredAsync))]
+    public async Task a_runtime_that_cleans_without_a_declared_archive_keeps_the_histories(string entry)
+    {
+        var clock = Database.Clock();
+        var contexts = await database.NewAsync();
+        var finishedExpire = Database.Retention with { FinishedInstances = Keep.For(TimeSpan.FromDays(7)) };
+        await ShipAsync(Database.Shop(contexts, clock), "A-1");
+        await using var db = await contexts.CreateDbContextAsync();
+        var instances = await db.Set<InstanceRow>().CountAsync();
+        Assert.NotEqual(0, instances);
+        clock.Advance(TimeSpan.FromDays(30));
+        var forgetful = Database.Shop(contexts, clock, finishedExpire);
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => CleanAsync(forgetful, entry));
+
+        Assert.Contains("NoHistoryArchive", refused.Message);
+        Assert.Equal(instances, await db.Set<InstanceRow>().CountAsync());
+    }
+
+    [Fact]
+    public async Task nothing_needs_declaring_while_nothing_it_decides_expires()
+    {
+        var shop = Database.Shop(await database.NewAsync(), Database.Clock());
+
+        Assert.Equal(0, await shop.ForgetExpiredAsync());
+    }
+
+    [Fact]
+    public async Task workers_of_a_separate_cleanup_declare_nothing()
+    {
+        var expiring = Database.Retention with
+        {
+            RelayedMessages = Keep.For(TimeSpan.FromDays(7)),
+            FinishedInstances = Keep.For(TimeSpan.FromDays(7)),
+        };
+        using var shop = ShopModule.Register(new EfCoreRuntime<WyrdDbContext>(
+            await database.NewAsync(), ShopJson.Default, expiring, Database.Options with { Cleanup = CleanupMode.Separate }));
+        using var stop = new CancellationTokenSource();
+
+        var worker = shop.RunAsync(stop.Token);
+        await shop.SendAsync(new PlaceOrder("A-1", "KEYBOARD", 1, 89m));
+        await stop.CancelAsync();
+
+        await worker; // it started, and stopped when asked
+    }
+
+    [Fact]
+    public async Task an_explicit_no_transport_lets_published_messages_expire_from_when_they_were_published()
+    {
+        var clock = Database.Clock();
+        var contexts = await database.NewAsync();
+        var shop = Database.Shop(contexts, clock, Database.Retention with { RelayedMessages = Keep.For(TimeSpan.FromDays(7)) })
+            .NoTransport("nothing leaves this service");
+        await ShipAsync(shop, "A-1");
+        Assert.NotEqual(0, (await CountAsync(contexts)).Published);
+
+        clock.Advance(TimeSpan.FromDays(7));
+        await shop.ForgetExpiredAsync();
+
+        Assert.Equal(0, (await CountAsync(contexts)).Published);
+    }
+
+    [Fact]
+    public async Task a_decision_cant_be_declared_both_ways()
+    {
+        var contexts = await database.NewAsync();
+        var transport = new InMemoryTransport();
+
+        Assert.Throws<InvalidOperationException>(() => Database.Shop(contexts).NoTransport("none").UseTransport(transport));
+        Assert.Throws<InvalidOperationException>(() => Database.Shop(contexts).UseTransport(transport).NoTransport("none"));
+        Assert.Throws<InvalidOperationException>(() => Database.Shop(contexts).NoHistoryArchive("none").UseHistoryArchive(new FlakyArchive()));
+        Assert.Throws<InvalidOperationException>(() => Database.Shop(contexts).UseHistoryArchive(new FlakyArchive()).NoHistoryArchive("none"));
+    }
+
+    private static async Task CleanAsync(EfCoreRuntime<WyrdDbContext> runtime, string entry)
+    {
+        switch (entry)
+        {
+            case nameof(runtime.RunAsync):
+                await runtime.RunAsync(CancellationToken.None);
+                break;
+            case nameof(runtime.RunCleanupAsync):
+                await runtime.RunCleanupAsync(CancellationToken.None);
+                break;
+            default:
+                await runtime.ForgetExpiredAsync();
+                break;
+        }
     }
 
     [Fact]

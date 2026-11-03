@@ -533,7 +533,8 @@ until cancelled:
                                               transaction open, and its outcome recorded in a second one)
   relay published messages, if a transport   (RelayOrWaitAsync: a transport that is down doesn't stop the worker)
   if a projection is catching up             (one loop of the runtime at a time, 100 states per pass)
-  every CleanupInterval (1 minute)           (ForgetExpiredAsync, ten batches of each kind per pass: more next loop)
+  every CleanupInterval (1 minute)           (ForgetExpiredAsync, ten batches of each kind per pass: more next loop;
+                                              skipped with CleanupMode.Separate, where RunCleanupAsync does it)
   every HealthInterval (15 s)                (HealthAsync, published on the Wyrd meter)
   if nothing was handled, relayed or seeded: wait, from PollInterval (250 ms) doubling up to MaxPollInterval (2 s);
                                               a message this runtime queues itself ends the wait at once

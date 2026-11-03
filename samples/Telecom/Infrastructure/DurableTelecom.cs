@@ -48,7 +48,9 @@ public static class DurableTelecom
         var contexts = services.GetRequiredService<IDbContextFactory<TelecomDbContext>>();
         var providers = services.GetRequiredService<IProviderApi>();
         var runtime = new EfCoreRuntime<TelecomDbContext>(contexts, TelecomJson.Default, Retention);
-        return TelecomModule.Register(runtime, providers);
+        return TelecomModule.Register(runtime, providers)
+            .NoTransport("one service: what it publishes stays in its outbox")
+            .NoHistoryArchive("a demo: 90 days in the tables are enough");
     }
 
     private static Uri ProviderUri(IConfiguration configuration, string name)
