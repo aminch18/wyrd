@@ -1,0 +1,106 @@
+{
+  "Process": "ProfileProvisioning",
+  "Key": "incident-1/profile-1/1",
+  "Fingerprint": "3f86213c6ccd",
+  "Entries": [
+    {
+      "At": "2026-01-01T00:00:00+00:00",
+      "Type": "Telecom.ProfileAssigned",
+      "Payload": "{\u0022SubscriptionId\u0022:\u0022incident-1\u0022,\u0022CustomerId\u0022:\u0022customer-1\u0022,\u0022ProfileId\u0022:\u0022profile-1\u0022,\u0022Attempt\u0022:1}"
+    },
+    {
+      "At": "2026-01-01T00:00:00+00:00",
+      "Kind": "Sent",
+      "Type": "Telecom.ClaimProfile",
+      "Payload": "{\u0022SubscriptionId\u0022:\u0022incident-1\u0022,\u0022CustomerId\u0022:\u0022customer-1\u0022,\u0022ProfileId\u0022:\u0022profile-1\u0022,\u0022Attempt\u0022:1}",
+      "Step": 0,
+      "Attempt": 1
+    },
+    {
+      "At": "2026-01-01T00:00:00+00:00",
+      "Kind": "Replied",
+      "Type": "Telecom.ProfileClaimed",
+      "Payload": "{\u0022SubscriptionId\u0022:\u0022incident-1\u0022,\u0022CustomerId\u0022:\u0022customer-1\u0022,\u0022ProfileId\u0022:\u0022profile-1\u0022,\u0022Attempt\u0022:1}",
+      "Step": 0,
+      "Attempt": 1,
+      "Outcome": "Accepted"
+    },
+    {
+      "At": "2026-01-01T00:00:00+00:00",
+      "Kind": "Sent",
+      "Type": "Telecom.ProvisionProfile",
+      "Payload": "{\u0022SubscriptionId\u0022:\u0022incident-1\u0022,\u0022CustomerId\u0022:\u0022customer-1\u0022,\u0022ProfileId\u0022:\u0022profile-1\u0022,\u0022Attempt\u0022:1}",
+      "Step": 1,
+      "Attempt": 1
+    },
+    {
+      "At": "2026-01-01T00:00:00+00:00",
+      "Kind": "Replied",
+      "Step": 1,
+      "Attempt": 1,
+      "Outcome": "Faulted"
+    },
+    {
+      "At": "2026-01-01T00:00:01+00:00",
+      "Kind": "Sent",
+      "Type": "Telecom.ProvisionProfile",
+      "Payload": "{\u0022SubscriptionId\u0022:\u0022incident-1\u0022,\u0022CustomerId\u0022:\u0022customer-1\u0022,\u0022ProfileId\u0022:\u0022profile-1\u0022,\u0022Attempt\u0022:1}",
+      "Step": 1,
+      "Attempt": 2
+    },
+    {
+      "At": "2026-01-01T00:00:01+00:00",
+      "Kind": "Replied",
+      "Type": "Telecom.ProvisionReceived",
+      "Payload": "{\u0022SubscriptionId\u0022:\u0022incident-1\u0022,\u0022ProfileId\u0022:\u0022profile-1\u0022,\u0022Attempt\u0022:1,\u0022Receipt\u0022:\u0022receipt-profile/profile-1/1\u0022}",
+      "Step": 1,
+      "Attempt": 2,
+      "Outcome": "Accepted"
+    },
+    {
+      "At": "2026-01-01T00:00:01+00:00",
+      "Kind": "Sent",
+      "Type": "Telecom.ObserveActivation",
+      "Payload": "{\u0022SubscriptionId\u0022:\u0022incident-1\u0022,\u0022Fact\u0022:2,\u0022ProfileId\u0022:\u0022profile-1\u0022,\u0022Attempt\u0022:1}",
+      "Step": 2,
+      "Attempt": 1
+    },
+    {
+      "At": "2026-01-01T00:00:01+00:00",
+      "Kind": "Replied",
+      "Type": "Telecom.ActivationObserved",
+      "Payload": "{\u0022SubscriptionId\u0022:\u0022incident-1\u0022,\u0022EvidenceKey\u0022:\u0022incident-1/Provisioned/1\u0022,\u0022Next\u0022:{\u0022Paid\u0022:true,\u0022Ported\u0022:true,\u0022CustomerId\u0022:\u0022customer-1\u0022,\u0022ProfileId\u0022:\u0022profile-1\u0022,\u0022Attempt\u0022:1,\u0022Provisioned\u0022:true,\u0022Connected\u0022:false,\u0022Operational\u0022:false,\u0022Ready\u0022:false}}",
+      "Step": 2,
+      "Attempt": 1,
+      "Outcome": "Accepted"
+    },
+    {
+      "At": "2026-01-01T00:30:01+00:00",
+      "Kind": "TimedOut",
+      "Step": 3
+    },
+    {
+      "At": "2026-01-01T00:30:01+00:00",
+      "Kind": "Sent",
+      "Type": "Telecom.OpenIncident",
+      "Payload": "{\u0022SubscriptionId\u0022:\u0022incident-1\u0022,\u0022Kind\u0022:\u0022connectivity\u0022,\u0022Attempt\u0022:1}",
+      "Step": 5,
+      "Compensating": true,
+      "Attempt": 1
+    },
+    {
+      "At": "2026-01-01T00:30:01+00:00",
+      "Kind": "Replied",
+      "Type": "Telecom.IncidentOpened",
+      "Payload": "{\u0022SubscriptionId\u0022:\u0022incident-1\u0022,\u0022Kind\u0022:\u0022connectivity\u0022,\u0022Attempt\u0022:1}",
+      "Step": 5,
+      "Compensating": true,
+      "Attempt": 1,
+      "Outcome": "Accepted"
+    },
+    {
+      "At": "2026-01-01T00:30:01+00:00",
+      "Kind": "Compensated"
+    }
+  ]
+}

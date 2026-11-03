@@ -3,7 +3,8 @@
 The same module that runs in memory in your tests runs durable in production. Nothing in your slices, processes or
 projections changes: you swap the host. This guide takes the Shop from `InMemoryRuntime` to the EF Core host
 (`Wyrd.EntityFrameworkCore`, PostgreSQL or SQL Server), then connects services through RabbitMQ (`Wyrd.RabbitMq`).
-The behaviour behind every step is in [How Wyrd behaves](../design/semantics.md).
+The behaviour behind every step is in [How Wyrd behaves](../design/semantics.md), and what happens underneath in
+[How Verdandi works](how-verdandi-works.md).
 
 ## One module, any host
 
@@ -62,7 +63,7 @@ private static readonly Retention Retention = new()
     DeadLetters = Keep.Forever("an operator reviews each one"),
 };
 
-services.AddDbContextFactory<ShopDbContext>(options => options.UseNpgsql(connectionString));
+services.AddPooledDbContextFactory<ShopDbContext>(options => options.UseNpgsql(connectionString));
 services.AddSingleton(provider => ShopModule.Register(new EfCoreRuntime<ShopDbContext>(
     provider.GetRequiredService<IDbContextFactory<ShopDbContext>>(),
     ShopJson.Default,
@@ -71,6 +72,10 @@ services.AddSingleton(provider => ShopModule.Register(new EfCoreRuntime<ShopDbCo
 services.AddSingleton<IWyrdRuntime>(provider => provider.GetRequiredService<EfCoreRuntime<ShopDbContext>>());
 services.AddHostedService<WyrdWorker>();
 ```
+
+Register the factory pooled (`AddPooledDbContextFactory`): Wyrd opens a context for every message, and a pooled one
+costs less. Measured on the Shop, a message took about 8% less time than with `AddDbContextFactory`
+(`benchmarks/README.md`).
 
 Suspended instances never expire: they wait for an operator. Fences never expire either: a command given up on
 without knowing whether it ran stays blocked forever. To keep finished histories after they leave the hot tables,

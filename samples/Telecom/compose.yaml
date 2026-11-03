@@ -1,0 +1,98 @@
+# Run from the repository root: docker compose -f samples/Telecom/compose.yaml up --build
+# Local development only: trusted webhook/operator endpoints and disposable sample credentials.
+x-db: &db
+  image: postgres:17-alpine
+  environment:
+    POSTGRES_PASSWORD: telecom-local
+    POSTGRES_DB: app
+  healthcheck:
+    test: [CMD-SHELL, pg_isready -U postgres -d app]
+    interval: 2s
+    timeout: 3s
+    retries: 30
+x-build: &build
+  context: ../..
+  dockerfile: samples/Telecom/Dockerfile
+x-env: &telecom-env
+  ConnectionStrings__Telecom: Host=telecom-db;Database=app;Username=postgres;Password=telecom-local
+  Providers__Payments: http://payments:8080/
+  Providers__Mnp: http://mnp:8080/
+  Providers__Esim: http://esim:8080/
+x-provider: &provider
+  build:
+    <<: *build
+    args: {PROJECT: Telecom.Providers}
+  environment: &provider-env
+    ASPNETCORE_URLS: http://+:8080
+services:
+  telecom-db:
+    <<: *db
+    volumes: [telecom-db:/var/lib/postgresql/data]
+  payments-db:
+    <<: *db
+    volumes: [payments-db:/var/lib/postgresql/data]
+  mnp-db:
+    <<: *db
+    volumes: [mnp-db:/var/lib/postgresql/data]
+  esim-db:
+    <<: *db
+    volumes: [esim-db:/var/lib/postgresql/data]
+  payments:
+    <<: *provider
+    environment:
+      <<: *provider-env
+      ProviderKind: payments
+      LoseFirstReply: 'true'
+      ConnectionStrings__Provider: Host=payments-db;Database=app;Username=postgres;Password=telecom-local
+    depends_on:
+      payments-db: {condition: service_healthy}
+  mnp:
+    <<: *provider
+    environment:
+      <<: *provider-env
+      ProviderKind: mnp
+      ConnectionStrings__Provider: Host=mnp-db;Database=app;Username=postgres;Password=telecom-local
+    depends_on:
+      mnp-db: {condition: service_healthy}
+  esim:
+    <<: *provider
+    environment:
+      <<: *provider-env
+      ProviderKind: esim
+      LoseFirstReply: 'true'
+      ConnectionStrings__Provider: Host=esim-db;Database=app;Username=postgres;Password=telecom-local
+    depends_on:
+      esim-db: {condition: service_healthy}
+  init:
+    build:
+      <<: *build
+      args: {PROJECT: Telecom.Worker}
+    environment: *telecom-env
+    command: [--init]
+    depends_on:
+      telecom-db: {condition: service_healthy}
+  worker:
+    build:
+      <<: *build
+      args: {PROJECT: Telecom.Worker}
+    environment: *telecom-env
+    depends_on:
+      init: {condition: service_completed_successfully}
+      payments: {condition: service_started}
+      mnp: {condition: service_started}
+      esim: {condition: service_started}
+  api:
+    build:
+      <<: *build
+      args: {PROJECT: Telecom.Api}
+    environment:
+      <<: *telecom-env
+      ASPNETCORE_URLS: http://+:8080
+    ports: ['127.0.0.1:5090:8080']
+    depends_on:
+      init: {condition: service_completed_successfully}
+volumes:
+  telecom-db:
+  payments-db:
+  mnp-db:
+  esim-db:

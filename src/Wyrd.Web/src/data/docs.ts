@@ -46,6 +46,13 @@ export const DOC_SECTIONS: DocSection[] = [
             'EF Core on PostgreSQL or SQL Server, retention, operators, health and RabbitMQ.',
     },
     {
+        id: 'how-verdandi-works',
+        group: 'Guides',
+        title: 'How Verdandi works',
+        subtitle:
+            'The durable host underneath: tables, transactions, workers, failures, concurrency and cleanup.',
+    },
+    {
         id: 'quick-start',
         group: 'Guides',
         title: 'Quick start',

@@ -37,7 +37,7 @@ public static class DurableHost
 
     private static void AddRuntime(this IServiceCollection services, string connectionString, EfCoreRuntimeOptions options)
     {
-        services.AddDbContextFactory<ShopDbContext>(builder => builder.UseNpgsql(connectionString));
+        services.AddPooledDbContextFactory<ShopDbContext>(builder => builder.UseNpgsql(connectionString));
         services.AddSingleton(provider => ShopModule.Register(new EfCoreRuntime<ShopDbContext>(
             provider.GetRequiredService<IDbContextFactory<ShopDbContext>>(),
             ShopJson.Default,

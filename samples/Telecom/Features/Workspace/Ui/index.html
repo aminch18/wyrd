@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Wyrd · Telecom workspace</title>
+        <link rel="stylesheet" href="/workspace/styles.css" />
+        <script type="module" src="/workspace/app.js"></script>
+    </head>
+    <body>
+        <header class="topbar">
+            <a class="brand" href="/" aria-label="Wyrd telecom home"
+                ><span class="brand-mark">W</span
+                ><strong
+                    >wyrd<span class="brand-divider">/</span
+                    ><span class="brand-product">telecom</span></strong
+                ></a
+            >
+            <div class="environment">
+                <span class="live-dot"></span>LOCAL WORKSPACE
+            </div>
+            <div
+                class="view-switch"
+                role="group"
+                aria-label="Workspace perspective"
+            >
+                <button
+                    type="button"
+                    class="active"
+                    data-mode="customer"
+                    aria-pressed="true"
+                >
+                    Customer
+                </button>
+                <button
+                    type="button"
+                    data-mode="operations"
+                    aria-pressed="false"
+                >
+                    Operations
+                </button>
+            </div>
+        </header>
+        <main>
+            <section class="page-heading">
+                <div>
+                    <p class="eyebrow">NUMBER PORTABILITY & ESIM</p>
+                    <h1>Your next connection.</h1>
+                    <p class="muted">
+                        One place to follow a line from its first payment to
+                        working service.
+                    </p>
+                </div>
+                <button id="new-subscription" class="primary" type="button">
+                    ＋ Contract a line
+                </button>
+            </section>
+            <div id="notice" class="notice" role="status" hidden></div>
+            <section
+                id="summary"
+                class="summary"
+                aria-label="Workspace summary"
+            ></section>
+            <div class="workspace-grid">
+                <aside class="line-panel">
+                    <div class="section-heading">
+                        <h2>Subscriptions</h2>
+                        <span id="line-count" class="count">0</span>
+                    </div>
+                    <label class="search-label" for="search">Find a line</label
+                    ><input
+                        id="search"
+                        type="search"
+                        placeholder="Number or subscription…"
+                    />
+                    <div id="subscriptions" class="subscription-list">
+                        <p class="muted">Connecting to the workspace…</p>
+                    </div>
+                    <p id="refresh-status" class="refresh-status">
+                        Loading persisted views…
+                    </p>
+                </aside>
+                <section
+                    id="detail"
+                    class="detail"
+                    aria-label="Selected subscription"
+                >
+                    <div class="empty-state">
+                        <span class="empty-symbol">↗</span>
+                        <h2>Every line has a journey.</h2>
+                        <p>
+                            Select a subscription or contract a new line to
+                            watch it unfold.
+                        </p>
+                    </div>
+                </section>
+            </div>
+            <footer>
+                <span>Wyrd telecom sample</span
+                ><span
+                    >API → domain decision → durable process → projections → BFF
+                    → screen</span
+                >
+            </footer>
+        </main>
+        <dialog id="contract-dialog">
+            <form id="contract-form">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">NEW SUBSCRIPTION</p>
+                        <h2>Bring your number.</h2>
+                    </div>
+                    <button
+                        type="button"
+                        id="close-contract"
+                        class="icon-button"
+                        aria-label="Close contracting form"
+                    >
+                        ×
+                    </button>
+                </div>
+                <p class="muted">
+                    Reserve a number and eSIM. A €25 initial payment starts the
+                    provisioning journey.
+                </p>
+                <label
+                    >Subscription ID<input
+                        name="subscriptionId"
+                        required
+                        maxlength="64"
+                        pattern="[A-Za-z0-9_-]+"
+                /></label>
+                <label
+                    >Customer ID<input
+                        name="customerId"
+                        required
+                        maxlength="64"
+                        pattern="[A-Za-z0-9_-]+"
+                /></label>
+                <label
+                    >Phone number<input
+                        name="msisdn"
+                        required
+                        pattern="\+[1-9][0-9]{7,14}"
+                        placeholder="+34600000003"
+                /></label>
+                <div class="form-row">
+                    <label
+                        >Initial eSIM profile<input
+                            name="profileId"
+                            required
+                            maxlength="64"
+                            pattern="[A-Za-z0-9_-]+" /></label
+                    ><label
+                        >Number request epoch<input
+                            name="epoch"
+                            type="number"
+                            min="1"
+                            step="1"
+                            value="1"
+                            required
+                    /></label>
+                </div>
+                <p class="form-help">
+                    The number and profile have owners. A competing subscription
+                    cannot take either resource while it is in use.
+                </p>
+                <p id="contract-error" class="form-error" role="alert"></p>
+                <button type="submit" class="primary full-width">
+                    Submit subscription · €25
+                </button>
+            </form>
+        </dialog>
+    </body>
+</html>

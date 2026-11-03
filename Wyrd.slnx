@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Wyrd.Benchmarks.Concurrency/Wyrd.Benchmarks.Concurrency.csproj" />
     <Project Path="benchmarks/Wyrd.Benchmarks/Wyrd.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/samples/">
@@ -7,6 +8,12 @@
     <Project Path="samples/Shop.Console/Shop.Console.csproj" />
     <Project Path="samples/Shop.Tests/Shop.Tests.csproj" />
     <Project Path="samples/Shop/Shop.csproj" />
+    <Project Path="samples/Telecom.Api/Telecom.Api.csproj" />
+    <Project Path="samples/Telecom.Console/Telecom.Console.csproj" />
+    <Project Path="samples/Telecom.Providers/Telecom.Providers.csproj" />
+    <Project Path="samples/Telecom.Tests/Telecom.Tests.csproj" />
+    <Project Path="samples/Telecom.Worker/Telecom.Worker.csproj" />
+    <Project Path="samples/Telecom/Telecom.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Wyrd.Analyzers.CodeFixes/Wyrd.Analyzers.CodeFixes.csproj" />

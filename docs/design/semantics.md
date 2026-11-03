@@ -37,7 +37,9 @@ All **implemented**.
   them: changing `Evolve` doesn't change states already stored. *Conscious limit; event sourcing is a possible
   future option.*
 - Two commands on the same key: optimistic concurrency; one wins, the other is retried and decides again on the
-  new state. **Implemented.**
+  new state. **Implemented.** On a durable host a command sent from outside gets `MaxConflictRetries` attempts; a
+  conflict that outlasts them (a stale version, a unique key, a deadlock) reaches the caller as a
+  `ConcurrencyConflictException`, with nothing written. **Implemented.**
 
 ## 3. Processes
 

@@ -1,0 +1,6 @@
+telecom.connectivity-verified v1 | Attempt: int; ProfileId: string; SubscriptionId: string
+telecom.mnp-cancelled v1 | Epoch: long; Msisdn: string; SubscriptionId: string
+telecom.mnp-completed v1 | Epoch: long; Msisdn: string; SubscriptionId: string
+telecom.mnp-confirmed v1 | Epoch: long; Msisdn: string; SubscriptionId: string; WindowEnd: DateTimeOffset; WindowStart: DateTimeOffset
+telecom.payment-confirmed v1 | Receipt: string; SubscriptionId: string
+telecom.service-operational v1 | Attempt: int; ProfileId: string; SubscriptionId: string
