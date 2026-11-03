@@ -68,7 +68,9 @@ services.AddSingleton(provider => ShopModule.Register(new EfCoreRuntime<ShopDbCo
     provider.GetRequiredService<IDbContextFactory<ShopDbContext>>(),
     ShopJson.Default,
     Retention,
-    logger: provider.GetRequiredService<ILogger<EfCoreRuntime<ShopDbContext>>>())));
+    logger: provider.GetRequiredService<ILogger<EfCoreRuntime<ShopDbContext>>>()))
+    .NoTransport("the shop is one service: what it publishes stays in its outbox")
+    .NoHistoryArchive("a month in the tables is enough for a sample"));
 services.AddSingleton<IWyrdRuntime>(provider => provider.GetRequiredService<EfCoreRuntime<ShopDbContext>>());
 services.AddHostedService<WyrdWorker>();
 ```
@@ -81,6 +83,12 @@ Suspended instances never expire: they wait for an operator. Fences never expire
 without knowing whether it ran stays blocked forever. To keep finished histories after they leave the hot tables,
 give the host an `IHistoryArchive`: each batch is archived first, with no transaction open, and removed only once
 the archive returned.
+
+Cleaning depends on two more decisions, and a runtime that cleans must write them down, like the retention. While
+`RelayedMessages` expire it needs `UseTransport(...)` or `NoTransport("why")`; while `FinishedInstances` expire it needs
+`UseHistoryArchive(...)` or `NoHistoryArchive("why")`. Without them `RunAsync`, `RunCleanupAsync` and
+`ForgetExpiredAsync` throw an `InvalidOperationException` before removing anything: a forgotten transport would delete
+messages not relayed yet, and a forgotten archive would delete histories for good.
 
 ## Workers
 
@@ -115,8 +123,9 @@ public sealed class WyrdCleaner(EfCoreRuntime<ShopDbContext> wyrd) : BackgroundS
 
 A scheduled job (a Kubernetes `CronJob`, say) can call `ForgetExpiredAsync()` instead: it removes everything that
 expired, except histories whose archive failed (kept for the next run), and returns. One cleaner is enough; two are safe. Configure the cleaner's runtime like the workers': the same retention,
-transport and history archive. Without the transport it would count an integration event's retention from when it was
-recorded, relayed or not; without the archive it deletes the histories it would have archived. Nothing expires while no cleaner runs. `wyrd.process.expired_kept` shows it only
+transport and history archive, or it won't start. A cleaner only reads the transport's presence: it relays nothing,
+but it must know messages leave this service. Build both from the same code, so they can't disagree: `NoTransport`
+on a cleaner whose workers do have a transport would delete messages not relayed yet. Nothing expires while no cleaner runs. `wyrd.process.expired_kept` shows it only
 for finished instances, so also alert when the cleaner stops running. The Shop runs both ways from one build: `Wyrd__Cleanup=Separate` for the API, and
 `Shop.Api cleanup` for the cleaner (`samples/Shop.Api/compose.yaml`).
 

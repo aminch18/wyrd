@@ -461,7 +461,9 @@ var wyrd = ShopModule.Register(new EfCoreRuntime<ShopDbContext>(contexts, ShopJs
     RelayedMessages = Keep.For(7.Days),
     Events = Keep.Forever("our record of what happened"),
     DeadLetters = Keep.Forever("an operator reviews each one"),
-}));
+}))
+    .NoTransport("nothing leaves this service yet")              // cleaning needs both decisions too
+    .NoHistoryArchive("30 days in the tables are enough");
 
 await wyrd.SendAsync(new PlaceOrder("A-1", "KEYBOARD", 1, 89m)); // decided and committed now
 await wyrd.RunAsync(stoppingToken);                              // a worker: run as many as you like

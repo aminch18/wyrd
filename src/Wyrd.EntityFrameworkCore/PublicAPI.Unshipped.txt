@@ -20,6 +20,8 @@ Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.HealthAsync(System.Threading.Ca
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.HistoryOfAsync(Wyrd.Processes.Process! process, object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Wyrd.Runtime.InstanceHistory?>!
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.ProcessPendingAsync(int max = 1000, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.PublishAsync(Wyrd.IIntegrationEvent! integrationEvent, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.NoHistoryArchive(string! why) -> Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext!>!
+Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.NoTransport(string! why) -> Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext!>!
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.ReceiveAsync(Wyrd.Runtime.TransportMessage! message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.RelayPendingAsync(int max = 1000, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
 Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext>.ResumeAsync(Wyrd.Processes.Process! process, object! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!

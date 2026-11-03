@@ -182,6 +182,10 @@ the host doesn't start without a `Retention`, whose every member is required, ea
   is kept past its retention (`ExpiredKept`). An archived history still replays with Urd. Without an archive,
   expiring deletes.
   **Implemented** in memory and on the EF Core host.
+- **On a durable host that decision is written down.** What cleaning removes depends on the cleaning runtime's transport
+  and archive, and cleaning may run apart from the workers. So while `RelayedMessages` expire it declares
+  `UseTransport` or `NoTransport("why")`, and while `FinishedInstances` expire it declares `UseHistoryArchive` or
+  `NoHistoryArchive("why")`; otherwise it refuses to clean. **Implemented** on the EF Core host.
 - **Fences never expire**: a fenced command is blocked forever (3.4). There is one per step given up on without knowing
   whether it ran, so they grow with failures, not with traffic.
 - **What an instance learned doesn't depend on deduplication.** A reply that arrives while the deployed definition is

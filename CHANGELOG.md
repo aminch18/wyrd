@@ -5,6 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Breaking
+
+- `Wyrd.EntityFrameworkCore`: a runtime that cleans must declare what cleaning depends on. While `RelayedMessages` expire
+  it needs `UseTransport(...)` or the new `NoTransport("why")`; while `FinishedInstances` expire it needs
+  `UseHistoryArchive(...)` or the new `NoHistoryArchive("why")`. Otherwise `RunAsync` (with `CleanupMode.Workers`),
+  `RunCleanupAsync` and `ForgetExpiredAsync` throw an `InvalidOperationException` before removing anything. Before, a
+  runtime without a transport counted retention from publication, relayed or not, and one without an archive deleted
+  histories, even when other runtimes of the same service had them.
+
 ### Added
 
 - **How Verdandi works** (`docs/guides/how-verdandi-works.md`, on the website): the durable host underneath, for
@@ -38,6 +47,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   exception through, so a caller catching the documented type missed it (Q4.1).
 
 - The README no longer says the runtime is in memory only and durable storage is planned.
+
+- A worker or a cleaner stopping on SQL Server returns cleanly. SqlClient reports a cancelled command as a `SqlException`,
+  so `RunAsync` could end with a `TaskCanceledException` and `RunCleanupAsync` logged a failed pass.
 
 ## [0.5.0-rc.1] - 2026-10-24
 

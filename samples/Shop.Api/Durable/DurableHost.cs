@@ -43,6 +43,8 @@ public static class DurableHost
             ShopJson.Default,
             Retention,
             options,
-            logger: provider.GetRequiredService<ILogger<EfCoreRuntime<ShopDbContext>>>())));
+            logger: provider.GetRequiredService<ILogger<EfCoreRuntime<ShopDbContext>>>()))
+            .NoTransport("the shop is one service: what it publishes stays in its outbox")
+            .NoHistoryArchive("a month in the tables is enough for a sample"));
     }
 }

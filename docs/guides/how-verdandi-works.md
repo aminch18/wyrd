@@ -234,7 +234,12 @@ on without knowing whether it ran) stays blocked forever.
 
 Cleanup runs in the workers, between messages: every `CleanupInterval` (one minute by default), a pass removes a
 bounded amount, in batches of 1,000 rows (100 finished instances when there is a history archive), each batch short
-so it holds few locks for a short time.
+so it holds few locks for a short time. With many instances, make it a service of its own: `CleanupMode.Separate` keeps
+the workers to messages, and `RunCleanupAsync` (or `ForgetExpiredAsync` from a scheduled job) does the removing.
+
+What a pass removes depends on where messages and histories go, so a runtime that cleans must say: `UseTransport(...)`
+or `NoTransport("why")`, and `UseHistoryArchive(...)` or `NoHistoryArchive("why")`, for whatever expires. If it doesn't,
+it refuses to clean instead of deleting something by accident.
 
 With a history archive (`IHistoryArchive`), a finished instance's history is handed to it before the row is removed,
 and the row is removed only once the archive returned: a failed archive keeps it for the next pass. Delivery is at least
