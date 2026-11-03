@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/Wyrd.Benchmarks.Concurrency/Wyrd.Benchmarks.Concurrency.csproj" />
+    <Project Path="benchmarks/Wyrd.Benchmarks.Load/Wyrd.Benchmarks.Load.csproj" />
     <Project Path="benchmarks/Wyrd.Benchmarks/Wyrd.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/samples/">
