@@ -112,7 +112,9 @@ simulate and version.
   only makes processes wait, and latency is *observed* (age of pending steps, alerts), never turned into failures.
   When a durable host's workers handle an integration command, the outside call is made with no transaction open,
   under a lease: a call slower than its lease may be made again by another worker with the same idempotency key, and
-  is still never turned into a failure ([integrations](integrations.md), decision 5). `SendAsync(command, context)`
+  is still never turned into a failure ([integrations](integrations.md), decision 5). A slow call holds no worker
+  either: the worker hands it over and goes back to the queue, with at most `MaxConcurrentCalls` calls in flight per
+  runtime; with all of them taken, the worker waits for one. **Implemented** on the EF Core host. `SendAsync(command, context)`
   is the exception: it joins your transaction, so the call is made inside it. A business deadline on a step is
   modelled as an explicit wait for its confirmation with `.Within`. **Implemented** on the EF Core host:
   `HealthAsync` and the `Wyrd` meter. In memory there is no queue to watch: the journal and `StatusOf` show it.
