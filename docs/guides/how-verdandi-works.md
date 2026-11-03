@@ -147,8 +147,9 @@ order that exists is rejected, not placed again.
 - **Two writers on the same row.** States and instances are written with `WHERE version = <read>`. The loser of a race
   rolls back and handles the message again against what the winner wrote. It is not a failure: nothing is counted, and
   nothing is lost.
-- **A command sent from your code** (`SendAsync`) that conflicts is tried again at once, up to `MaxConflictRetries`
-  attempts in all (5 by default). A conflict that outlasts them (a stale version, a unique key, a deadlock) reaches the caller as
+- **A command sent from your code** (`SendAsync`) that conflicts is tried again after a short wait, up to
+  `MaxConflictRetries` attempts in all (5 by default). The wait is a share of `ConflictRetryDelay` (5 ms), doubling
+  with each retry, and different for every command, so callers that collided don't all come back at once. A conflict that outlasts them (a stale version, a unique key, a deadlock) reaches the caller as
   a `ConcurrencyConflictException`, and Wyrd wrote nothing; an integration command's outside call may have been made
   already, and sending the command again is a new message with a new idempotency key.
 - **A process step that fails** goes back to its process, which applies the step's own retry policy (`.Retry(...)`).

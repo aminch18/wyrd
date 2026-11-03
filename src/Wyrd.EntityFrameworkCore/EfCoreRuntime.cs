@@ -83,6 +83,7 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxDeliveryAttempts, 1, "options.MaxDeliveryAttempts");
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.RelayBatchSize, 1, "options.RelayBatchSize");
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxConflictRetries, 1, "options.MaxConflictRetries");
+        ArgumentOutOfRangeException.ThrowIfLessThan(_options.ConflictRetryDelay, TimeSpan.Zero, "options.ConflictRetryDelay");
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.RedeliveryDelay, TimeSpan.Zero, "options.RedeliveryDelay");
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_options.IntegrationLease, TimeSpan.Zero, "options.IntegrationLease");
         _time = time ?? TimeProvider.System;
@@ -178,7 +179,8 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
     /// <summary>
     /// Executes a command coming from outside (an API call, a UI action...) in its own transaction and returns the
     /// decision. What it causes — events, process steps — is queued and handled by the workers. A concurrency conflict is
-    /// tried again, up to <see cref="EfCoreRuntimeOptions.MaxConflictRetries"/> attempts in all; after that it surfaces as a
+    /// tried again after a short wait (<see cref="EfCoreRuntimeOptions.ConflictRetryDelay"/>), up to
+    /// <see cref="EfCoreRuntimeOptions.MaxConflictRetries"/> attempts in all; after that it surfaces as a
     /// <see cref="ConcurrencyConflictException"/> and Wyrd wrote nothing. An integration command's outside call may have
     /// been made already: sending the command again is a new message, with a new idempotency key.
     /// </summary>
@@ -200,6 +202,11 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
 
         for (var attempt = 1; ; attempt++)
         {
+            if (attempt > 1 && ConflictDelay(envelope.MessageId, attempt - 1, _options.ConflictRetryDelay) is { } wait && wait > TimeSpan.Zero)
+            {
+                await Task.Delay(wait, _time, cancellationToken).ConfigureAwait(false);
+            }
+
             try
             {
                 await using var db = await NewContextAsync(cancellationToken).ConfigureAwait(false);
@@ -253,6 +260,29 @@ public sealed partial class EfCoreRuntime<TContext> : IWyrdBuilder<EfCoreRuntime
         {
             throw new ConcurrencyConflictException($"Another transaction changed what {command.GetType().Name} decides on first: roll back and retry.", ex);
         }
+    }
+
+    /// <summary>
+    /// The wait before <paramref name="retry"/> (1 for the first): a share of <paramref name="first"/> × 2^(retry − 1),
+    /// taken from the message id's random bits ("full jitter"). Different for every command, the same for the same one:
+    /// no randomness in the runtime.
+    /// </summary>
+    internal static TimeSpan ConflictDelay(Guid messageId, int retry, TimeSpan first)
+    {
+        if (first <= TimeSpan.Zero)
+        {
+            return TimeSpan.Zero;
+        }
+
+        Span<byte> bytes = stackalloc byte[16];
+        messageId.TryWriteBytes(bytes);
+        // SplitMix64 over the id's last 8 bytes (random in a version 7 Guid) and the retry: well spread, deterministic.
+        var x = BitConverter.ToUInt64(bytes[8..]) + (ulong)retry * 0x9E3779B97F4A7C15UL;
+        x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9UL;
+        x = (x ^ (x >> 27)) * 0x94D049BB133111EBUL;
+        x ^= x >> 31;
+        var most = first.Ticks << Math.Min(retry - 1, 16);
+        return TimeSpan.FromTicks((long)(x % (ulong)(most + 1)));
     }
 
     /// <summary>Delivers a fact from another context (a webhook, a message from another service...).</summary>

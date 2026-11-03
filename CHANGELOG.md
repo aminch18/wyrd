@@ -13,6 +13,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
+- **`SendAsync` backs off on conflicts** (`Wyrd.EntityFrameworkCore`): a retry waits a share of
+  `EfCoreRuntimeOptions.ConflictRetryDelay` (5 ms by default), doubling with each retry and different for every
+  command, instead of retrying at once. On one hot key, callers that collided no longer collide again on every retry.
+  `TimeSpan.Zero` keeps the old behaviour.
+
 - **Cheaper messages on the EF Core host**: Wyrd's own transactions no longer pay for EF Core's automatic savepoints,
   and a handled message leaves the queue in the batch of its own writes, one round trip less. With a pooled context
   factory, which the guide and the Shop now use (`AddPooledDbContextFactory`), a message takes about 17% less time

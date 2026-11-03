@@ -40,6 +40,8 @@ Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.HealthInterval.get -> System.TimeS
 Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.HealthInterval.init -> void
 Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.IntegrationLease.get -> System.TimeSpan
 Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.IntegrationLease.init -> void
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.ConflictRetryDelay.get -> System.TimeSpan
+Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.ConflictRetryDelay.init -> void
 Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.MaxConflictRetries.get -> int
 Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.MaxConflictRetries.init -> void
 Wyrd.EntityFrameworkCore.EfCoreRuntimeOptions.MaxDeliveryAttempts.get -> int

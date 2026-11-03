@@ -521,7 +521,8 @@ messages no process decides on (events, replies, timers) are redelivered by the 
 - Rows with natural keys (`inbox`, `handled`, `parked`, `held`, `views`, a version-1 state, a new instance) are
   inserted; a duplicate key fails `SaveChanges`.
 - Either way the transaction rolls back and the message is handled again right away (`EfCoreRuntime.cs:510-514`).
-- `SendAsync` from outside retries a conflict up to `MaxConflictRetries` (5) (`EfCoreRuntime.cs:152-170`).
+- `SendAsync` from outside retries a conflict up to `MaxConflictRetries` (5) attempts, waiting before each retry a
+  share of `ConflictRetryDelay` × 2^(retry − 1), taken from the message id (`EfCoreRuntime.ConflictDelay`).
   `SendAsync(command, context)` joins **your** transaction and surfaces a conflict as `ConcurrencyConflictException`
   for you to retry (`EfCoreRuntime.cs:178-196`).
 
