@@ -84,7 +84,9 @@ worker ──► queue: ReserveStock
             BEGIN  the SKU's state decides, StockReserved, a reply to the process          COMMIT
 worker ──► queue: the reply
             BEGIN  the process moves on: ChargePayment is queued                            COMMIT
-worker ──► queue: ChargePayment, then its reply
+worker ──► queue: ChargePayment
+            BEGIN  the payment's state decides, PaymentCharged, a reply to the process     COMMIT
+worker ──► queue: the reply
             BEGIN  the process waits for PaymentConfirmed: a timer row, due in 15 minutes   COMMIT
 
 payment confirmed ──► PublishAsync(PaymentConfirmed) ──► queue

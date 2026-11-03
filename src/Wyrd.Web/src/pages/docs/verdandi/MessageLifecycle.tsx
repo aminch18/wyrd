@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Lock, RotateCcw, Zap } from 'lucide-react'
 import { LiveArchitecture, type Path } from './ArchitectureCanvas'
 import { Controls } from './Controls'
@@ -70,7 +70,6 @@ const LAST = STEPS.length - 1
 const WRITE = 6
 const DELETE = 7
 /** How long the rollback stays on screen before another worker takes the row. */
-const RETRY_AFTER = 2600
 
 type Phase = 'none' | 'pending' | 'committed'
 
@@ -88,13 +87,6 @@ export function MessageLifecycle() {
         stepper.setStep(1)
         stepper.play()
     }
-
-    // After a crash, the row is back in the queue: another worker takes it on its own.
-    useEffect(() => {
-        if (!crashed) return
-        const timer = window.setTimeout(retry, RETRY_AFTER)
-        return () => window.clearTimeout(timer)
-    }, [crashed])
 
     const writes: Phase = crashed
         ? 'none'
@@ -292,10 +284,10 @@ export function MessageLifecycle() {
                                 <strong>Rolled back.</strong> No state without
                                 its event, no event without its state: nothing
                                 is left half done. The row is back in the queue,
-                                unlocked, and the next worker takes it. A crash
-                                is not a decision of your code, so there is
-                                nothing to compensate: the message is simply
-                                handled again.
+                                unlocked, and the next worker takes it (press
+                                Retry now to see it). A crash is not a decision
+                                of your code, so there is nothing to compensate:
+                                the message is simply handled again.
                             </>
                         ) : attempt === 2 && step === LAST ? (
                             <>

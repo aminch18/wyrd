@@ -328,7 +328,8 @@ export function ArchitectureDiagram() {
         const linked = SCENARIOS.find((s) => s.id === query.get('case'))
         if (!linked) return
         setSelected(linked.id)
-        const step = Number(query.get('step') ?? 1) - 1
+        const parsed = Number.parseInt(query.get('step') ?? '1', 10)
+        const step = Number.isFinite(parsed) ? parsed - 1 : 0
         setStepIndex(Math.min(Math.max(0, step), linked.steps.length - 1))
     }, [])
     const activeId = preview ?? selected

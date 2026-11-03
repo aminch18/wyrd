@@ -15,9 +15,17 @@ import css from './verdandi/verdandi.module.css'
  * docs/guides/how-verdandi-works.md stays the source of truth (GitHub, NuGet). This page tells the same
  * story with pictures; the order's walk-through is read from the guide itself, so it can't drift.
  */
-const ORDER = [...source.matchAll(/```text\n([\s\S]*?)```/g)].map(
-    (m) => m[1],
-)[1]
+const found = [...source.matchAll(/```text\r?\n([\s\S]*?)```/g)].find(
+    (m) =>
+        m[1].includes('POST /orders') &&
+        m[1].includes('PublishAsync(PaymentConfirmed)'),
+)?.[1]
+if (!found) {
+    throw new Error(
+        'how-verdandi-works.md: the order walk-through was not found',
+    )
+}
+const ORDER: string = found
 
 export function HowVerdandiWorksDoc() {
     return (
@@ -54,8 +62,8 @@ export function HowVerdandiWorksDoc() {
                 Business data (<code>states</code>, <code>views</code>) grows
                 with your business, like any table of yours. Everything else is
                 delivery machinery: needed for a while, and then the retention
-                you chose removes it, except suspended instances and fences,
-                which never expire.
+                you chose removes it. Instances that haven’t finished (running,
+                waiting or suspended) and fences never expire.
             </p>
 
             <h2>One message, one transaction</h2>
@@ -102,10 +110,12 @@ export function HowVerdandiWorksDoc() {
             <p>
                 Messages are delivered at least once: a worker can crash after
                 doing the work and before committing, a broker can deliver
-                twice. Effects happen once, for as long as the{' '}
-                <code>Deduplication</code> retention remembers a message id: the{' '}
+                twice. Each message is decided once, for as long as the{' '}
+                <code>Deduplication</code> retention remembers its id: the{' '}
                 <code>inbox</code> keeps each command’s outcome,{' '}
-                <code>handled</code> each event’s id.
+                <code>handled</code> each event’s id. A call to another system
+                is the exception: it can be made again, so that system must
+                honour the idempotency key Wyrd sends with it.
             </p>
             <p>
                 A caller retrying is not a duplicate: every{' '}

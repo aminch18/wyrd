@@ -152,7 +152,7 @@ export function CleanupTopology() {
                 <section>
                     <h4>
                         <code>CleanupMode.Separate</code>{' '}
-                        <Status kind="planned" />
+                        <Status kind="implemented" />
                     </h4>
                     <svg
                         viewBox={`0 0 ${VW} ${VH}`}

@@ -754,7 +754,11 @@
     .code li,
     .beats li,
     .lesson,
-    .transaction {
+    .transaction,
+    .workers li,
+    .tableCard,
+    .controls button,
+    .linkButton {
         transition: none;
     }
     .row.taken,
@@ -1251,7 +1255,7 @@
     color: var(--heading);
     font-size: 12px;
 }
-.txLater button {
+.txLater .txDot {
     opacity: 0.45;
 }
 .txDone .txDot,
@@ -1394,6 +1398,8 @@
 .archSide {
     position: sticky;
     top: 96px;
+    max-height: calc(100vh - 112px);
+    overflow-y: auto;
     display: grid;
     gap: 12px;
     min-width: 0;
@@ -1450,6 +1456,8 @@
     }
     .archSide {
         position: static;
+        max-height: none;
+        overflow: visible;
         order: -1;
     }
 }

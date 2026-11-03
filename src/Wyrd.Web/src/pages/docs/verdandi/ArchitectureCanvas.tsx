@@ -431,6 +431,17 @@ export function ArchitectureCanvas({
     const currentEdges = new Set(current?.edges ?? [])
     const alert = new Set(alerted)
     const frame = FRAMES[layout]
+    // What the picture shows right now, for screen readers: it changes with every step.
+    const titleOf = (node: string) =>
+        NODES.find((n) => n.id === node)?.title ?? node
+    const description = [
+        current?.nodes.length
+            ? `Now: ${current.nodes.map(titleOf).join(', ')}.`
+            : 'The whole architecture, nothing highlighted.',
+        alerted.length ? `In trouble: ${alerted.map(titleOf).join(', ')}.` : '',
+    ]
+        .join(' ')
+        .trim()
     const nodes =
         layout === 'flow'
             ? NODES.map((n) => ({ ...n, ...FLOW_NODES[n.id] }))
@@ -449,7 +460,9 @@ export function ArchitectureCanvas({
                 label ??
                 "Verdandi's architecture: your process with the runtime, the engine and workers, your database with Wyrd's tables, and the services and systems outside"
             }
+            aria-describedby={`${id}-desc`}
         >
+            <desc id={`${id}-desc`}>{description}</desc>
             <defs>
                 <pattern
                     id={`${id}-dots`}

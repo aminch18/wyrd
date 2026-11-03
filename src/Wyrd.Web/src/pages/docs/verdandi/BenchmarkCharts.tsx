@@ -144,7 +144,7 @@ function LineChart({ title, unit, xLabel, data }: ChartProps) {
                 <div className={css.plot}>
                     <svg
                         viewBox={`0 0 ${W} ${H}`}
-                        role="img"
+                        role="group"
                         aria-label={`${title}: ${unit} by ${xLabel.toLowerCase()}`}
                     >
                         {ticks.map((t) => (

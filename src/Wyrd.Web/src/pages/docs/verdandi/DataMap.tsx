@@ -51,7 +51,7 @@ const GROUPS: { title: string; note: string; tables: Table[] }[] = [
             {
                 name: 'instances',
                 holds: 'The running and finished processes, with their history.',
-                keeps: 'Finished ones: FinishedInstances. Running, waiting and suspended ones never expire.',
+                keeps: 'Finished ones: FinishedInstances, counted from when each finished. Running, waiting and suspended ones never expire.',
                 from: 'when it finished',
             },
             {

@@ -118,9 +118,26 @@ const BEATS: Beat[] = [
         who: 'worker',
         title: (
             <>
-                worker takes <code>ChargePayment</code>, then its reply
+                worker takes <code>ChargePayment</code>
             </>
         ),
+        detail: (
+            <>
+                The payment’s state decides: PaymentCharged, and a reply to the
+                process.
+            </>
+        ),
+        writes: ['inbox', 'states', 'events', 'queue'],
+        queue: [{ label: 'the reply' }],
+        process: { status: 'Running', note: 'charging the payment' },
+        path: {
+            edges: ['take', 'workerDecide'],
+            nodes: ['workers', 'engine', 'queue', 'inbox', 'states', 'events'],
+        },
+    },
+    {
+        who: 'worker',
+        title: <>worker takes the reply</>,
         detail: (
             <>
                 The process waits for PaymentConfirmed: a timer row, due in 15
@@ -214,7 +231,8 @@ export function OrderJourney({ source }: { source: string }) {
         const linked = Number(
             new URLSearchParams(window.location.search).get('order'),
         )
-        if (linked >= 1 && linked <= LAST) setStep(linked)
+        if (Number.isInteger(linked) && linked >= 1 && linked <= LAST)
+            setStep(linked)
     }, [setStep])
     const beat = step > 0 ? BEATS[step - 1] : undefined
     const queue = beat?.queue ?? []
