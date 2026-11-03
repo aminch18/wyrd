@@ -1,0 +1,55 @@
+# The load benchmark: PostgreSQL, workers in containers of their own, and an open-loop load. Run it with run.sh, which
+# starts every run on a new database. The limits make runs comparable on one machine; the same file runs on a Linux box.
+name: wyrd-load
+x-app: &app
+  build:
+    context: ../..
+    dockerfile: benchmarks/Wyrd.Benchmarks.Load/Dockerfile
+  image: wyrd-load
+  environment:
+    WYRD_CONNECTION: Host=postgres;Database=wyrd;Username=postgres;Password=wyrd;No Reset On Close=true
+  depends_on:
+    postgres: {condition: service_healthy}
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: wyrd
+      POSTGRES_DB: wyrd
+    command:
+      - postgres
+      - -c
+      - max_connections=500
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - log_lock_waits=on
+    cpus: ${PG_CPUS:-4}
+    mem_limit: ${PG_MEMORY:-4g}
+    shm_size: 1g
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d wyrd]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+  setup:
+    <<: *app
+    command: [setup]
+    profiles: [run]
+  worker:
+    <<: *app
+    command: [worker, --loops, "${WORKER_LOOPS:-1}"]
+    cpus: ${WORKER_CPUS:-1}
+    stop_grace_period: 30s
+  load:
+    <<: *app
+    command: [load]
+    cpus: ${LOAD_CPUS:-2}
+    profiles: [run]
+  ceiling:
+    <<: *app
+    command: [ceiling]
+    cpus: ${LOAD_CPUS:-2}
+    profiles: [run]

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Containers run it with `dotnet`, so it must not depend on how the host machine builds. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Wyrd.EntityFrameworkCore/Wyrd.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="../../samples/Shop/Shop.csproj" />
+  </ItemGroup>
+</Project>
