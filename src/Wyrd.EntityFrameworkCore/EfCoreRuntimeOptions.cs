@@ -48,4 +48,12 @@ public sealed record EfCoreRuntimeOptions
     /// After the last, <c>SendAsync</c> throws a <see cref="Wyrd.ConcurrencyConflictException"/>.
     /// </summary>
     public int MaxConflictRetries { get; init; } = 5;
+
+    /// <summary>
+    /// How long a command sent from outside waits, at most, before its first retry after a concurrency conflict; the most
+    /// doubles with each retry (5, 10, 20, 40 ms by default). Each wait is a share of that most, different for every
+    /// command, so callers that collided don't all retry at once and collide again. <see cref="TimeSpan.Zero"/>: retry at
+    /// once.
+    /// </summary>
+    public TimeSpan ConflictRetryDelay { get; init; } = TimeSpan.FromMilliseconds(5);
 }
