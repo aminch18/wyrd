@@ -40,7 +40,7 @@ services:
     profiles: [run]
   worker:
     <<: *app
-    command: [worker, --loops, "${WORKER_LOOPS:-1}"]
+    command: [worker, --app, "${APP:-shop}", --loops, "${WORKER_LOOPS:-1}", --provider-latency, "${PROVIDER_LATENCY:-0}"]
     cpus: ${WORKER_CPUS:-1}
     stop_grace_period: 30s
   load:

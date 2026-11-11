@@ -16,7 +16,8 @@ internal static class ShopHost
     /// <summary>Enough stock that no order of a run is rejected for lack of it.</summary>
     public const int StockPerSku = 1_000_000;
 
-    private static readonly Retention KeepEverything = new()
+    /// <summary>Every run keeps everything: it is short, and its database is dropped (the soak run sets its own).</summary>
+    public static readonly Retention KeepEverything = new()
     {
         Deduplication = Keep.Forever("a benchmark run is short, and its database is dropped"),
         FinishedInstances = Keep.Forever("a benchmark run is short, and its database is dropped"),

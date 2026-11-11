@@ -8,6 +8,16 @@ internal static class Setup
 {
     public static async Task<int> RunAsync(string connection, Options options)
     {
+        if (options.Text("app") == "telecom")
+        {
+            await using var telecom = await TelecomHost.Contexts(connection).CreateDbContextAsync();
+            await telecom.Database.EnsureCreatedAsync();
+            await telecom.Database.ExecuteSqlRawAsync("CREATE EXTENSION IF NOT EXISTS pg_stat_statements");
+            await telecom.Database.ExecuteSqlRawAsync("SELECT pg_stat_statements_reset()");
+            Console.WriteLine("Set up: Wyrd's tables for the Telecom sample.");
+            return 0;
+        }
+
         var skus = options.Number("skus", 1_000);
         var contexts = ShopHost.Contexts(connection);
         await using (var db = await contexts.CreateDbContextAsync())

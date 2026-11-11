@@ -10,7 +10,13 @@ namespace Wyrd.Benchmarks.Load;
 /// </summary>
 internal static class Worker
 {
-    public static async Task<int> RunAsync(string connection, Options options)
+    public static Task<int> RunAsync(string connection, Options options) =>
+        options.Text("app") == "telecom"
+            ? RunAsync(TelecomHost.Runtime(TelecomHost.Contexts(connection), TimeSpan.FromMilliseconds(options.Number("provider-latency", 0))), options)
+            : RunAsync(ShopHost.Runtime(ShopHost.Contexts(connection)), options);
+
+    private static async Task<int> RunAsync<TContext>(Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext> runtime, Options options)
+        where TContext : Microsoft.EntityFrameworkCore.DbContext
     {
         var loops = options.Number("loops", 1);
         var report = TimeSpan.FromSeconds(options.Number("report", 10));
@@ -26,7 +32,7 @@ internal static class Worker
             stop.Cancel();
         };
 
-        using var shop = ShopHost.Runtime(ShopHost.Contexts(connection));
+        using var shop = runtime;
         using var handled = new Handled();
         var running = Enumerable.Range(0, loops).Select(_ => shop.RunAsync(stop.Token)).ToList();
         Console.WriteLine($"Worker: {loops} loop(s).");

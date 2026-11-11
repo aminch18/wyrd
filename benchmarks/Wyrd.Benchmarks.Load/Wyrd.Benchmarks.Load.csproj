@@ -11,5 +11,6 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Wyrd.EntityFrameworkCore/Wyrd.EntityFrameworkCore.csproj" />
     <ProjectReference Include="../../samples/Shop/Shop.csproj" />
+    <ProjectReference Include="../../samples/Telecom/Telecom.csproj" />
   </ItemGroup>
 </Project>

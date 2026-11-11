@@ -2,6 +2,7 @@
 # One run of the load benchmark on a new database:
 #   benchmarks/Wyrd.Benchmarks.Load/run.sh <workers> <orders per second> [load options...]
 #   benchmarks/Wyrd.Benchmarks.Load/run.sh 4 200 --skus 1 --duration 120      (one hot SKU)
+#   benchmarks/Wyrd.Benchmarks.Load/run.sh 2 5 --app telecom --provider-latency 1000
 #   benchmarks/Wyrd.Benchmarks.Load/run.sh ceiling 2000                       (plain PostgreSQL inserts)
 # Prints the load's table, each worker's messages per second, and PostgreSQL's top statements.
 set -euo pipefail
@@ -23,15 +24,25 @@ fi
 status=0
 
 skus=1000
+export APP=shop PROVIDER_LATENCY=0
 args=("$@")
 for i in "${!args[@]}"; do
-    if [ "${args[$i]}" = --skus ]; then skus=${args[$((i + 1))]}; fi
+    case "${args[$i]}" in
+        --skus) skus=${args[$((i + 1))]} ;;
+        --app) APP=${args[$((i + 1))]} ;;
+        --provider-latency) PROVIDER_LATENCY=${args[$((i + 1))]} ;;
+    esac
 done
+if [ "$APP" = telecom ]; then
+    label="$workers worker(s), providers answering in $PROVIDER_LATENCY ms"
+else
+    label="$workers worker(s), $skus SKU(s)"
+fi
 
-docker compose run --rm setup setup --skus "$skus"
+docker compose run --rm setup setup --app "$APP" --skus "$skus"
 docker compose up --detach --scale worker="$workers" worker
-# A run with errors or dropped orders still prints what the workers and the database did; it exits non-zero at the end.
-docker compose run --rm load load --rate "$rate" --label "$workers worker(s), $skus SKU(s)" "$@" || status=$?
+# A run with errors or dropped work still prints what the workers and the database did; it exits non-zero at the end.
+docker compose run --rm load load --rate "$rate" --label "$label" "$@" || status=$?
 docker compose stop worker >/dev/null
 echo
 echo "Workers (messages per second, every 10 s):"

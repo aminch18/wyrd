@@ -235,6 +235,7 @@ runtime, one CPU), and a load generator that is the API (`SendAsync` and `Publis
 ```bash
 benchmarks/Wyrd.Benchmarks.Load/run.sh 4 100                           # 4 workers, 100 orders/s on 1,000 SKUs
 benchmarks/Wyrd.Benchmarks.Load/run.sh 4 50 --skus 1                   # one hot SKU
+benchmarks/Wyrd.Benchmarks.Load/run.sh 2 5 --app telecom --provider-latency 1000  # Telecom, providers taking 1 s
 benchmarks/Wyrd.Benchmarks.Load/run.sh 8 150 --warmup 60 --duration 900 # a point worth keeping: 15 minutes
 benchmarks/Wyrd.Benchmarks.Load/run.sh ceiling 2000                     # plain PostgreSQL inserts, no Wyrd
 ```
@@ -248,6 +249,8 @@ benchmarks/Wyrd.Benchmarks.Load/run.sh ceiling 2000                     # plain 
   whichever is longer: a latency is at most about 5% late, and a backlog doesn't fill the database with lookups.
 - **Each role in its own process**, limited to its CPUs (`PG_CPUS` 4, `WORKER_CPUS` 1, `LOAD_CPUS` 2), with pooled
   contexts and connection pools of 100 per process.
+- **Slow outside calls** (`--app telecom`): the Telecom sample's portability process, whose providers each answer after
+  `--provider-latency` ms. It shows what a worker does while it waits for something outside the database.
 - **The ceiling**: one insert per transaction at the same kind of rate, on the same database. A Wyrd message is a few
   statements and a commit, so this is what a message can't beat on this machine.
 - After a run: every worker's messages per second, and PostgreSQL's top statements (`pg_stat_statements`).
