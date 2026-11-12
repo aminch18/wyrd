@@ -7,6 +7,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- **Load benchmark** (`benchmarks/Wyrd.Benchmarks.Load`): the Shop on PostgreSQL with each role in a container of its
+  own (workers, the API as an open-loop load generator), orders at a fixed rate, the latency of a whole order from when it
+  was due, and a plain-PostgreSQL ceiling. Docker Compose, so the same files run on a laptop to compare changes and on a
+  fixed Linux machine for numbers worth keeping.
+
 - **How Verdandi works** (`docs/guides/how-verdandi-works.md`, on the website): the durable host underneath, for
   users: where every piece of data lives, one message as one transaction, workers, duplicates, failures, timers,
   concurrency limits with measured numbers, and cleanup.

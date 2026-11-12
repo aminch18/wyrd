@@ -168,7 +168,7 @@ What the numbers say:
 - Different keys scale with callers up to about 32 on this machine, where the client and PostgreSQL share one host;
   past that throughput stops growing and each call waits its turn (128 callers at 3,262 commands/s is about 39 ms each,
   the p50 measured).
-- One key takes one write at a time. With 8 or more callers on it, half or more of the calls run out of retries:
+- One key takes one write at a time. With 8 or more callers on it, half or more of the calls run out of attempts:
   `SendAsync` retries a conflict at once, so the callers that lost keep colliding with each other.
 - Eight workers drain a spread backlog 3.4 times faster than one. On one hot SKU they plateau: the extra workers
   mostly roll back and take turns. Workers never fail on a conflict, they handle the message again.
@@ -221,8 +221,78 @@ The full run after them, same machine and day:
 | --- | ---: | ---: |
 | spread, 1 caller: commands/s, p50 | 495, 1.9 ms | 714, 1.3 ms |
 | spread, 32 callers: commands/s | 3,624 | 2,782 and 3,483 (two runs) |
-| hot, 8 callers: failed after 5 retries | 1,014 | 994 |
+| hot, 8 callers: failed after 5 attempts | 1,014 | 994 |
 
 Past the connection pool (128 callers) throughput varies between runs (1,882 to 3,262 before; 2,748 to 2,775 after), so
 those rows are not compared. Hot keys are unchanged: a conflict is still retried at once.
+
+## Load on PostgreSQL, one process per role
+
+`Wyrd.Benchmarks.Load` runs the Shop as it is deployed: PostgreSQL, N workers each in a container of its own (one
+runtime, one CPU), and a load generator that is the API (`SendAsync` and `PublishAsync`). Docker Compose starts them
+(`compose.yaml` in its folder); `run.sh` starts every run on a new database and prints the results.
+
+```bash
+benchmarks/Wyrd.Benchmarks.Load/run.sh 4 100                           # 4 workers, 100 orders/s on 1,000 SKUs
+benchmarks/Wyrd.Benchmarks.Load/run.sh 4 50 --skus 1                   # one hot SKU
+benchmarks/Wyrd.Benchmarks.Load/run.sh 2 5 --app telecom --provider-latency 1000  # Telecom, providers taking 1 s
+benchmarks/Wyrd.Benchmarks.Load/run.sh 8 150 --warmup 60 --duration 900 # a point worth keeping: 15 minutes
+benchmarks/Wyrd.Benchmarks.Load/run.sh 4 50 --retention 120 --duration 1800 # soak: cleanup during 30 minutes
+benchmarks/Wyrd.Benchmarks.Load/run.sh 4 50 --kill-worker-at 60            # recovery: one worker dies
+benchmarks/Wyrd.Benchmarks.Load/run.sh 8 100 --pgbouncer                   # every connection through PgBouncer
+benchmarks/Wyrd.Benchmarks.Load/run.sh ceiling 2000                     # plain PostgreSQL inserts, no Wyrd
+```
+
+- **An open loop.** Orders start at a fixed rate whether the last ones finished or not, and each latency counts from
+  when the order was due. A system that falls behind shows it in the latencies instead of slowing the load down.
+  Orders the generator couldn't start (`--max-in-flight`, 5,000) are *dropped* and make the run fail.
+- **What an order costs, end to end.** *Placed* is `PlaceOrder` plus `PaymentConfirmed`, what a client waits for.
+  *Order done* follows every `--sample`th order (10th) until its fulfillment process completed: the workers' work.
+  Following is a lookup by key, never a count over a table under load, every 20 ms or a twentieth of the wait so far,
+  whichever is longer: a latency is at most about 5% late, and a backlog doesn't fill the database with lookups.
+- **Each role in its own process**, limited to its CPUs (`PG_CPUS` 4, `WORKER_CPUS` 1, `LOAD_CPUS` 2), with pooled
+  contexts and connection pools of 100 per process.
+- **Slow outside calls** (`--app telecom`): the Telecom sample's portability process, whose providers each answer after
+  `--provider-latency` ms. It shows what a worker does while it waits for something outside the database.
+- **Over time.** Every 10 s the load prints the latencies of the work that finished in those 10 s, and every minute
+  the run samples the database from its statistics (its size, the queue's live and dead rows, autovacuums): a run
+  that drifts, or recovers, shows it.
+- **Soak** (`--retention` seconds): the workers keep everything that long only, so their cleanup runs during the load
+  and the database should stop growing once the first period has passed. Keep it longer than an order takes.
+- **Recovery** (`--kill-worker-at` seconds): one worker is killed (SIGKILL) mid-run; its transactions roll back and
+  the others take its work over. The 10-second windows show how long that takes.
+- **PgBouncer** (`--pgbouncer`): every connection goes through PgBouncer in transaction mode (`pgbouncer.ini`: 50
+  server connections), as a deployment with many worker processes would run it.
+- **The ceiling**: one insert per transaction at the same kind of rate, on the same database. A Wyrd message is a few
+  statements and a commit, so this is what a message can't beat on this machine.
+- After a run: every worker's messages per second, and PostgreSQL's top statements (`pg_stat_statements`).
+
+A laptop's numbers compare changes, before and after on the same machine; they are not capacity. Docker Desktop on
+macOS puts every round trip through a virtual machine (0.152 ms against 0.062 ms on Linux, measured above) and the load
+generator shares the CPUs with the database. The same `compose.yaml` runs on a fixed Linux machine for numbers worth
+keeping, with 15-minute points and at least 5 runs each.
+
+### First runs (2026-11-03, a laptop: compare, don't quote)
+
+macOS laptop, 11 cores, Docker Desktop with 8.7 GB; PostgreSQL 17 limited to 4 CPUs, each worker to 1, the load to 2.
+One run per row, 15 s warm-up and 60 s measured: quick comparisons, not points worth keeping. An order is 17 messages.
+
+| Run | Orders/s | Placed p50 ms | p99 | Order done p50 ms | p95 | p99 | Worker messages/s (10 s windows) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 4 workers, 1,000 SKUs | 50 | 3.0 | 8.4 | 149.5 | 321.2 | 340.3 | 194 to 209 |
+| 4 workers, 1 SKU | 50 | 3.1 | 12.1 | 152.5 | 339.6 | 369.9 | 194 to 208 |
+| 4 workers, 1,000 SKUs | 100 | 2.0 | 6.2 | 4,600.3 | 14,470.0 | 14,738.2 | 327 to 512 |
+| 8 workers, 1,000 SKUs | 100 | 2.4 | 12.6 | 65.5 | 5,884.2 | 6,124.1 | 111 to 268 |
+
+Ceiling: 2,000 inserts/s committed of 2,000 asked, p50 0.3 ms, p99 3.2 ms.
+
+- At 50 orders/s (850 messages/s) four workers keep up and a whole order takes about 150 ms. On one hot SKU it costs
+  about the same: at this rate the stock row is free most of the time, and its `UPDATE` becomes the costliest statement.
+- At 100 orders/s four workers fall behind and the backlog shows in the latencies, as an open loop should. As the queue
+  grows, claiming the next message costs more (0.015 ms a claim at 50 orders/s, 0.091 ms at 100): worth a look with the
+  soak run (dead rows in `wyrd.queue`, autovacuum).
+- Eight workers on this laptop are 8 CPUs of workers plus 4 for PostgreSQL and 2 for the load, on 11 cores: they
+  compete for CPU (111 to 268 messages/s each). That row needs a bigger machine.
+- Following orders used to poll every 20 ms; behind a backlog those lookups became PostgreSQL's costliest statement
+  (3.2 million calls in one run). They now slow down as an order waits.
 
