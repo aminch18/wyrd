@@ -4,6 +4,7 @@ using Npgsql;
 using Telecom;
 using Telecom.Infrastructure;
 using Wyrd.EntityFrameworkCore;
+using Wyrd.Runtime;
 
 namespace Wyrd.Benchmarks.Load;
 
@@ -18,9 +19,9 @@ internal static class TelecomHost
         new PooledDbContextFactory<TelecomDbContext>(new DbContextOptionsBuilder<TelecomDbContext>()
             .UseNpgsql(new NpgsqlConnectionStringBuilder(connection) { MaxPoolSize = maxPool }.ConnectionString).Options);
 
-    public static EfCoreRuntime<TelecomDbContext> Runtime(IDbContextFactory<TelecomDbContext> contexts, TimeSpan providerLatency) =>
+    public static EfCoreRuntime<TelecomDbContext> Runtime(IDbContextFactory<TelecomDbContext> contexts, TimeSpan providerLatency, Retention? retention = null) =>
         TelecomModule.Register(
-            new EfCoreRuntime<TelecomDbContext>(contexts, TelecomJson.Default, ShopHost.KeepEverything),
+            new EfCoreRuntime<TelecomDbContext>(contexts, TelecomJson.Default, retention ?? ShopHost.KeepEverything),
             new SlowProviders(providerLatency));
 
     /// <summary>The sample's deterministic providers, each reply after <paramref name="latency"/>.</summary>

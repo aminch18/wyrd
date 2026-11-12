@@ -237,6 +237,9 @@ benchmarks/Wyrd.Benchmarks.Load/run.sh 4 100                           # 4 worke
 benchmarks/Wyrd.Benchmarks.Load/run.sh 4 50 --skus 1                   # one hot SKU
 benchmarks/Wyrd.Benchmarks.Load/run.sh 2 5 --app telecom --provider-latency 1000  # Telecom, providers taking 1 s
 benchmarks/Wyrd.Benchmarks.Load/run.sh 8 150 --warmup 60 --duration 900 # a point worth keeping: 15 minutes
+benchmarks/Wyrd.Benchmarks.Load/run.sh 4 50 --retention 120 --duration 1800 # soak: cleanup during 30 minutes
+benchmarks/Wyrd.Benchmarks.Load/run.sh 4 50 --kill-worker-at 60            # recovery: one worker dies
+benchmarks/Wyrd.Benchmarks.Load/run.sh 8 100 --pgbouncer                   # every connection through PgBouncer
 benchmarks/Wyrd.Benchmarks.Load/run.sh ceiling 2000                     # plain PostgreSQL inserts, no Wyrd
 ```
 
@@ -251,6 +254,15 @@ benchmarks/Wyrd.Benchmarks.Load/run.sh ceiling 2000                     # plain 
   contexts and connection pools of 100 per process.
 - **Slow outside calls** (`--app telecom`): the Telecom sample's portability process, whose providers each answer after
   `--provider-latency` ms. It shows what a worker does while it waits for something outside the database.
+- **Over time.** Every 10 s the load prints the latencies of the work that finished in those 10 s, and every minute
+  the run samples the database from its statistics (its size, the queue's live and dead rows, autovacuums): a run
+  that drifts, or recovers, shows it.
+- **Soak** (`--retention` seconds): the workers keep everything that long only, so their cleanup runs during the load
+  and the database should stop growing once the first period has passed. Keep it longer than an order takes.
+- **Recovery** (`--kill-worker-at` seconds): one worker is killed (SIGKILL) mid-run; its transactions roll back and
+  the others take its work over. The 10-second windows show how long that takes.
+- **PgBouncer** (`--pgbouncer`): every connection goes through PgBouncer in transaction mode (`pgbouncer.ini`: 50
+  server connections), as a deployment with many worker processes would run it.
 - **The ceiling**: one insert per transaction at the same kind of rate, on the same database. A Wyrd message is a few
   statements and a commit, so this is what a message can't beat on this machine.
 - After a run: every worker's messages per second, and PostgreSQL's top statements (`pg_stat_statements`).

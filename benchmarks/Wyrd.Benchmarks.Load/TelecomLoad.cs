@@ -83,7 +83,7 @@ internal static class TelecomLoad
                     provisioned.Add(due);
                 }
             },
-            elapsed => Console.WriteLine($"{elapsed.TotalSeconds,6:F0} s  in flight {loop.InFlight,6}  dropped {loop.Dropped}  conflicts {Interlocked.Read(ref conflicts)}  errors {Interlocked.Read(ref errors)}"));
+            elapsed => Console.WriteLine($"{elapsed.TotalSeconds,6:F0} s  in flight {loop.InFlight,6}  dropped {loop.Dropped}  conflicts {Interlocked.Read(ref conflicts)}  errors {Interlocked.Read(ref errors)}  provisioned {provisioned.TakeWindow()}"));
 
         Console.WriteLine();
         Console.WriteLine("| Run | Contracts/s asked | Contracts/s accepted | Contract p50 ms | p99 | Provisioned p50 ms | p95 | p99 | max | Followed | Not provisioned | Conflicts | Errors | Dropped |");

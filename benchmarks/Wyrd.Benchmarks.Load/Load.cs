@@ -86,7 +86,7 @@ internal static class Load
                     finished.Add(due);
                 }
             },
-            elapsed => Console.WriteLine($"{elapsed.TotalSeconds,6:F0} s  in flight {loop.InFlight,6}  dropped {loop.Dropped}  conflicts {Interlocked.Read(ref conflicts)}  errors {Interlocked.Read(ref errors)}"));
+            elapsed => Console.WriteLine($"{elapsed.TotalSeconds,6:F0} s  in flight {loop.InFlight,6}  dropped {loop.Dropped}  conflicts {Interlocked.Read(ref conflicts)}  errors {Interlocked.Read(ref errors)}  done {finished.TakeWindow()}"));
 
         var measuredSeconds = duration.TotalSeconds;
         Console.WriteLine();

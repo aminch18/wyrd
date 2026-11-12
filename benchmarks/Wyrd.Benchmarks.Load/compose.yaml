@@ -7,7 +7,8 @@ x-app: &app
     dockerfile: benchmarks/Wyrd.Benchmarks.Load/Dockerfile
   image: wyrd-load
   environment:
-    WYRD_CONNECTION: Host=postgres;Database=wyrd;Username=postgres;Password=wyrd;No Reset On Close=true
+    # run.sh --pgbouncer points it at PgBouncer instead.
+    WYRD_CONNECTION: ${APP_CONNECTION:-Host=postgres;Database=wyrd;Username=postgres;Password=wyrd;No Reset On Close=true}
   depends_on:
     postgres: {condition: service_healthy}
 services:
@@ -34,13 +35,22 @@ services:
       interval: 1s
       timeout: 3s
       retries: 60
+  pgbouncer:
+    build:
+      context: .
+      dockerfile: pgbouncer.Dockerfile
+    image: wyrd-load-pgbouncer
+    cpus: ${PGBOUNCER_CPUS:-1}
+    depends_on:
+      postgres: {condition: service_healthy}
+    profiles: [pgbouncer]
   setup:
     <<: *app
     command: [setup]
     profiles: [run]
   worker:
     <<: *app
-    command: [worker, --app, "${APP:-shop}", --loops, "${WORKER_LOOPS:-1}", --provider-latency, "${PROVIDER_LATENCY:-0}"]
+    command: [worker, --app, "${APP:-shop}", --loops, "${WORKER_LOOPS:-1}", --provider-latency, "${PROVIDER_LATENCY:-0}", --retention, "${RETENTION:-0}"]
     cpus: ${WORKER_CPUS:-1}
     stop_grace_period: 30s
   load:

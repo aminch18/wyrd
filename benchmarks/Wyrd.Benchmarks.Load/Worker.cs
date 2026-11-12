@@ -6,14 +6,15 @@ namespace Wyrd.Benchmarks.Load;
 
 /// <summary>
 /// One instance of the application: one runtime, <c>--loops</c> worker loops, until stopped (SIGTERM, Ctrl+C). Every
-/// <c>--report</c> seconds it prints the messages it handled, from the runtime's own <c>wyrd.messages.handled</c>.
+/// <c>--report</c> seconds it prints the messages it handled, from the runtime's own <c>wyrd.messages.handled</c>. With
+/// <c>--retention</c> seconds the runtime keeps everything that long only, and its cleanup runs during the load.
 /// </summary>
 internal static class Worker
 {
     public static Task<int> RunAsync(string connection, Options options) =>
         options.Text("app") == "telecom"
-            ? RunAsync(TelecomHost.Runtime(TelecomHost.Contexts(connection), TimeSpan.FromMilliseconds(options.Number("provider-latency", 0))), options)
-            : RunAsync(ShopHost.Runtime(ShopHost.Contexts(connection)), options);
+            ? RunAsync(TelecomHost.Runtime(TelecomHost.Contexts(connection), TimeSpan.FromMilliseconds(options.Number("provider-latency", 0)), ShopHost.RetentionOf(options)), options)
+            : RunAsync(ShopHost.Runtime(ShopHost.Contexts(connection), ShopHost.RetentionOf(options)), options);
 
     private static async Task<int> RunAsync<TContext>(Wyrd.EntityFrameworkCore.EfCoreRuntime<TContext> runtime, Options options)
         where TContext : Microsoft.EntityFrameworkCore.DbContext

@@ -75,21 +75,40 @@ internal sealed class OpenLoop(double rate, TimeSpan warmup, TimeSpan duration, 
     }
 }
 
-/// <summary>Latencies in milliseconds, safe to add from many tasks; percentiles once the run is over.</summary>
+/// <summary>
+/// Latencies in milliseconds, safe to add from many tasks; percentiles once the run is over, and for the latest window
+/// while it goes on (<see cref="TakeWindow"/>), which shows a run that drifts or recovers.
+/// </summary>
 internal sealed class Latencies
 {
     private readonly ConcurrentQueue<double> _values = new();
+    private ConcurrentQueue<double> _window = new();
     private double[]? _sorted;
 
     public int Count => _values.Count;
 
-    public void Add(long due) => _values.Enqueue(Stopwatch.GetElapsedTime(due).TotalMilliseconds);
+    public void Add(long due)
+    {
+        var latency = Stopwatch.GetElapsedTime(due).TotalMilliseconds;
+        _values.Enqueue(latency);
+        Volatile.Read(ref _window).Enqueue(latency);
+    }
+
+    /// <summary>The latencies added since the last call: "p50 … p99 … (n)", or "–" when there were none.</summary>
+    public string TakeWindow()
+    {
+        double[] window = [.. Interlocked.Exchange(ref _window, new ConcurrentQueue<double>()).Order()];
+        return window.Length == 0 ? "–" : $"p50 {At(window, 0.50)} p99 {At(window, 0.99)} ({window.Length})";
+    }
 
     public string Percentile(double p)
     {
         _sorted ??= [.. _values.Order()];
-        return _sorted.Length == 0 ? "–" : _sorted[Math.Clamp((int)Math.Ceiling(p * _sorted.Length) - 1, 0, _sorted.Length - 1)].ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+        return _sorted.Length == 0 ? "–" : At(_sorted, p);
     }
+
+    private static string At(double[] sorted, double p) =>
+        sorted[Math.Clamp((int)Math.Ceiling(p * sorted.Length) - 1, 0, sorted.Length - 1)].ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
 
     public string Max => Percentile(1.0);
 }
