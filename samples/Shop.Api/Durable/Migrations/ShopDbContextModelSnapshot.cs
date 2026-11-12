@@ -275,6 +275,10 @@ namespace Shop.Api.Durable.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("key");
 
+                    b.Property<int>("Held")
+                        .HasColumnType("integer")
+                        .HasColumnName("held");
+
                     b.Property<long>("Version")
                         .HasColumnType("bigint")
                         .HasColumnName("version");

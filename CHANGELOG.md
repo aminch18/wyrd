@@ -25,6 +25,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Fixed
 
+- **A held event could wait forever with several workers**: when one worker held a stream's later event while another
+  projected the missing one, both committed, and the held event was never released, so its read models stopped short
+  (about 1 in 10 Telecom subscriptions under load). Holding an event now changes the stream's `projected` row too, so
+  the two commits conflict and one retries. A stream with nothing held no longer looks for held events, one query less
+  per projected event.
+
 - Telecom sample rejects malformed webhook payloads before queuing, returns HTTP 400 for invalid commands, requires sequential payment reviews, validates operator incident ownership, and retries smoke-test connection failures. Provider replies without receipts follow technical retry handling. Local Compose binds the API to loopback; workspace URL decoding and small-text contrast are corrected.
 
 - `EfCoreRuntime.SendAsync` throws `ConcurrencyConflictException` when a conflict outlasts `MaxConflictRetries`, whatever
@@ -32,6 +38,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   exception through, so a caller catching the documented type missed it (Q4.1).
 
 - The README no longer says the runtime is in memory only and durable storage is planned.
+
+### Breaking
+
+- `Wyrd.EntityFrameworkCore`: the `projected` table has a new `held` column (int, not null). Add a migration
+  (`dotnet ef migrations add WyrdProjectedHeld`); existing rows get 0, which is right for a stream with nothing held.
 
 ## [0.5.0-rc.1] - 2026-10-24
 

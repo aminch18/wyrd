@@ -132,6 +132,9 @@ internal sealed class ProjectedRow
     public string Key { get; set; } = "";
 
     public long Version { get; set; }
+
+    /// <summary>How many later events of the stream are held, waiting for the gap to fill.</summary>
+    public int Held { get; set; }
 }
 
 internal sealed class HeldRow
@@ -310,6 +313,7 @@ public static class WyrdModelBuilderExtensions
             Key(e.Property(r => r.StateType), "state_type");
             Key(e.Property(r => r.Key), "key");
             e.Property(r => r.Version).HasColumnName("version");
+            e.Property(r => r.Held).HasColumnName("held");
         });
 
         modelBuilder.Entity<HeldRow>(e =>

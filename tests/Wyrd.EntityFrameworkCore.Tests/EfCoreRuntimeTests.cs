@@ -274,6 +274,41 @@ public abstract class EfCoreRuntimeTests(Database database)
         Assert.Equal("{\"again\":1}", (await LoadAsync())!.Payload);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task holding_an_event_and_projecting_the_gap_on_the_same_read_cant_both_commit(bool holdingCommitsLast)
+    {
+        var contexts = await database.NewAsync();
+        async Task CommitAsync(Action<Changes> change)
+        {
+            await using var db = await contexts.CreateDbContextAsync();
+            var changes = new Changes();
+            change(changes);
+            await new EfCoreStore(db, DateTimeOffset.UtcNow).CommitAsync(changes, default);
+        }
+
+        async Task<ProjectedStream?> LoadAsync()
+        {
+            await using var db = await contexts.CreateDbContextAsync();
+            return await new EfCoreStore(db, DateTimeOffset.UtcNow).LoadProjectedAsync("S", "K", default);
+        }
+
+        await CommitAsync(c => c.Projected[("S", "K")] = (null, new ProjectedStream(1, 0)));
+        var read = await LoadAsync(); // both workers read version 1, nothing held
+        void Hold(Changes c)
+        {
+            c.Hold.Add(new StoredHeld("S", "K", 3, "T", "{}"));
+            c.Projected[("S", "K")] = (read, new ProjectedStream(1, 1));
+        }
+
+        void Project(Changes c) => c.Projected[("S", "K")] = (read, new ProjectedStream(2, 0));
+
+        await CommitAsync(holdingCommitsLast ? Project : Hold);
+        await Assert.ThrowsAsync<ConcurrencyConflictException>(() => CommitAsync(holdingCommitsLast ? Hold : Project));
+        Assert.Equal(holdingCommitsLast ? new ProjectedStream(2, 0) : new ProjectedStream(1, 1), await LoadAsync());
+    }
+
     [Fact]
     public async Task workers_projecting_different_streams_into_one_view_lose_no_update()
     {
