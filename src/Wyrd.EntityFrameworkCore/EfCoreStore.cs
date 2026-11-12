@@ -47,10 +47,10 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now, long? taking
                 : new StoredView(viewType, key, r.Type, r.Payload, r.Version))
             .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
 
-    public async ValueTask<long> LoadProjectedAsync(string stateType, string key, CancellationToken cancellationToken) =>
+    public async ValueTask<ProjectedStream?> LoadProjectedAsync(string stateType, string key, CancellationToken cancellationToken) =>
         await db.Set<ProjectedRow>().AsNoTracking()
             .Where(r => r.StateType == stateType && r.Key == key)
-            .Select(r => r.Version)
+            .Select(r => (ProjectedStream?)new ProjectedStream(r.Version, r.Held))
             .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
 
     public async ValueTask<StoredHeld?> FindHeldAsync(string stateType, string key, long version, CancellationToken cancellationToken) =>
@@ -148,15 +148,18 @@ internal sealed class EfCoreStore(DbContext db, DateTimeOffset now, long? taking
         }
 
         // Ordered read models: the last version of each stream projected, checked like any other version.
-        foreach (var ((stateType, key), (read, version)) in changes.Projected)
+        // Holding an event and projecting one both change the stream's row, checked against what was read: a worker that
+        // projects the missing event and one that holds the next can't both commit on the same read.
+        foreach (var ((stateType, key), (read, written)) in changes.Projected)
         {
-            if (read == 0)
+            if (read is not { } expected)
             {
-                db.Add(new ProjectedRow { StateType = stateType, Key = key, Version = version });
+                db.Add(new ProjectedRow { StateType = stateType, Key = key, Version = written.Version, Held = written.Held });
             }
             else if (await db.Set<ProjectedRow>()
-                .Where(r => r.StateType == stateType && r.Key == key && r.Version == read)
-                .ExecuteUpdateAsync(s => s.SetProperty(r => r.Version, version), cancellationToken).ConfigureAwait(false) != 1)
+                .Where(r => r.StateType == stateType && r.Key == key && r.Version == expected.Version && r.Held == expected.Held)
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.Version, written.Version).SetProperty(r => r.Held, written.Held), cancellationToken)
+                .ConfigureAwait(false) != 1)
             {
                 throw new ConcurrencyConflictException($"Concurrency conflict projecting {stateType} '{key}'.");
             }

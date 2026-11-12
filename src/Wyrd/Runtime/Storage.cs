@@ -53,6 +53,12 @@ internal sealed record Scheduled(DateTimeOffset At, Envelope Envelope);
 /// <summary>A domain event that arrived before an earlier event of its stream: read models get it once the gap is filled.</summary>
 internal sealed record StoredHeld(string StateType, string Key, long Version, string Type, string Payload);
 
+/// <summary>
+/// Where read models are in one stream: the last version projected, and how many later events of it are held. Holding an
+/// event and projecting one both change it, and both are checked on commit, so the two can't miss each other.
+/// </summary>
+internal readonly record struct ProjectedStream(long Version, int Held);
+
 /// <summary>A stream a catching-up projection follows: its view was seeded from the state, or the stream is newer.</summary>
 /// <remarks>The stream's key, not the view's: one view can be seeded from many states.</remarks>
 internal sealed record StoredSeeded(string ViewType, string StateType, string Key);
@@ -106,9 +112,10 @@ internal sealed class Changes
     public Dictionary<(string ViewType, string Key), StoredView> Views { get; } = [];
 
     /// <summary>
-    /// The last version of each stream projected into read models, with the version read (checked on commit).
+    /// Where read models are in each stream this message touched: what was read (null: nothing yet), checked on commit,
+    /// and what to write.
     /// </summary>
-    public Dictionary<(string StateType, string Key), (long Read, long Version)> Projected { get; } = [];
+    public Dictionary<(string StateType, string Key), (ProjectedStream? Read, ProjectedStream Written)> Projected { get; } = [];
 
     public List<StoredHeld> Hold { get; } = [];
 
@@ -163,8 +170,8 @@ internal interface IWyrdStore
 
     ValueTask<StoredView?> LoadViewAsync(string viewType, string key, CancellationToken cancellationToken);
 
-    /// <summary>The last version of a stream projected into read models (0 when none).</summary>
-    ValueTask<long> LoadProjectedAsync(string stateType, string key, CancellationToken cancellationToken);
+    /// <summary>Where read models are in a stream (null when none of its events arrived yet).</summary>
+    ValueTask<ProjectedStream?> LoadProjectedAsync(string stateType, string key, CancellationToken cancellationToken);
 
     ValueTask<StoredHeld?> FindHeldAsync(string stateType, string key, long version, CancellationToken cancellationToken);
 

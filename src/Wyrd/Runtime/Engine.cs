@@ -337,7 +337,8 @@ internal sealed class Engine(
             return;
         }
 
-        var projected = await store.LoadProjectedAsync(stream.StateType, stream.Key, cancellationToken).ConfigureAwait(false);
+        var read = await store.LoadProjectedAsync(stream.StateType, stream.Key, cancellationToken).ConfigureAwait(false);
+        var (projected, waiting) = read ?? default;
         if (stream.Version <= projected)
         {
             return;
@@ -347,27 +348,37 @@ internal sealed class Engine(
         {
             // Nothing to order yet, but a projection added later catches up from the states, and needs to know which
             // events of a stream have arrived.
-            changes.Projected[(stream.StateType, stream.Key)] = (projected, stream.Version);
+            changes.Projected[(stream.StateType, stream.Key)] = (read, new ProjectedStream(stream.Version, waiting));
             return;
         }
 
         if (stream.Version > projected + 1)
         {
-            log(External, stream.Key, $"{@event.GetType().Name} held for read models until earlier events of its stream arrive");
-            changes.Hold.Add(new StoredHeld(stream.StateType, stream.Key, stream.Version, envelope.Type, envelope.Payload));
+            // Holding writes the stream's row too: a worker projecting the missing event at the same time read the same
+            // row, so one of the two commits fails and its retry sees the other. Without it, that worker could look for
+            // held events before this one commits, find none, and leave this one held forever.
+            if (await store.FindHeldAsync(stream.StateType, stream.Key, stream.Version, cancellationToken).ConfigureAwait(false) is null)
+            {
+                log(External, stream.Key, $"{@event.GetType().Name} held for read models until earlier events of its stream arrive");
+                changes.Hold.Add(new StoredHeld(stream.StateType, stream.Key, stream.Version, envelope.Type, envelope.Payload));
+                changes.Projected[(stream.StateType, stream.Key)] = (read, new ProjectedStream(projected, waiting + 1));
+            }
+
             return;
         }
 
         await ProjectAsync(@event, stream, changes, cancellationToken).ConfigureAwait(false);
         var version = stream.Version;
-        while (await store.FindHeldAsync(stream.StateType, stream.Key, version + 1, cancellationToken).ConfigureAwait(false) is { } held)
+        while (waiting > 0
+            && await store.FindHeldAsync(stream.StateType, stream.Key, version + 1, cancellationToken).ConfigureAwait(false) is { } held)
         {
             changes.Release.Add(held);
             await ProjectAsync((IEvent)types.Deserialize(held.Type, held.Payload), stream with { Version = version + 1 }, changes, cancellationToken).ConfigureAwait(false);
             version++;
+            waiting--;
         }
 
-        changes.Projected[(stream.StateType, stream.Key)] = (projected, version);
+        changes.Projected[(stream.StateType, stream.Key)] = (read, new ProjectedStream(version, waiting));
     }
 
     private async ValueTask ProjectAsync(IEvent @event, StreamRef? stream, Changes changes, CancellationToken cancellationToken)

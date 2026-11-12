@@ -13,7 +13,7 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
     private readonly List<(DateTimeOffset At, long Sequence, Envelope Envelope)> _scheduled = [];
     private readonly Dictionary<(string ViewType, string Key), StoredView> _views = [];
     private readonly Dictionary<Guid, DateTimeOffset> _handled = [];
-    private readonly Dictionary<(string StateType, string Key), long> _projected = [];
+    private readonly Dictionary<(string StateType, string Key), ProjectedStream> _projected = [];
     private readonly List<StoredHeld> _held = [];
     private readonly Dictionary<StoredSeeded, long> _seeded = [];
     private readonly HashSet<string> _caughtUp = [];
@@ -60,8 +60,8 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
     public ValueTask<StoredParked?> FindParkedAsync(string process, string key, int step, CancellationToken cancellationToken) =>
         ValueTask.FromResult(_parked.FirstOrDefault(p => p.Process == process && p.Key == key && p.Step == step));
 
-    public ValueTask<long> LoadProjectedAsync(string stateType, string key, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(_projected.GetValueOrDefault((stateType, key)));
+    public ValueTask<ProjectedStream?> LoadProjectedAsync(string stateType, string key, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(_projected.TryGetValue((stateType, key), out var projected) ? projected : (ProjectedStream?)null);
 
     public ValueTask<StoredHeld?> FindHeldAsync(string stateType, string key, long version, CancellationToken cancellationToken) =>
         ValueTask.FromResult(_held.FirstOrDefault(h => h.StateType == stateType && h.Key == key && h.Version == version));
@@ -73,7 +73,7 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
         ValueTask.FromResult(_seeded.TryGetValue(seeded, out var version) ? version : (long?)null);
 
     public ValueTask<bool> SeedsAheadAsync(string viewType, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(_seeded.Any(s => s.Key.ViewType == viewType && _projected.GetValueOrDefault((s.Key.StateType, s.Key.Key)) < s.Value));
+        ValueTask.FromResult(_seeded.Any(s => s.Key.ViewType == viewType && _projected.GetValueOrDefault((s.Key.StateType, s.Key.Key)).Version < s.Value));
 
     public ValueTask<IReadOnlyList<StoredState>> UnseededAsync(string viewType, string stateType, int max, CancellationToken cancellationToken) =>
         ValueTask.FromResult<IReadOnlyList<StoredState>>(
@@ -109,7 +109,7 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
 
             foreach (var ((stateType, key), (read, _)) in changes.Projected)
             {
-                if (_projected.GetValueOrDefault((stateType, key)) != read)
+                if ((_projected.TryGetValue((stateType, key), out var current) ? current : (ProjectedStream?)null) != read)
                 {
                     throw new ConcurrencyConflictException($"Concurrency conflict projecting {stateType} '{key}'.");
                 }
@@ -144,9 +144,9 @@ internal sealed class InMemoryStore(Func<DateTimeOffset> now) : IWyrdStore
                 _states[(state.StateType, state.Key)] = state;
             }
 
-            foreach (var ((stateType, key), (_, version)) in changes.Projected)
+            foreach (var ((stateType, key), (_, written)) in changes.Projected)
             {
-                _projected[(stateType, key)] = version;
+                _projected[(stateType, key)] = written;
             }
 
             foreach (var (seeded, version) in changes.SeededWritten)

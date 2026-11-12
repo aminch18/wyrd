@@ -77,7 +77,7 @@ store commits it in one go.
 | `Cancel` | Ids of scheduled envelopes no longer wanted (a wait's timer) | `DELETE queue WHERE message_id = ANY(...)` |
 | `Park` / `Unpark` | Awaited events that arrived early, and their release | `INSERT parked` / `DELETE parked` |
 | `Views` | Read-model documents (null payload deletes) | `UPDATE views`, else `INSERT`; or `DELETE` |
-| `Projected` | Per stream: the version read and the version now projected | `UPDATE projected … WHERE version = read`, or `INSERT` |
+| `Projected` | Per stream: the version and held count read, and the ones now written | `UPDATE projected … WHERE version = read AND held = read`, or `INSERT` |
 | `Hold` / `Release` | Domain events held back until their stream's gap fills | `INSERT held` / `DELETE held` |
 | `Handled` | Ids of events handled (dedup for events) | `INSERT handled` |
 
@@ -159,10 +159,12 @@ a provider that deduplicates by key never charges twice.
 
 1. **Dedup** (`Engine.cs:217-221`): events are deduplicated by the `handled` set, not the inbox.
 2. **Read models in stream order** (`Engine.cs:252-288`): if the event carries a `StreamRef`, the engine compares its
-   version with the last version of that stream projected (`LoadProjectedAsync`).
+   version with the last version of that stream projected (`LoadProjectedAsync`, which also returns how many events of
+   the stream are held).
    - already projected → skip;
-   - a gap (version > projected + 1) → **hold** it (`Engine.cs:271-276`);
-   - next in line → project it, then release any held successors in order (`Engine.cs:278-287`).
+   - a gap (version > projected + 1) → **hold** it and count it on the stream's `projected` row, so a worker projecting
+     the missing event at the same time conflicts on commit instead of missing it;
+   - next in line → project it, then, if any are held, release the held successors in order.
    Integration events from outside have no stream and are projected as they come (`Engine.cs:259-263`).
 3. **Processes** (`Engine.cs:229-243`): for every active process, if the event (or an upcast of it) is the trigger,
    `StartAsync`; for every `Await` node waiting for that type, `ResumeOrParkAsync`.
@@ -395,7 +397,7 @@ are `text`, not `jsonb`, because jsonb reorders keys and polymorphic JSON needs 
 | `handled` | `message_id` | `handled_at` (indexed) | every event | `Deduplication` retention |
 | `parked` | `process, key, step` | `type`, `payload`: an awaited event that came early | events | with its instance |
 | `views` | `view_type, key` | `type`, `payload`, `created` (listing order) | projections | never (business data) |
-| `projected` | `state_type, key` | `version`: last version of the stream projected | projections | never |
+| `projected` | `state_type, key` | `version`: last version of the stream projected; `held`: how many later events wait in `held` | projections | never |
 | `held` | `state_type, key, version` | an event waiting for an earlier one of its stream | projections | when released |
 | `queue` | `id` | `message_id` (indexed, not unique), `envelope` (JSON), `available_at` (indexed with `id`), `attempts`, `last_error` | outbox, timers, retries, `PublishAsync`, `ReceiveAsync` | the worker that handled it; `Cancel` |
 | `dead_letters` | `id` (the queue id) | `envelope`, `attempts`, `error`, `failed_at` | redelivery giving up | `DeadLetters` retention |
